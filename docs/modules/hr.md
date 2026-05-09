@@ -67,7 +67,7 @@ The payroll run follows a strict workflow with status progression:
 - **Leave endpoints**: leave requests at `/api/v1/hr/leave-requests`, leave types at `/api/v1/hr/leave-types`, leave balances at `/api/v1/hr/employees/{employeeId}/leave-balances`
 - **Attendance endpoints**: daily attendance at `/api/v1/hr/attendance/date/{date}`, summary at `/api/v1/hr/attendance/summary`, bulk operations at `/api/v1/hr/attendance/bulk-mark` and `/api/v1/hr/attendance/bulk-import`
 - **Salary structure endpoints**: `/api/v1/hr/salary-structures`
-- **Legacy payroll endpoints**: Return `410 GONE` with canonical path redirect to `/api/v1/payroll/runs`
+- **Retired payroll endpoints**: Removed; payroll operations use `/api/v1/payroll/**`
 
 ### HrPayrollController (`/api/v1/payroll`)
 - **Payroll run endpoints**: CRUD at `/api/v1/payroll/runs`, weekly runs at `/api/v1/payroll/runs/weekly`, monthly runs at `/api/v1/payroll/runs/monthly`
@@ -179,23 +179,11 @@ If any required account is missing, posting fails with `VALIDATION_INVALID_REFER
 - Mark-as-paid is idempotent within a POSTED or PAID run
 - Payment reference can be updated; the canonical reference comes from the accounting payment journal
 
-## Deprecated and Non-Canonical Surfaces
+## Current HR Route Notes
 
-### Legacy HR Endpoints (Deprecated)
-**Status**: Deprecated
+Payroll operations are exposed through `HrPayrollController` at `/api/v1/payroll/**`.
+HR personnel workflows stay under `/api/v1/hr/**`:
 
-The `HrController` has legacy payroll endpoints that return `410 GONE`:
-- `GET /api/v1/hr/payroll-runs` → redirects to `/api/v1/payroll/runs`
-- `POST /api/v1/hr/payroll-runs` → redirects to `/api/v1/payroll/runs`
-
-**Canonical path**: Use `HrPayrollController` at `/api/v1/payroll/**` for all payroll operations.
-
-### Direct HR Endpoints Without Standard Flow
-**Status**: Deprecated
-
-Any `/api/v1/hr/**` endpoints that exist outside the standard payroll flow should be considered deprecated.
-
-**Canonical paths**:
 - Employee management: `/api/v1/hr/employees`
 - Leave management: `/api/v1/hr/leave-requests`, `/api/v1/hr/leave-types`
 - Attendance: `/api/v1/hr/attendance/**`
@@ -242,11 +230,9 @@ The module does **not** currently support:
 ## Cross-references
 
 - [docs/INDEX.md](../INDEX.md) — canonical documentation index
-- [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — module inventory
-- [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/flows/hr-payroll.md](../flows/hr-payroll.md) — canonical HR/payroll flow (behavioral entrypoint)
-- [docs/workflows/payroll.md](../workflows/payroll.md) — operational workflow guide (historical reference)
-- [docs/developer/accounting-flows/00-accounting-module-map.md](../developer/accounting-flows/00-accounting-module-map.md) — accounting module (payroll posting seam)
+- [docs/modules/accounting.md](accounting.md) — accounting module reference for payroll posting
 - [erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md) — source module definition
 - [docs/frontend-portals/accounting/README.md](../frontend-portals/accounting/README.md) — Accounting frontend handoff (HR and payroll accounting payloads, RBAC)
-- [docs/deprecated/INDEX.md](../deprecated/INDEX.md) — Deprecated surfaces registry (legacy /hr/payroll-runs endpoints)

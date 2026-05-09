@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-04-26
 
-This client-shareable packet explains the connected accounting workflow now implemented in the ERP. It describes accounting as one business system: commercial and operational events create finance truth, finance users review and settle that truth, and period close/reporting read from the same accounting boundary.
+This client-shareable document explains the connected accounting workflow now implemented in the ERP. It describes accounting as one business system: commercial and operational events create finance truth, finance users review and settle that truth, and period close/reporting read from the same accounting boundary.
 
 The language below is intentionally simple. It documents shipped backend behavior only; it does not describe planned approval aliases, retired routes, or unsupported export status endpoints as current truth.
 
@@ -153,21 +153,21 @@ The following routes or aliases are not current workflow truth and should not be
 | Standalone export status route | Keep the returned id from `POST /api/v1/exports/request`; use the approval inbox and then `GET /api/v1/exports/{requestId}/download`. |
 | Direct export approve/reject aliases | `POST /api/v1/admin/approvals/EXPORT_REQUEST/{id}/decisions` |
 | Export-specific tenant-admin approve/reject aliases | `POST /api/v1/admin/approvals/EXPORT_REQUEST/{id}/decisions` |
-| Legacy close-request alias | `POST /api/v1/accounting/periods/{periodId}/request-close` |
-| Legacy close-approve alias | `POST /api/v1/accounting/periods/{periodId}/approve-close` |
-| Legacy close-finalize alias | No separate finalize route; approval completes the close. |
-| Legacy bank-session prefix without `/bank` | `/api/v1/accounting/reconciliation/bank/sessions/**` |
+| Retired close-request alias | `POST /api/v1/accounting/periods/{periodId}/request-close` |
+| Retired close-approve alias | `POST /api/v1/accounting/periods/{periodId}/approve-close` |
+| Retired close-finalize alias | No separate finalize route; approval completes the close. |
+| Retired bank-session prefix without `/bank` | `/api/v1/accounting/reconciliation/bank/sessions/**` |
 | Dealer/supplier-specific reconciliation aliases | `GET /api/v1/accounting/reconciliation/subledger` |
 | Invoice-hosted payment or settlement aliases | Accounting receipt and settlement routes under `/api/v1/accounting/**` |
 | Dealer statement/aging PDFs under `/api/v1/accounting/statements/dealers/**` or `/aging/dealers/**` | Internal dealer finance reads under `/api/v1/portal/finance/**`; dealer self-service under `/api/v1/dealer-portal/**`; supplier PDFs remain under `/api/v1/accounting/**` and admin-only. |
 
 ---
 
-## 6. Related Canonical Flow Packets
+## 6. Related Canonical Flows
 
 - [Accounting / Period Close Flow](accounting-period-close.md)
 - [Reporting / Export Flow](reporting-export.md)
 - [Invoice / Dealer Finance Flow](invoice-dealer-finance.md)
 - [Order-to-Cash Flow](order-to-cash.md)
 - [Procure-to-Pay Flow](procure-to-pay.md)
-- [Backend Flow Inventory](FLOW-INVENTORY.md)
+- [Backend Feature Catalog](../BACKEND-FEATURE-CATALOG.md)

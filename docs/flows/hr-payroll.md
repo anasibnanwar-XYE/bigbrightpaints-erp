@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **HR and payroll flow**: the canonical lifecycle for employee management, leave management, attendance tracking, and the complete payroll run lifecycle. It covers the payroll calculation boundary, the accounting posting seam, and the payment recording boundary.
+This document describes the **HR and payroll flow**: the canonical lifecycle for employee management, leave management, attendance tracking, and the complete payroll run lifecycle. It covers the payroll calculation boundary, the accounting posting boundary, and the payment recording boundary.
 
-This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, the packet explicitly states the current limitation instead of presenting partial behavior as complete.
+This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, this document explicitly states the current limitation instead of presenting partial behavior as complete.
 
 ---
 
@@ -234,9 +234,7 @@ The flow is complete when:
 
 ---
 
-## 6. Canonical vs Non-Canonical Paths
-
-### Canonical Paths
+## 6. Current API Paths
 
 | Path | Owner | Notes |
 | --- | --- | --- |
@@ -245,16 +243,6 @@ The flow is complete when:
 | `POST /api/v1/payroll/runs/{id}/post` | `HrPayrollController` | Post to accounting (via AccountingFacade) |
 | `POST /api/v1/payroll/runs/{id}/mark-paid` | `HrPayrollController` | Payment recording |
 | `GET /api/v1/hr/employees` | `HrController` | Employee management |
-
-### Non-Canonical / Deprecated Paths
-
-| Path | Status | Replacement |
-| --- | --- | --- |
-| `GET /api/v1/hr/payroll-runs` | Deprecated (410) | Use `/api/v1/payroll/runs` |
-| `POST /api/v1/hr/payroll-runs` | Deprecated (410) | Use `/api/v1/payroll/runs` |
-| Legacy HR payroll endpoints | Deprecated | Use `/api/v1/payroll/**` |
-
----
 
 ## 7. Cross-Module Dependencies
 
@@ -288,12 +276,10 @@ The payroll flow itself does not publish events that trigger downstream listener
 
 ## 10. Related Documentation
 
-- [docs/modules/hr.md](../modules/hr.md) — HR module canonical packet
-- [docs/modules/MODULE-INVENTORY.md](../modules/MODULE-INVENTORY.md) — Module inventory
-- [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
-- [docs/workflows/payroll.md](../workflows/payroll.md) — Historical operational guide
+- [docs/modules/hr.md](../modules/hr.md) — HR module doc
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/frontend-portals/accounting/README.md](../frontend-portals/accounting/README.md) — Accounting frontend handoff (HR and payroll accounting payloads, RBAC)
-- [docs/deprecated/INDEX.md](../deprecated/INDEX.md) — Deprecated surfaces registry (legacy /hr/payroll-runs endpoints)
 
 ### Relevant ADRs
 - [ADR-002-multi-tenant-auth-scoping.md](../adrs/ADR-002-multi-tenant-auth-scoping.md) — Multi-tenant auth scoping (payroll data must be scoped by tenant/company)

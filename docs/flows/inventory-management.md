@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **inventory management flow**: the canonical lifecycle for stock truth, batch management, adjustments, opening stock import, and traceability. It covers finished goods and raw material stock summaries, low-stock alerts, batch traceability, stock adjustments, and the opening stock import process.
+This document describes the **inventory management flow**: the canonical lifecycle for stock truth, batch management, adjustments, opening stock import, and traceability. It covers finished goods and raw material stock summaries, low-stock alerts, batch traceability, stock adjustments, and the opening stock import process.
 
-This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, the packet explicitly states the current limitation instead of presenting partial behavior as complete.
+This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, this document states the current limitation instead of presenting partial behavior as complete.
 
 ---
 
@@ -84,7 +84,7 @@ This flow is **behavior-first** and **code-grounded**. Where the backend is inco
 
 ### FG Adjustment Preconditions
 
-1. **Idempotency key provided** — Header `Idempotency-Key` (or legacy `X-Idempotency-Key` or body `idempotencyKey`)
+1. **Idempotency key provided** — Header `Idempotency-Key` or body `idempotencyKey`
 2. **Valid adjustment type** — `DAMAGED`, `SHRINKAGE`, `OBSOLETE`, `RECOUNT_UP`
 3. **Valid FG and quantity** — Finished good exists, quantity positive
 4. **Sufficient stock for negative** — For DAMAGED/SHRINKAGE/OBSOLETE, sufficient batch stock available
@@ -212,7 +212,7 @@ The flow is complete when:
 
 3. **Batch ID ambiguity** — When batch ID could be either RM or FG, caller must specify type
 
-4. **Opening stock readiness gating** — FG items without accounts fail import (by design, but means legacy imports need account pre-setup)
+4. **Opening stock readiness gating** — FG items without accounts fail import by design; set the valuation accounts before import.
 
 5. **Inventory accounting events toggle** — When `erp.inventory.accounting.events.enabled=false`, stock operations don't generate accounting events
 
@@ -222,9 +222,7 @@ The flow is complete when:
 
 ---
 
-## 6. Canonical vs Non-Canonical Paths
-
-### Canonical Paths
+## 6. Current API Paths
 
 | Path | Owner | Notes |
 | --- | --- | --- |
@@ -233,15 +231,6 @@ The flow is complete when:
 | `POST /api/v1/inventory/opening-stock` | `OpeningStockImportController` | CSV import for initial stock |
 | `GET /api/v1/inventory/batches/{id}/movements` | `InventoryBatchController` | Batch traceability |
 | `POST /api/v1/dispatch/confirm` | `DispatchController` | Dispatch execution |
-
-### Non-Canonical / Deprecated Paths
-
-| Path | Status | Replacement |
-| --- | --- | --- |
-| `/api/v1/dispatch/confirm` (legacy) | Retired | Use `POST /api/v1/dispatch/confirm` |
-| Legacy intake endpoints | No replacement | The raw-material intake path was disabled via `erp.raw-material.intake.enabled=false`. Stock intake for raw materials now occurs through the [procure-to-pay flow](procure-to-pay.md) via GRN (Goods Receipt Note) processing. |
-
----
 
 ## 7. Cross-Module Dependencies
 
@@ -260,11 +249,11 @@ The inventory management flow is the primary source of inventory events that tri
 
 | Event | Listener | Phase | Effect on Inventory |
 | --- | --- | --- | --- |
-| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Inventory movements (adjustments, dispatch, consumption, opening stock) trigger automatic inventory valuation journal entries in accounting if `erp.inventory.accounting.events.enabled=true` (default: true). This is the primary event bridge that connects inventory truth to accounting truth. If disabled, movements silently skip accounting side effects, causing incomplete period-end balances. |
+| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Inventory movements (adjustments, dispatch, consumption, opening stock) trigger automatic inventory valuation journal entries in accounting only when `erp.inventory.accounting.events.enabled=true`. The current default/prod posture is off; canonical workflows post their own accounting entries. |
 | `InventoryValuationChangedEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Triggers accounting entries for valuation changes when inventory is adjusted or consumed. |
 | `InventoryMovementEvent` | `InventoryAuditListener` | `AFTER_COMMIT` | Creates audit trail markers for inventory movements, enabling traceability during reconciliation. |
 
-**Key boundary note:** The inventory module is the source of truth for stock movements. The `InventoryAccountingEventListener` is the primary bridge to accounting—if the feature flag is disabled, the accounting side effects are silently skipped, which can cause period-end inventory balances to be incomplete without any error at the inventory layer. This is a "fail-open" behavior that operators should be aware of.
+**Key boundary note:** The inventory module is the source of truth for stock movements. GRN, dispatch, and packing workflows own their accounting postings directly. `InventoryAccountingEventListener` is an opt-in automation path for standalone inventory movements and is disabled by default.
 
 Access-control boundaries:
 - **OPERATIONAL_DISPATCH** — Dispatch confirmation requires this specific role predicate, not generic ADMIN
@@ -286,13 +275,12 @@ See [orchestrator.md](../modules/orchestrator.md) for the full event bridge map 
 
 ## 10. Related Documentation
 
-- [docs/modules/inventory.md](../modules/inventory.md) — Inventory module canonical packet
+- [docs/modules/inventory-stock-control.md](../modules/inventory-stock-control.md) — Inventory module reference
 - [docs/modules/factory.md](../modules/factory.md) — Factory module for production batches
 - [docs/modules/sales.md](../modules/sales.md) — Sales module for dispatch boundary
 - [docs/modules/purchasing.md](../modules/purchasing.md) — Purchasing for GRN stock intake
-- [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/frontend-portals/factory/README.md](../frontend-portals/factory/README.md) — Factory frontend handoff (inventory payloads, RBAC)
-- [docs/deprecated/INDEX.md](../deprecated/INDEX.md) — Deprecated surfaces registry (legacy dispatch paths, raw-material intake toggle)
 
 ---
 
@@ -305,4 +293,4 @@ See [orchestrator.md](../modules/orchestrator.md) for the full event bridge map 
 | Batch merge | Not implemented. No merge capability for duplicate batches. |
 | Stock transfer | Not implemented. No inter-location or inter-company transfer capability. |
 | Zero-cost dispatch | Blocked. Fails hard to prevent silent COGS loss. |
-| Intake toggle | Configurable. Can be disabled via `erp.raw-material.intake.enabled`. |
+| Raw-material intake | Canonical GRN-only flow through procure-to-pay. |

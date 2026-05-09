@@ -24,7 +24,7 @@ Tenant context is derived exclusively from the JWT `companyCode` claim, enforced
 
 1. **JWT claim is authoritative.** Every authenticated JWT carries a `companyCode` claim. The filter reads this claim and populates a `ThreadLocal`-backed `CompanyContextHolder` for downstream use.
 2. **Header is optional but must agree.** An `X-Company-Code` header is accepted but must match the JWT claim. Mismatched headers are rejected.
-3. **Legacy numeric header is rejected.** `X-Company-Id` is explicitly rejected with an error message directing callers to use `X-Company-Code`.
+3. **Retired numeric header is rejected.** `X-Company-Id` is explicitly rejected with an error message directing callers to use `X-Company-Code`.
 4. **Unauthenticated requests cannot set tenant context.** If no JWT is present, the header is ignored.
 5. **Super admins operate in platform scope.** Super-admin requests to `/api/v1/superadmin/*` use a platform-scoped authentication model. Super admins are explicitly blocked from tenant business endpoints (sales, inventory, factory, purchasing, HR, etc.) and may only access lifecycle control-plane routes.
 6. **Company lifecycle gates requests.** `CompanyLifecycleState` is checked for every tenant-scoped request: `ACTIVE` allows full access, `SUSPENDED` allows reads only, `DEACTIVATED` denies all access.
@@ -49,5 +49,5 @@ Tenant context is derived exclusively from the JWT `companyCode` claim, enforced
 
 - [docs/RELIABILITY.md](../RELIABILITY.md) — tenant isolation and data integrity guarantees
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — module map and tenant-scoping architecture
-- [docs/SECURITY.md](../SECURITY.md) — security review policy and R2 escalation triggers
+- [docs/SECURITY.md](../SECURITY.md) — security controls and R2 escalation triggers
 - ADR-006 — portal and host boundary separation for admin vs dealer surfaces

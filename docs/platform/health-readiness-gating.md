@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the operator-facing health and readiness surfaces, integration health endpoints, module-gating mechanics, runtime-admission gates, and the important caveats operators must understand about which checks to trust and where the guarantees are partial. It fulfills VAL-PLAT-008.
+This document describes the operator-facing health and readiness surfaces, integration health endpoints, module-gating mechanics, runtime-admission gates, and the important caveats operators must understand about which checks to trust and where the guarantees are partial.
 
-> **Scope note:** This packet covers health/readiness endpoints and runtime-gating surfaces from an operator's perspective. For the full runtime-gating architecture, dual-enforcement-service coupling, and settings risk analysis, see [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md). For the configuration switches that control these surfaces, see [config-feature-toggles.md](config-feature-toggles.md). For module-gating config and the `CompanyModule` enum, see [company.md](../modules/company.md).
+> **Scope note:** This document covers health/readiness endpoints and runtime-gating surfaces from an operator's perspective. For the full runtime-gating architecture, dual-enforcement-service coupling, and settings risk analysis, see [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md). For the configuration switches that control these surfaces, see [config-feature-toggles.md](config-feature-toggles.md). For module-gating config and the `CompanyModule` enum, see [company.md](../modules/company.md).
 
 ---
 
@@ -34,7 +34,7 @@ Two custom health indicators exist but are **toggle-protected** and **inactive u
 
 **Operator caveat:** A standard `/actuator/health` probe without `erp.environment.validation.health-indicator.enabled=true` will **not** report configuration problems. A 200 from actuator only means the JVM is up and the database is reachable, not that the application is correctly configured for production use. Operators who rely on actuator alone will miss missing JWT secrets, encryption keys, SMTP configuration, and per-tenant account setup.
 
-**Actuator degradation is expected in some profiles:** If actuator reports `DOWN` but the application answers API requests on port 8081, the API surface may still be functional. Operators should probe a real API endpoint (e.g., `GET /api/v1/auth/me` expecting 401/403 for unauthenticated requests) before treating the application as unavailable. This is documented in the environment library and the validation harness.
+**Actuator degradation is expected in some profiles:** If actuator reports `DOWN` but the application answers API requests on port 8081, the API surface may still be functional. Operators should probe a real API endpoint (for example, `GET /api/v1/auth/me` expecting 401/403 for unauthenticated requests) before treating the application as unavailable. The `validation-harness` profile exists only for that explicit validation path.
 
 ### 1.2 Integration Health — `/api/integration/health`
 
@@ -178,10 +178,10 @@ Runtime admission is implemented across three layers that operators must underst
 | Layer | Service | Scope | Where it runs |
 | --- | --- | --- | --- |
 | 1. CompanyContextFilter | `TenantRuntimeRequestAdmissionService` → `TenantRuntimeEnforcementService` | Every authenticated tenant-scoped request | Spring Security filter chain |
-| 2. Portal interceptor | `TenantRuntimeRequestAdmissionService` → `TenantRuntimeEnforcementService` | `/api/v1/reports/**`, `/api/v1/portal/**`, `/api/v1/demo/**` | Spring MVC interceptor |
+| 2. Portal interceptor | `TenantRuntimeRequestAdmissionService` → `TenantRuntimeEnforcementService` | `/api/v1/reports/**`, `/api/v1/portal/**` | Spring MVC interceptor |
 | 3. Core security layer | `TenantRuntimeAccessService` | Same paths as layer 2 | Reads `system_settings` directly |
 
-**Layer 1 is the primary enforcement point.** Layer 2 is a fallback for paths that may bypass the filter chain. Layer 3 is an independent enforcement service with its own cache and counters.
+**Layer 1 is the primary enforcement point.** Layer 2 covers paths outside the filter chain. Layer 3 is an independent enforcement service with its own cache and counters.
 
 For the full architecture, coupling analysis, and risk assessment, see [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md) §2.
 
@@ -253,7 +253,7 @@ The **policy** (state, quotas) is persisted and survives restarts. Only the **co
 
 - One service may enforce `ACTIVE` while the other still sees `HOLD`
 - In-flight request counts may differ between the two services
-- Legacy per-code settings keys may cause different behavior if both legacy and company-ID keys exist
+- Retired per-code settings keys may cause different behavior if both retired and company-ID keys exist
 
 Operators should wait at least 15 seconds after a policy change before verifying its effect.
 
@@ -316,7 +316,7 @@ For a typical authenticated tenant request, the gates evaluate in this order:
 1. Security filter chain — JWT validation, authentication
 2. CompanyContextFilter — Company context resolution, lifecycle state check (SUSPENDED/DEACTIVATED)
 3. CompanyContextFilter — Runtime admission (HOLD/BLOCKED, rate limit, concurrency)
-4. TenantRuntimeEnforcementInterceptor — Fallback runtime check for portal/reports/demo paths
+4. TenantRuntimeEnforcementInterceptor — Runtime check for portal/reports paths
 5. ModuleGatingInterceptor — Module enabled/disabled check for gatable modules
 6. Controller — RBAC/role check via @PreAuthorize
 ```

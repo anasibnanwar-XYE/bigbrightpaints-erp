@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **company module** (`modules/company`) and the tenant-runtime infrastructure it owns. It covers tenant lifecycle, runtime admission, module gating, super-admin control-plane operations, company-context resolution, usage-enforcement surfaces, and the V1 Add Client activation boundary.
+This document describes the **company module** (`modules/company`) and the tenant-runtime infrastructure it owns. It covers tenant lifecycle, runtime admission, module gating, super-admin control-plane operations, company-context resolution, usage-enforcement surfaces, and the V1 Add Client activation boundary.
 
 ## Ownership Summary
 
@@ -170,7 +170,7 @@ Resolves the current company from `CompanyContextHolder` (ThreadLocal set by `Co
 Company context is set by `CompanyContextFilter` (in `core/security/`, documented in [auth.md](auth.md)):
 
 1. JWT `companyCode` claim is extracted by `JwtAuthenticationFilter`.
-2. `CompanyContextFilter` validates the claim against any `X-Company-Code` header, rejects legacy `X-Company-Id` headers, resolves the company lifecycle state, enforces lifecycle restrictions, runs tenant runtime admission, and sets `CompanyContextHolder`.
+2. `CompanyContextFilter` validates the claim against any `X-Company-Code` header, rejects retired `X-Company-Id` headers, resolves the company lifecycle state, enforces lifecycle restrictions, runs tenant runtime admission, and sets `CompanyContextHolder`.
 3. Downstream services use `CompanyContextHolder.getCompanyCode()` or `CompanyContextService` to access tenant context.
 
 ### Super-Admin Platform Scope
@@ -226,12 +226,12 @@ provider credentials, or `.env` values.
 ## Cross-References
 
 - [docs/modules/auth.md](auth.md) — auth module (login, refresh, logout, MFA, token revocation, security filters)
-- [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — canonical module inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/adrs/ADR-002-multi-tenant-auth-scoping.md](../adrs/ADR-002-multi-tenant-auth-scoping.md) — ADR for multi-tenant auth scoping
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — overall architecture reference
-- [docs/SECURITY.md](../SECURITY.md) — security review policy
+- [docs/SECURITY.md](../SECURITY.md) — security controls
 - [docs/RELIABILITY.md](../RELIABILITY.md) — reliability posture
 - [docs/adrs/ADR-006-portal-and-host-boundary-separation.md](../adrs/ADR-006-portal-and-host-boundary-separation.md) — portal/host boundary ADR
-- [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory including auth/identity and tenant/admin management flows
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/flows/auth-identity.md](../flows/auth-identity.md) — canonical auth/identity flow (behavioral entrypoint)
 - [docs/flows/tenant-admin-management.md](../flows/tenant-admin-management.md) — canonical tenant/admin management flow (behavioral entrypoint)

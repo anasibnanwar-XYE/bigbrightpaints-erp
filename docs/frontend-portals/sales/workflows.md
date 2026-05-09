@@ -15,9 +15,7 @@ Last reviewed: 2026-04-02
 
 1. Create the order against a valid dealer and ready SKU set.
 2. Review quantities, pricing, discounts, taxes, and delivery intent.
-3. Use order search for follow-up by partial order number or canonical status;
-   the backend also matches legacy stored statuses for the same commercial
-   bucket.
+3. Use order search for follow-up by partial order number or canonical status.
 4. Confirm the order to lock the commercial intent and reservation request.
 5. Surface reservation outcome without pretending the dispatch has happened.
 

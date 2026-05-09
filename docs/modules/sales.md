@@ -1,10 +1,10 @@
-# Sales / Order-to-Cash Module Packet
+# Sales / Order-to-Cash Module Document
 
 Last reviewed: 2026-04-08
 
-This packet documents the sales module, which owns **commercial lifecycle truth** for the ERP. It covers dealer/customer management, order lifecycle, credit controls, dispatch coordination, dealer self-service, and the canonical order-to-cash path through dispatch and settlement boundaries.
+This document describes the sales module, which owns **commercial lifecycle truth** for the ERP. It covers dealer/customer management, order lifecycle, credit controls, dispatch coordination, dealer self-service, and the canonical order-to-cash path through dispatch and settlement boundaries.
 
-Stock and dispatch execution truth is documented separately in [inventory.md](inventory.md). Factory/manufacturing execution truth (production logs, packing, packaging mappings) is documented in [factory.md](factory.md). The sales module coordinates the commercial side of dispatch; inventory executes the stock side effects.
+Stock and dispatch execution truth is documented separately in [inventory-stock-control.md](inventory-stock-control.md). Factory/manufacturing execution truth (production logs, packing, packaging mappings) is documented in [factory.md](factory.md). The sales module coordinates the commercial side of dispatch; inventory executes the stock side effects.
 
 ---
 
@@ -24,7 +24,7 @@ Stock and dispatch execution truth is documented separately in [inventory.md](in
 | Dealer self-service portal (dashboard, ledger, invoices, aging, orders, credit requests, support tickets) | `DealerPortalService`, `DealerPortalController` |
 | Promotions and sales targets | `SalesCoreEngine` via `SalesService` |
 | Sales dashboard | `SalesDashboardService` |
-| Order idempotency (legacy + canonical key resolution) | `SalesCoreEngine`, `SalesIdempotencyService` |
+| Order idempotency (canonical header/body key resolution) | `SalesController`, `SalesCoreEngine` |
 
 ---
 
@@ -36,15 +36,13 @@ Stock and dispatch execution truth is documented separately in [inventory.md](in
 | --- | --- | --- | --- |
 | `/api/v1/sales/orders` | POST | SALES, ADMIN | Create sales order (idempotent; `201 Created` for draft-lifecycle payloads, otherwise `200 OK`) |
 | `/api/v1/sales/orders` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | List orders (paginated) |
-| `/api/v1/sales/orders/search` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | Search orders with filters (`orderNumber` contains match; canonical status filters normalize legacy stored statuses) |
+| `/api/v1/sales/orders/search` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | Search orders with filters (`orderNumber` contains match; status filters use the canonical lifecycle) |
 | `/api/v1/sales/orders/{id}` | PUT | SALES, ADMIN | Update draft order |
 | `/api/v1/sales/orders/{id}` | DELETE | SALES, ADMIN | Delete draft order |
 | `/api/v1/sales/orders/{id}/confirm` | POST | SALES, ADMIN | Confirm order (triggers credit check + stock validation/reservation) |
 | `/api/v1/sales/orders/{id}/cancel` | POST | SALES, ADMIN | Cancel order (requires reason code) |
 | `/api/v1/sales/orders/{id}/status` | PATCH | SALES, ADMIN | Manual status update (ON_HOLD, REJECTED, CLOSED only) |
 | `/api/v1/sales/orders/{id}/timeline` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | Order status history timeline |
-| `/api/v1/sales/dealers` | GET | ADMIN, SALES, ACCOUNTING | List dealers (alias for `/api/v1/dealers`; optional `status`, `page`, `size`) |
-| `/api/v1/sales/dealers/search` | GET | ADMIN, SALES, ACCOUNTING | Search dealers (alias) |
 | `/api/v1/sales/dashboard` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | Sales dashboard |
 | `/api/v1/sales/promotions` | GET/POST | ADMIN, SALES | List/create promotions |
 | `/api/v1/sales/promotions/{id}` | PUT/DELETE | SALES, ADMIN | Update/delete promotion |
@@ -105,7 +103,7 @@ All dealer-portal endpoints require `ROLE_DEALER` and automatically scope data t
 
 ### Dispatch Confirmation — `DispatchController` (inventory module, `/api/v1/dispatch/**`)
 
-The dispatch write surface lives in the inventory module controller but delegates to `SalesDispatchReconciliationService` for the authoritative commercial and accounting side effects. See [inventory.md](inventory.md) for the full dispatch route table. The canonical write endpoint is:
+The dispatch write surface lives in the inventory module controller but delegates to `SalesDispatchReconciliationService` for the authoritative commercial and accounting side effects. See [inventory-stock-control.md](inventory-stock-control.md) for the full dispatch route table. The canonical write endpoint is:
 
 | Route | Method | Roles | Purpose |
 | --- | --- | --- | --- |
@@ -123,7 +121,7 @@ The central engine for order and dealer management. Handles:
 - **Order lifecycle**: create, update, confirm, cancel, status transitions
 - **Credit enforcement**: credit-limit checks on order creation and confirmation for credit-mode orders
 - **Dispatch confirmation**: the authoritative `confirmDispatch()` method runs under `SERIALIZABLE` isolation, performing inventory dispatch, AR/revenue journal posting, COGS journal posting, invoice issuance, and dealer balance updates
-- **Idempotency**: multi-strategy idempotency key resolution (canonical `Idempotency-Key` header, legacy `X-Idempotency-Key` header, body field, legacy default-payment-mode and split-payment signatures)
+- **Idempotency**: canonical `Idempotency-Key` header is required; `X-Idempotency-Key` is explicitly rejected
 - **Proforma boundary**: `SalesProformaBoundaryService` determines whether an order has sufficient finished goods or should be placed in `PENDING_PRODUCTION`
 - **GST handling**: order-level GST treatment, rate resolution, inclusive/exclusive calculation
 
@@ -181,7 +179,7 @@ Durable credit-limit increase requests:
 Temporary credit headroom override requests:
 
 - Created when a dealer needs temporary headroom beyond base credit limit
-- Canonical request payload uses `requestedAmount` (legacy `dispatchAmount` remains as an alias)
+- Canonical request payload uses `requestedAmount`.
 - May optionally bind to a specific packaging slip and/or sales order context
 - Calculates required headroom from **outstanding + pending-order exposure + requested amount** vs base credit limit
 - Approval raises effective credit headroom consumed by canonical order credit checks
@@ -222,7 +220,7 @@ Provides sales dashboard contract fields via `SalesDashboardDto`:
 | `SalesOrderItemRequest` | Line item with product code, quantity, unit price, GST rate, optional `finishedGoodId` |
 | `SalesOrderItemDto` | Line item response (includes optional `finishedGoodId`) |
 | `SalesOrderSearchFilters` | Search parameters (status, dealer, order number, date range, pagination) |
-| `SalesOrderStatusHistoryDto` | Status transition record with alias fields (`status`, `actor`, `timestamp`) mirroring `toStatus`, `changedBy`, `changedAt` |
+| `SalesOrderStatusHistoryDto` | Status transition record with canonical lifecycle fields (`fromStatus`, `toStatus`, `reasonCode`, `reason`, `changedBy`, `changedAt`) |
 | `CancelRequest` | **SalesController inner record** — Cancellation reason code and reason text |
 | `StatusRequest` | **SalesController inner record** — Manual status update target |
 
@@ -232,7 +230,7 @@ Provides sales dashboard contract fields via `SalesDashboardDto`:
 | --- | --- |
 | `CreateDealerRequest` | Dealer creation payload (name, email, phone, GST, credit limit, payment terms, region) |
 | `DealerResponse` | Full dealer response including monetary fields (`creditLimit`, `outstandingBalance`) plus receivable account and portal email |
-| `DealerDto` | Simplified dealer view (legacy, used by `SalesCoreEngine`) |
+| `DealerDto` | Simplified dealer view used by `SalesCoreEngine` |
 | `DealerLookupResponse` | Search result including monetary fields (`creditLimit`, `outstandingBalance`), credit status, receivable account info, and payment terms |
 | `DealerDunningHoldResponse` | Explicit hold-action response (`dealerId`, `dunningHeld`, `status`, `alreadyOnHold`) |
 | `DealerPortalCreditLimitRequestCreateRequest` | Dealer portal credit request payload (amount, reason) |
@@ -275,7 +273,7 @@ Provides sales dashboard contract fields via `SalesDashboardDto`:
 | `SalesOrderItem` | `sales_order_items` | Line items with product code, quantity, unit price, GST rate. Related to parent `SalesOrder` via `@ManyToOne` FK. |
 | `SalesOrderStatusHistory` | `sales_order_status_histories` | Append-only status transition log |
 | `CreditRequest` | `credit_requests` | Durable credit limit increase requests with requester identity |
-| `CreditLimitOverrideRequest` | `credit_limit_override_requests` | Temporary dealer headroom overrides; optional slip/order context remains for backward-compatible correlation |
+| `CreditLimitOverrideRequest` | `credit_limit_override_requests` | Temporary dealer headroom overrides with optional slip/order context |
 | `Promotion` | (promotions) | Sales promotions |
 | `SalesTarget` | (sales targets) | Sales targets |
 
@@ -314,12 +312,6 @@ These can only be set via `PATCH /sales/orders/{id}/status`:
 ### Terminal Statuses
 
 Once reached, no further workflow transitions: `CANCELLED`, `REJECTED`, `CLOSED`.
-
-### Non-Canonical / Legacy Statuses
-
-The `VALID_ORDER_STATUSES` set also includes: `BOOKED`, `SHIPPED`, `FULFILLED`, `COMPLETED`. These are accepted by the status normalization logic for backward compatibility but are **not** part of the canonical lifecycle. `BOOKED` is treated as an alias for pre-confirmation state in some flows. `SHIPPED`, `FULFILLED`, and `COMPLETED` are dashboard classification statuses that map into the `dispatched` or `completed` buckets.
-
----
 
 ## Credit Controls
 
@@ -362,7 +354,7 @@ These are temporary dealer-level headroom exceptions used by canonical order cre
 
 - **Created by**: admin/factory/sales via `/api/v1/credit/override-requests`
 - **Approved by**: admin or accounting (`/approve`)
-- **Canonical payload**: `dealerId` + `requestedAmount` + `reason` (legacy `dispatchAmount` remains an alias)
+- **Canonical payload**: `dealerId` + `requestedAmount` + `reason`
 - **Optional context**: `salesOrderId` / `packagingSlipId` for correlation only
 - **Lifecycle**: PENDING → APPROVED / REJECTED / EXPIRED
 - **Headroom formula**: `requiredHeadroom = max(0, outstandingBalance + pendingOrderExposure + requestedAmount - creditLimit)`
@@ -380,7 +372,7 @@ These are temporary dealer-level headroom exceptions used by canonical order cre
 
 ### Dispatch Ownership (Two-Layer Seam)
 
-Dispatch is explicitly a two-layer seam:
+Dispatch ownership is split across two module boundaries:
 
 | Layer | Owner | Surface |
 | --- | --- | --- |
@@ -479,42 +471,23 @@ The sales module currently publishes only one domain event. Other coordination h
 
 ---
 
-## Deprecated and Non-Canonical Surfaces
+## Current Route Notes
 
-### Dealer Alias Routes
+### Dealer Routes
 
-`GET /api/v1/sales/dealers` and `GET /api/v1/sales/dealers/search` are
-**frontend convenience aliases** that delegate to `DealerService`. The canonical
-dealer routes are at `/api/v1/dealers`. The alias routes exist because the
-frontend currently calls the `/sales/dealers` path. Both sets of routes produce
-identical results, including the dealer-directory compatibility rules:
+The canonical dealer routes are at `/api/v1/dealers`. Dealer directory reads
+use the dealer controller directly:
 
 - omit `page` and `size` to return the full active-only directory
 - pass `status=ALL` to include non-active dealers
 - if `page` and/or `size` is supplied, the backend returns a sliced
   `DealerResponse[]` list without total-count metadata
 
-### Legacy Payment Mode Idempotency
+### Sales Order Idempotency
 
-The `SalesCoreEngine` resolves idempotency across three signature strategies:
-
-1. **Canonical**: current request signature with explicit payment mode
-2. **Legacy default-payment**: signature computed with default payment mode (`CREDIT`) for orders created before payment mode was tracked
-3. **Legacy split-replay**: signature for orders that previously used `SPLIT` payment mode
-
-This backward compatibility exists to prevent duplicate orders when replaying requests from older frontend versions. The `X-Idempotency-Key` header is a legacy alias for `Idempotency-Key`; both are accepted but `Idempotency-Key` is canonical.
-
-### Legacy/Compatibility Order Statuses
-
-The statuses `BOOKED`, `SHIPPED`, `FULFILLED`, and `COMPLETED` are accepted by status normalization but are not part of the canonical lifecycle. They exist for backward compatibility with older data. Dashboard bucketing maps them into canonical categories:
-
-- `BOOKED` → `in_progress`
-- `SHIPPED`, `FULFILLED` → `dispatched`
-- `COMPLETED` → `completed`
-
-The same normalization is used by `GET /api/v1/sales/orders/search`, so
-canonical search filters continue to find older rows stored under legacy status
-names.
+`SalesController` requires the canonical `Idempotency-Key` header for sales order creation.
+`SalesCoreEngine` stores one canonical request signature and rejects mismatched replays.
+Request-body `idempotencyKey` values do not define the write identity. `X-Idempotency-Key` is rejected.
 
 ### Credit Request Nullable Requester Fields
 
@@ -540,7 +513,7 @@ names.
 ## Cross-References
 
 - [docs/INDEX.md](../INDEX.md) — canonical documentation index
-- [docs/modules/inventory.md](inventory.md) — stock truth, dispatch execution, packaging slip lifecycle
+- [docs/modules/inventory-stock-control.md](inventory-stock-control.md) — stock truth, dispatch execution, packaging slip lifecycle
 - [docs/modules/factory.md](factory.md) — manufacturing execution, packing, packaging mappings
 - [docs/modules/admin-portal-rbac.md](admin-portal-rbac.md) — admin/portal/RBAC host ownership and role matrices
 - [docs/modules/core-idempotency.md](core-idempotency.md) — shared idempotency infrastructure
@@ -549,4 +522,3 @@ names.
 - [docs/flows/order-to-cash.md](../flows/order-to-cash.md) — canonical order-to-cash flow (behavioral entrypoint)
 - [docs/frontend-portals/sales/README.md](../frontend-portals/sales/README.md) — Sales frontend handoff (order-to-cash payloads, hosts, RBAC, dealer self-service boundaries)
 - [docs/adrs/ADR-006-portal-and-host-boundary-separation.md](../adrs/ADR-006-portal-and-host-boundary-separation.md) — Portal and host boundary separation (admin vs dealer self-service ownership)
-- [docs/deprecated/INDEX.md](../deprecated/INDEX.md) — Deprecated surfaces registry (legacy order statuses, dealer alias routes)

@@ -1,10 +1,10 @@
 # orchestrator-erp — Backend Documentation Index
 
-Last reviewed: 2026-04-26
+Last reviewed: 2026-05-05
 
-This is the canonical entrypoint for backend documentation. Every major docs section is linked from here. If a packet is not reachable through this index, it is not part of the canonical docs tree.
+This is the canonical entrypoint for backend documentation. Every major docs section is linked from here. If a change is not reachable through this index, it is not part of the canonical docs tree.
 
-`README.md` and repo-root [`ARCHITECTURE.md`](../ARCHITECTURE.md) are signposts into this spine. Public runtime and deployment truth lives under `docs/`; `.factory/library/*` remains internal worker guidance rather than canonical reader-facing documentation.
+`README.md` and repo-root [`ARCHITECTURE.md`](../ARCHITECTURE.md) are signposts into this spine. Public runtime and deployment truth lives under `docs/`.
 
 ---
 
@@ -21,10 +21,10 @@ This is the canonical entrypoint for backend documentation. Every major docs sec
 | --- | --- |
 | [docs/ARCHITECTURE.md](ARCHITECTURE.md) | Runtime architecture, module map, cross-module boundaries, data model, security, and event contracts |
 | [docs/RELIABILITY.md](RELIABILITY.md) | Reliability posture: idempotency patterns, retry/dead-letter handling, outbox guarantees, and known safety gaps |
-| [docs/SECURITY.md](SECURITY.md) | Security review policy, high-risk change classes, and R2 approval workflow |
+| [docs/SECURITY.md](SECURITY.md) | Security controls, high-risk change classes, and R2 approval workflow |
 | [docs/ci-cd-contract.md](ci-cd-contract.md) | CI/CD lane contract: PR ship-safety checks, main/release/quality lanes, and blocker classification |
 | [docs/CONVENTIONS.md](CONVENTIONS.md) | Truth-first writing rules, cross-link expectations, implemented-vs-planned language, and stale-doc handling policy |
-| [docs/platform/db-migration.md](platform/db-migration.md) | Persistence technology, schema areas, entity/repository conventions, Flyway v2 migration posture, profile activation, legacy-track constraints, and data-import entry surfaces |
+| [docs/platform/db-migration.md](platform/db-migration.md) | Persistence technology, schema areas, entity/repository conventions, Flyway v2 migration posture, profile activation, and data-import entry surfaces |
 | [docs/platform/config-feature-toggles.md](platform/config-feature-toggles.md) | High-impact platform settings and feature toggles: security, licensing, mail/notification, export-approval, module/runtime gating, integration, accounting-event, inventory, orchestrator, seed, and benchmark switches with scope and default caveats |
 | [docs/platform/health-readiness-gating.md](platform/health-readiness-gating.md) | Operator-facing health and readiness endpoints, integration-health surfaces, module-gating mechanics, runtime-admission gates, and caveats around which checks to trust |
 
@@ -32,21 +32,17 @@ This is the canonical entrypoint for backend documentation. Every major docs sec
 
 | Document | Purpose |
 | --- | --- |
-| [docs/BACKEND-FEATURE-CATALOG.md](BACKEND-FEATURE-CATALOG.md) | Reader-friendly summary of the complete backend feature landscape — exhaustive coverage of platform, operations, commercial, and finance/reporting features with links to deeper module/flow/ADR packets and explicit deprecated/non-canonical surface flags |
+| [docs/BACKEND-FEATURE-CATALOG.md](BACKEND-FEATURE-CATALOG.md) | Reader-friendly summary of the complete backend feature landscape with links to deeper module, flow, and ADR documents |
 
 ## Authoritative Recommendations
 
 | Document | Purpose |
 | --- | --- |
-| [docs/RECOMMENDATIONS.md](RECOMMENDATIONS.md) | **Canonical recommendations register** — single authoritative surface for user-approved verdicts on formerly open items from flow docs and module packets. Classifies each item as Bug to Fix Now, Future Work (high/medium/low priority), or Accepted Product Decision. All open-decision sections in flow/module packets should defer to this register. |
+| [docs/RECOMMENDATIONS.md](RECOMMENDATIONS.md) | **Canonical recommendations register** — single authoritative surface for user-approved verdicts on formerly open items from flow docs and module documents. Classifies each item as Bug to Fix Now, Future Work (high/medium/low priority), or Accepted Product Decision. All open-decision sections in flow/module documents should defer to this register. |
 
 ## Modules
 
-| Document | Purpose |
-| --- | --- |
-| [docs/modules/MODULE-INVENTORY.md](modules/MODULE-INVENTORY.md) | Canonical inventory of every live backend module with ownership summary and links to per-module documentation packets |
-
-Module packets explain what each module owns: controllers, services, DTOs, entities, helpers, events, and cross-module boundaries. Ten modules have canonical documentation packets today:
+Module documents explain what each module owns: controllers, services, DTOs, entities, helpers, events, and cross-module boundaries. Canonical module documents are listed below:
 
 | Module | Description |
 | --- | --- |
@@ -57,23 +53,17 @@ Module packets explain what each module owns: controllers, services, DTOs, entit
 | [core security/error](modules/core-security-error.md) | Security filter chain (JWT, company context, must-change-password corridor), exception/error contract (`ApplicationException`, `ErrorCode`, global handlers), fail-open vs fail-closed boundaries — first slice of the three-part core platform contract |
 | [core audit/runtime/settings](modules/core-audit-runtime-settings.md) | Audit-surface ownership (platform audit, enterprise audit trail, accounting event store), runtime-gating split (three enforcement layers), global-versus-tenant settings risk — second slice of the three-part core platform contract |
 | [core idempotency](modules/core-idempotency.md) | Shared idempotency infrastructure (key normalization, reservation, signature building), module-local idempotency implementations, contract inconsistencies, and the reconciled core platform contract reference — third/integrating slice |
-| [orchestrator](modules/orchestrator.md) | Background coordination: outbox publishing, command dispatch, Spring event bridges, schedulers, retry/dead-letter behavior, feature flags, and deprecated/dead orchestration seams |
+| [orchestrator](modules/orchestrator.md) | Background coordination: outbox publishing, command dispatch, Spring event bridges, schedulers, retry/dead-letter behavior, and feature flags |
 | [hr](modules/hr.md) | Employees, leave, attendance, payroll runs, and payroll posting/payment |
-| [inventory](modules/inventory.md) | Stock truth boundary: stock summaries, batches, adjustments, opening stock import, valuation, traceability, dispatch execution, and inventory–accounting event bridge |
-| [factory/manufacturing](modules/factory.md) | Manufacturing execution: production logs, packing, packaging mappings, batch registration, cost allocation, dispatch handoff boundary, deprecated seams, and replay/config caveats |
+| [inventory](modules/inventory-stock-control.md) | Stock truth boundary: stock summaries, batches, adjustments, opening stock import, valuation, traceability, dispatch execution, and inventory–accounting event bridge |
+| [factory/manufacturing](modules/factory.md) | Manufacturing execution: production logs, packing, packaging mappings, batch registration, cost allocation, dispatch handoff boundary, and replay/config caveats |
 | [sales](modules/sales.md) | Dealer/customer management, order lifecycle, credit controls, dispatch coordination, dealer self-service, and canonical O2C path |
 | [production/catalog](modules/catalog-setup.md) | Catalog and setup readiness: brands, items, import, SKU readiness evaluation, packaging-material definitions, payload families, and setup prerequisites for downstream flows |
 | [purchasing/procure-to-pay](modules/purchasing.md) | Supplier lifecycle, purchase orders, goods receipt (GRN), purchase invoices, purchase returns, supplier settlements, and explicit stock-truth vs AP-truth boundaries |
 
 ## Flows
 
-Flow packets explain cross-module behavior: actors, entrypoints, preconditions, lifecycle, completion boundary, and current limitations.
-
-| Document | Purpose |
-| --- | --- |
-| [docs/flows/FLOW-INVENTORY.md](flows/FLOW-INVENTORY.md) | Canonical inventory of the eleven major backend flow families with ownership summary, cross-module participants, and links to flow packets |
-
-The flow inventory covers auth/identity, tenant/admin management, catalog/setup readiness, manufacturing/packing, inventory management, order-to-cash, procure-to-pay, invoice/dealer-finance, accounting/period close, HR/payroll, reporting/export, and the client-shareable [accounting workflow architecture](flows/accounting-workflow-architecture.md). All twelve flow packets are now available.
+Flow documents explain cross-module behavior: actors, entrypoints, preconditions, lifecycle, completion boundary, and current limitations. The [backend feature catalog](BACKEND-FEATURE-CATALOG.md) summarizes the live flow families and links to the detailed flow documents.
 
 ## Architecture Decision Records (ADRs)
 
@@ -87,7 +77,7 @@ The seeded ADR set covers multi-tenant auth scoping (ADR-002), outbox/idempotenc
 
 ## Canonical Frontend Documentation
 
-> **This is the canonical source for frontend contracts.** The new mainline docs structure replaces the older frontend-handoff model.
+> **This is the canonical source for frontend contracts.**
 
 | Document | Purpose |
 | --- | --- |
@@ -105,50 +95,24 @@ The seeded ADR set covers multi-tenant auth scoping (ADR-002), outbox/idempotenc
 | Factory | [docs/frontend-portals/factory/](frontend-portals/factory/) | Production logs, packing, dispatch execution |
 | Dealer Client | [docs/frontend-portals/dealer-client/](frontend-portals/dealer-client/) | Self-service portal, own orders/invoices/ledger |
 
-## Frontend Handoff
-
-> Canonical frontend documentation lives in `docs/frontend-portals/` and `docs/frontend-api/`. Older duplicate accounting portal handoff docs were removed after the portal/api trees became the sole source of truth.
->
-> Historical references to the retired accounting portal handoff should be repointed into `docs/frontend-portals/accounting/`. Historical references to the retired accounting portal endpoint map should be repointed into `docs/frontend-api/`, with `docs/frontend-portals/accounting/` used for portal-specific behavior and workflow context.
-
-## Historical Workflow Guides (Reference Only)
-
-> **⚠️ These workflow guides are NON-CANONICAL / REFERENCE ONLY.** Canonical lifecycle truth lives in `docs/flows/*`. The guides below are retained as historical step-by-step references and are also registered in `docs/deprecated/INDEX.md`.
-
-| Document | Status |
-| --- | --- |
-| [docs/workflows/admin-and-tenant-management.md](workflows/admin-and-tenant-management.md) | Reference only — superseded by `docs/flows/tenant-admin-management.md` |
-| [docs/workflows/manufacturing-and-packaging.md](workflows/manufacturing-and-packaging.md) | Reference only — superseded by `docs/flows/manufacturing-packing.md` |
-| [docs/workflows/inventory-management.md](workflows/inventory-management.md) | Reference only — superseded by `docs/flows/inventory-management.md` |
-| [docs/workflows/sales-order-to-cash.md](workflows/sales-order-to-cash.md) | Reference only — superseded by `docs/flows/order-to-cash.md` |
-| [docs/workflows/purchase-to-pay.md](workflows/purchase-to-pay.md) | Reference only — superseded by `docs/flows/procure-to-pay.md` |
-| [docs/workflows/accounting-and-period-close.md](workflows/accounting-and-period-close.md) | Reference only — superseded by `docs/flows/accounting-period-close.md` |
-| [docs/workflows/payroll.md](workflows/payroll.md) | Reference only — superseded by `docs/flows/hr-payroll.md` |
-| [docs/workflows/data-migration.md](workflows/data-migration.md) | Reference only — use `docs/runbooks/migrations.md` for current migration rollout truth |
-
-## Deprecated and Incomplete Surfaces
-
-The deprecated/incomplete registry lists retired, partial, duplicated, or dead-end surfaces. Every entry points to a canonical replacement or explicitly states that no replacement exists.
-
-| Document | Purpose |
-| --- | --- |
-| [docs/deprecated/INDEX.md](deprecated/INDEX.md) | Canonical registry of all deprecated, unmaintained, incomplete, or dead-end surfaces with replacement links or explicit no-replacement notes |
-
 ## Governance and Agents
 
 | Document | Purpose |
 | --- | --- |
 | [docs/agents/CATALOG.md](agents/CATALOG.md) | Agent/role catalog: responsibilities and required evidence before handoff |
 | [docs/agents/PERMISSIONS.md](agents/PERMISSIONS.md) | Agent permission boundaries: what each role may and must not do |
-| [docs/agents/WORKFLOW.md](agents/WORKFLOW.md) | Review and remediation workflow: packet types, review ordering, and merge-readiness gates |
+| [docs/agents/WORKFLOW.md](agents/WORKFLOW.md) | Review and remediation workflow: change types, review ordering, and merge-readiness gates |
 | [docs/agents/ENTERPRISE_MODE.md](agents/ENTERPRISE_MODE.md) | Enterprise policy mode: high-risk change detection, R2 triggers, and escalation rules |
 | [docs/agents/ORCHESTRATION_LAYER.md](agents/ORCHESTRATION_LAYER.md) | Orchestration layer governance: outbox, event, scheduler, and background-coordination boundaries |
+| [ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md](ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md) | Mandatory accounting-portal scope guardrail used by `scripts/guard_accounting_portal_scope_contract.sh` |
+| [AUDIT_TRAIL_OWNERSHIP.md](AUDIT_TRAIL_OWNERSHIP.md) | Mandatory audit de-dup/change-control contract used by `scripts/guard_audit_trail_ownership_contract.sh` |
+| [openapi-endpoint-contract.md](openapi-endpoint-contract.md) | Human-readable OpenAPI endpoint contract used by `scripts/guard_openapi_contract_drift.sh` |
 
 ## Approvals
 
 | Document | Purpose |
 | --- | --- |
-| [docs/approvals/R2-CHECKPOINT.md](approvals/R2-CHECKPOINT.md) | Active R2 checkpoint evidence for the current high-risk packet |
+| [docs/approvals/R2-CHECKPOINT.md](approvals/R2-CHECKPOINT.md) | Active R2 checkpoint evidence for the current high-risk document |
 | [docs/approvals/R2-CHECKPOINT-TEMPLATE.md](approvals/R2-CHECKPOINT-TEMPLATE.md) | Template for creating new R2 checkpoints |
 
 ## Runbooks
@@ -157,15 +121,3 @@ The deprecated/incomplete registry lists retired, partial, duplicated, or dead-e
 | --- | --- |
 | [docs/runbooks/rollback.md](runbooks/rollback.md) | Rollback procedures for applied migrations and coordinated app/schema cuts |
 | [docs/runbooks/migrations.md](runbooks/migrations.md) | Migration forward plans, dry-run commands, and rollback strategies |
-
-## Retained Reference Docs
-
-The following docs remain in the repo for reference but are **not** part of the canonical docs spine. They may be stale, partial, or narrower than the current implementation.
-
-| Document | Status |
-| --- | --- |
-| [developer-guide.md](developer-guide.md) | Non-canonical — superseded by the module packets and flow packets in the docs tree |
-| [ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md](ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md) | Reference only — retained accounting-portal scope lock; use `docs/frontend-portals/accounting/README.md` and `docs/frontend-api/README.md` for current portal truth |
-| [AUDIT_TRAIL_OWNERSHIP.md](AUDIT_TRAIL_OWNERSHIP.md) | Reference only — retained audit de-dup/change-control contract; use `docs/modules/core-audit-runtime-settings.md` for the canonical audit ownership overview |
-| [endpoint-inventory.md](endpoint-inventory.md) | Reference only; use `openapi.json` and module packets as primary truth |
-| [migration-guide.md](migration-guide.md) | Retired reference only — current migration rollout guidance lives in `docs/runbooks/migrations.md`; the legacy CSV/Tally appendix is archival |

@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-04-15
 
-This packet is the canonical backend ownership map for tenant-admin, portal, and RBAC surfaces after the tenant-admin hard-cut refactor.
+This document is the canonical backend ownership map for tenant-admin, portal, and RBAC surfaces after the tenant-admin hard-cut refactor.
 
 ## Hard-Cut Scope
 
@@ -17,7 +17,7 @@ This packet is the canonical backend ownership map for tenant-admin, portal, and
 | Module | Owns |
 | --- | --- |
 | `admin` | Tenant-admin dashboard, users, approval inbox/decisions, tenant-admin audit feed, admin support host, self-settings, tenant changelog reads |
-| `portal` | Shared internal read models (`/api/v1/portal/**`), including legacy admin insights reads plus accounting-owned internal support host |
+| `portal` | Shared internal read models (`/api/v1/portal/**`), including admin insights reads plus accounting-owned internal support host |
 | `rbac` | Platform role catalog APIs and role synchronization (`/api/v1/superadmin/roles/**`) |
 | `company` | Tenant lifecycle, module gating, limits, support recovery, platform dashboard (`/api/v1/superadmin/**`) |
 
@@ -141,7 +141,7 @@ Publishing remains superadmin-only:
 
 ### Portal host
 
-- Legacy admin insight reads still live for `ROLE_ADMIN`:
+- Admin insight reads still live for `ROLE_ADMIN`:
   - `/api/v1/portal/dashboard`
   - `/api/v1/portal/operations`
   - `/api/v1/portal/workforce`
@@ -186,14 +186,14 @@ Tenant-admin create/update user flows must enforce:
 - denied: `ROLE_ADMIN`, `ROLE_SUPER_ADMIN`
 - denied: blank/unknown/custom role names
 
-## Canonical vs Retired Tenant-Admin Patterns
+## Tenant-Admin Boundaries
 
-| Retired/forbidden for tenant-admin product | Canonical tenant-admin contract |
+| Boundary | Current contract |
 | --- | --- |
-| Split export approval actions (`/api/v1/admin/exports/{id}/approve|reject`) | `POST /api/v1/admin/approvals/{originType}/{id}/decisions` |
-| Portal-hosted tenant-admin support (`/api/v1/portal/support/tickets/**`) | `/api/v1/admin/support/tickets/**` |
-| Role creation dependency in tenant-admin UX | fixed assignable role list in admin-user contract |
-| Treating settings as profile/self UX | `/api/v1/admin/self/settings` + auth self-service surfaces |
+| Export approval decisions | `POST /api/v1/admin/approvals/{originType}/{id}/decisions` |
+| Tenant-admin support | `/api/v1/admin/support/tickets/**` |
+| Role assignment | fixed assignable role list in admin-user contract |
+| Settings and self-service | `/api/v1/admin/self/settings` + auth self-service surfaces |
 
 ## Related Docs
 

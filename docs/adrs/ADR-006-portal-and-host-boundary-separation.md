@@ -64,4 +64,4 @@ The system currently exposes these major host prefixes:
 
 - ADR-002 — multi-tenant auth scoping, which enforces the JWT company claim that underpins portal isolation
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — module map and host ownership
-- [docs/SECURITY.md](../SECURITY.md) — security review policy
+- [docs/SECURITY.md](../SECURITY.md) — security controls

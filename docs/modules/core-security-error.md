@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-04-02
 
-This packet documents the **core security filter chain** and the **exception/error contract** that together govern request admission and failure behavior across the orchestrator-erp backend. It covers what the platform enforces before any module code runs, how errors are surfaced to callers, and where the platform fails closed versus fails open.
+This document describes the **core security filter chain** and the **exception/error contract** that together govern request admission and failure behavior across the orchestrator-erp backend. It covers what the platform enforces before any module code runs, how errors are surfaced to callers, and where the platform fails closed versus fails open.
 
-> **Scope note:** This is the first slice of the core platform contracts packet. It covers security filters and exception/error boundaries only. Audit-surface ownership, runtime-gating details, and settings risk are documented in [core-audit-runtime-settings.md](core-audit-runtime-settings.md). Shared-versus-module-local idempotency behavior is documented in [core-idempotency.md](core-idempotency.md). Together the three slices form one coherent canonical reference for core platform contracts (see the reconciled contract table in [core-idempotency.md §5](core-idempotency.md#5-reconciled-core-platform-contract)).
+> **Scope note:** This document covers security filters and exception/error boundaries only. Audit-surface ownership, runtime-gating details, and settings risk are documented in [core-audit-runtime-settings.md](core-audit-runtime-settings.md). Shared-versus-module-local idempotency behavior is documented in [core-idempotency.md](core-idempotency.md). Together the three documents form one coherent canonical reference for core platform contracts (see the reconciled contract table in [core-idempotency.md §5](core-idempotency.md#5-reconciled-core-platform-contract)).
 
 ---
 
@@ -107,7 +107,7 @@ All other endpoints require authentication. Swagger/OpenAPI access is further re
 **Behavior detail:**
 
 1. Resolves the company code from JWT `companyCode` claim (preferred) or `X-Company-Code` header.
-2. Rejects the legacy `X-Company-Id` header with an explicit error.
+2. Rejects the retired `X-Company-Id` header with an explicit error.
 3. Validates that header and JWT company codes match (if both present).
 4. For super-admin users on platform scope, allows control-plane operations but blocks tenant business workflows.
 5. Validates that the authenticated user's company matches the requested company code.
@@ -124,7 +124,7 @@ All other endpoints require authentication. Swagger/OpenAPI access is further re
 | --- | --- | --- |
 | JWT exists but has no `companyCode` claim | 403 `COMPANY_CONTEXT_MISSING` | **Fail-closed** |
 | `X-Company-Code` header does not match JWT claim | 403 `COMPANY_CONTEXT_MISMATCH` | **Fail-closed** |
-| Legacy `X-Company-Id` header used | 403 `COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED` | **Fail-closed** |
+| Retired `X-Company-Id` header used | 403 `COMPANY_CONTEXT_RETIRED_HEADER_UNSUPPORTED` | **Fail-closed** |
 | Unauthenticated request attempts to set company context via header | 403 `COMPANY_CONTEXT_AUTH_REQUIRED` | **Fail-closed** |
 | User's company does not match requested company code | 403 `COMPANY_ACCESS_DENIED` | **Fail-closed** |
 | Tenant is `SUSPENDED` and request is mutating | 403 `TENANT_LIFECYCLE_RESTRICTED` | **Fail-closed** |
@@ -220,7 +220,7 @@ The platform uses a layered exception-handling model built on `ApplicationExcept
 | `CreditLimitExceededException` | `ApplicationException` | Credit-limit breach (maps to `BUS_006`) |
 | `AuthSecurityContractException` | `RuntimeException` | Carries explicit HTTP status, error code, and user message for auth/security contract violations |
 
-`AuthSecurityContractException` is not an `ApplicationException` subclass — it is handled by `CoreFallbackExceptionHandler` directly and provides its own HTTP status, code, and details.
+`AuthSecurityContractException` is not an `ApplicationException` subclass — it is handled by `CoreExceptionHandler` directly and provides its own HTTP status, code, and details.
 
 ### 2.3 GlobalExceptionHandler (Highest Priority)
 
@@ -255,9 +255,9 @@ The platform uses a layered exception-handling model built on `ApplicationExcept
 
 **Audit routing:** `GlobalExceptionHandler` delegates to `AuditExceptionRoutingService` to route settlement failures to the platform audit system. Non-settlement `ApplicationException` instances are not currently routed to audit by the global handler.
 
-### 2.4 CoreFallbackExceptionHandler (Lowest Priority)
+### 2.4 CoreExceptionHandler (Lowest Priority)
 
-**Source:** [`core/exception/CoreFallbackExceptionHandler.java`](../../erp-domain/src/main/java/com/bigbrightpaints/erp/core/exception/CoreFallbackExceptionHandler.java)
+**Source:** [`core/exception/CoreExceptionHandler.java`](../../erp-domain/src/main/java/com/bigbrightpaints/erp/core/exception/CoreExceptionHandler.java)
 
 **Order:** `@Order(Ordered.LOWEST_PRECEDENCE)` — catches anything not handled by `GlobalExceptionHandler`.
 
@@ -335,7 +335,7 @@ The platform makes an explicit architectural choice: **authentication validation
 | --- | --- |
 | JWT present but missing `companyCode` claim | 403 `COMPANY_CONTEXT_MISSING` |
 | `X-Company-Code` header does not match JWT claim | 403 `COMPANY_CONTEXT_MISMATCH` |
-| Legacy `X-Company-Id` header | 403 `COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED` |
+| Retired `X-Company-Id` header | 403 `COMPANY_CONTEXT_RETIRED_HEADER_UNSUPPORTED` |
 | Unauthenticated request attempts company-scoped access via header | 403 `COMPANY_CONTEXT_AUTH_REQUIRED` |
 | User's company does not match requested company | 403 `COMPANY_ACCESS_DENIED` |
 | Tenant is `SUSPENDED` (mutating request) | 403 `TENANT_LIFECYCLE_RESTRICTED` |
@@ -390,7 +390,7 @@ ApplicationException thrown in controller/service
   │              IllegalArgumentException
   │     Routes: settlement failures to audit
   │
-  └─ CoreFallbackExceptionHandler (@Order(LOWEST_PRECEDENCE))
+  └─ CoreExceptionHandler (@Order(LOWEST_PRECEDENCE))
         Handles: CreditLimitExceededException, MfaRequiredException,
                  InvalidMfaException, AuthenticationException,
                  AuthSecurityContractException, AccessDeniedException,
@@ -398,7 +398,7 @@ ApplicationException thrown in controller/service
                  RuntimeException, Exception
 ```
 
-**Inheritance note:** `CreditLimitExceededException` extends `ApplicationException`, so it is technically matchable by both handlers. It is handled by `CoreFallbackExceptionHandler` because Spring resolves the most specific `@ExceptionHandler` method, and `CoreFallbackExceptionHandler` declares a handler for the concrete `CreditLimitExceededException` type. In practice, the `@Order` annotations ensure `GlobalExceptionHandler` is consulted first, but Spring's exception-handler resolution prefers the most specific type match regardless of order.
+**Inheritance note:** `CreditLimitExceededException` extends `ApplicationException`, so it is technically matchable by both handlers. It is handled by `CoreExceptionHandler` because Spring resolves the most specific `@ExceptionHandler` method, and `CoreExceptionHandler` declares a handler for the concrete `CreditLimitExceededException` type. In practice, the `@Order` annotations ensure `GlobalExceptionHandler` is consulted first, but Spring's exception-handler resolution prefers the most specific type match regardless of order.
 
 ---
 
@@ -412,7 +412,7 @@ ApplicationException thrown in controller/service
 | [docs/modules/company.md](company.md) | Company module: tenant lifecycle, runtime admission, module gating |
 | [docs/modules/admin-portal-rbac.md](admin-portal-rbac.md) | Admin/portal/RBAC: role-action boundaries, access-control enforcement |
 | [docs/ARCHITECTURE.md](../ARCHITECTURE.md) | Architecture overview: security, tenancy, authorization |
-| [docs/SECURITY.md](../SECURITY.md) | Security review policy, high-risk change classes |
+| [docs/SECURITY.md](../SECURITY.md) | Security controls, high-risk change classes |
 | [docs/RELIABILITY.md](../RELIABILITY.md) | Reliability: retry, dead-letter, idempotency patterns |
 | [docs/adrs/INDEX.md](../adrs/INDEX.md) | ADR index: including ADR-002 (multi-tenant auth scoping) |
 
@@ -424,4 +424,4 @@ ApplicationException thrown in controller/service
 2. **Settlement audit detail is specialized:** The `SettlementExceptionHandler` maintains its own allowlist for settlement failure metadata keys, which is separate from the general error detail sanitization logic.
 3. **Audit coverage is documented separately:** Audit-surface ownership (platform audit vs. enterprise audit trail vs. accounting event store) is documented in [core-audit-runtime-settings.md](core-audit-runtime-settings.md) §1. This slice covers only the exception-to-audit routing that occurs in the global exception handler.
 4. **Runtime-gating details are documented separately:** The full runtime-gating model, admission parameters, and rate-limiting details are documented in [core-audit-runtime-settings.md](core-audit-runtime-settings.md) §2.
-5. **Module-local exception subclasses:** Some modules define their own exception types (e.g., `MfaRequiredException`, `InvalidMfaException`). These are handled by `CoreFallbackExceptionHandler` rather than through the `ApplicationException` + `ErrorCode` pattern, creating a slight inconsistency in the error contract.
+5. **Module-local exception subclasses:** Some modules define their own exception types (e.g., `MfaRequiredException`, `InvalidMfaException`). These are handled by `CoreExceptionHandler` rather than through the `ApplicationException` + `ErrorCode` pattern, creating a slight inconsistency in the error contract.

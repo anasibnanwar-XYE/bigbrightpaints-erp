@@ -1,8 +1,8 @@
-# Tenant-Admin Identity/IAM Frontend Handoff
+# Tenant-Admin Identity and IAM Contract
 
 Last reviewed: 2026-04-30
 
-This is the current frontend handoff for PR #197 identity/account hard-cut behavior. The tenant-admin UI should treat `/api/v1/auth/**` as the My Account/IAM owner and `/api/v1/admin/users/**` as tenant-admin target-user control.
+This is the current tenant-admin identity and account contract. The tenant-admin UI should treat `/api/v1/auth/**` as the My Account/IAM owner and `/api/v1/admin/users/**` as tenant-admin target-user control.
 
 ## Bootstrap and scope
 
@@ -63,13 +63,3 @@ Session rows are current-principal-only and must not expose access tokens, refre
 | Assignable roles | `GET /api/v1/admin/users/assignable-roles` |
 
 Tenant-admin controls cannot operate on `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` targets.
-
-## Retired routes
-
-Do not call these retired aliases:
-
-- `/api/v1/auth/profile`
-- `/api/v1/auth/password/forgot/superadmin`
-- `PATCH /api/v1/admin/users/{id}/suspend`
-- `PATCH /api/v1/admin/users/{id}/unsuspend`
-- `DELETE /api/v1/admin/users/{id}`

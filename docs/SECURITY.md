@@ -1,6 +1,6 @@
-# Security Review Policy
+# Security Controls
 
-Last reviewed: 2026-03-29
+Last reviewed: 2026-05-05
 
 ## High-Risk Change Classes
 
@@ -14,15 +14,15 @@ Last reviewed: 2026-03-29
 
 ## R2 Approval Workflow
 
-- High-risk packets must ship with an updated `docs/approvals/R2-CHECKPOINT.md`.
+- High-risk changes must ship with an updated `docs/approvals/R2-CHECKPOINT.md`.
 - The checkpoint must declare the approval mode, escalation decision, rollback owner, expiry window, and concrete verification evidence.
-- Compatibility-preserving remediation packets may use orchestrator approval; widen-scope or destructive-risk changes require human escalation.
+- Narrow high-risk remediation changes that keep current canonical behavior intact may use orchestrator approval; widen-scope, compatibility-shim, or destructive-risk changes require human escalation.
 
 ## Review Validation Surface
 
-- Docs-only review-policy packets validate with `bash ci/lint-knowledgebase.sh`.
-- Runtime/config/schema/test-impacting packets validate through the PR ship-safety lane in `.github/workflows/ci.yml`.
-- High-risk packets must also satisfy `High-Risk Change Control` / `bash ci/check-high-risk-changes.sh` and keep rollback notes current.
+- Docs-only review-policy changes validate with `bash ci/lint-knowledgebase.sh`.
+- Runtime/config/schema/test-impacting changes validate through the PR ship-safety lane in `.github/workflows/ci.yml`.
+- High-risk changes must also satisfy `High-Risk Change Control` / `bash ci/check-high-risk-changes.sh` and keep rollback notes current.
 
 ## Super Admin Control-Plane Invariants
 

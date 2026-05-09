@@ -51,8 +51,8 @@ UI rules:
   generic failure banner.
 - Bootstrap failures must route the user back to superadmin remediation instead
   of inviting manual COA reconstruction in the accounting shell.
-- A stale link or stale client action targeting `/close`, legacy manual-journal
-  create, or legacy reverse endpoints should fail loudly in development and be
+- A stale link or stale client action targeting `/close`, retired manual-journal
+  create, or retired reverse endpoints should fail loudly in development and be
   removed from the production UI.
 - Correction-note conflicts must stay inline with the existing draft and show
   the canonical reference/source document that already owns the replay chain.

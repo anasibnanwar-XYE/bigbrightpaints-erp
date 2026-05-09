@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the inventory module, which owns **stock truth** for finished goods and raw materials. It covers stock summaries, batches, adjustments, opening stock import, valuation, traceability, dispatch execution, and the inventory-facing accounting event bridge.
+This document describes the inventory module, which owns **stock truth** for finished goods and raw materials. It covers stock summaries, batches, adjustments, opening stock import, valuation, traceability, dispatch execution, and the inventory-facing accounting event bridge.
 
-The inventory module is the authoritative stock boundary. Catalog/setup truth (brands, items, SKU readiness) is documented separately in [catalog-setup.md](catalog-setup.md). Factory/manufacturing execution truth (production logs, packing, packaging mappings) is documented in the factory module packet (pending). Sales dispatch coordination is a shared seam documented here from the inventory side.
+The inventory module is the authoritative stock boundary. Catalog/setup truth (brands, items, SKU readiness) is documented separately in [catalog-setup.md](catalog-setup.md). Factory/manufacturing execution truth (production logs, packing, packaging mappings) is documented in [factory.md](factory.md). Sales dispatch coordination is documented here from the inventory side.
 
 ---
 
@@ -15,11 +15,11 @@ The inventory module is the authoritative stock boundary. Catalog/setup truth (b
 | Package | `com.bigbrightpaints.erp.modules.inventory` |
 | Controllers | `FinishedGoodController`, `RawMaterialController`, `InventoryAdjustmentController`, `InventoryBatchController`, `OpeningStockImportController`, `DispatchController` |
 | Primary services | `FinishedGoodsWorkflowEngineService` (facade), `FinishedGoodsReservationEngine`, `FinishedGoodsDispatchEngine`, `InventoryValuationService`, `InventoryAdjustmentService`, `OpeningStockImportService`, `PackagingSlipService`, `InventoryBatchTraceabilityService`, `InventoryBatchQueryService`, `RawMaterialService`, `BatchNumberService`, `InventoryMovementRecorder` |
-| Domain entities | `FinishedGood`, `FinishedGoodBatch`, `RawMaterial`, `RawMaterialBatch`, `InventoryMovement`, `InventoryReservation`, `InventoryAdjustment`, `InventoryAdjustmentLine`, `RawMaterialAdjustment`, `RawMaterialAdjustmentLine`, `PackagingSlip`, `PackagingSlipLine`, `OpeningStockImport`, `RawMaterialMovement`, `RawMaterialIntakeRecord` |
+| Domain entities | `FinishedGood`, `FinishedGoodBatch`, `RawMaterial`, `RawMaterialBatch`, `InventoryMovement`, `InventoryReservation`, `InventoryAdjustment`, `InventoryAdjustmentLine`, `RawMaterialAdjustment`, `RawMaterialAdjustmentLine`, `PackagingSlip`, `PackagingSlipLine`, `OpeningStockImport`, `RawMaterialMovement` |
 | Domain enums | `InventoryType` (STANDARD / PRIVATE), `MaterialType` (PRODUCTION / PACKAGING), `InventoryBatchSource` (PRODUCTION / PURCHASE / ADJUSTMENT), `InventoryAdjustmentType` (DAMAGED / SHRINKAGE / OBSOLETE / RECOUNT_UP) |
 | DTO families | Stock summary DTOs, batch DTOs, adjustment DTOs, packaging-slip DTOs, opening-stock-import DTOs, dispatch DTOs, traceability DTOs |
 | Events | `InventoryMovementEvent`, `InventoryValuationChangedEvent` |
-| Repositories | `FinishedGoodRepository`, `FinishedGoodBatchRepository`, `RawMaterialRepository`, `RawMaterialBatchRepository`, `InventoryMovementRepository`, `InventoryReservationRepository`, `PackagingSlipRepository`, `OpeningStockImportRepository`, `RawMaterialMovementRepository`, `RawMaterialIntakeRepository`, `InventoryAdjustmentRepository`, `RawMaterialAdjustmentRepository` |
+| Repositories | `FinishedGoodRepository`, `FinishedGoodBatchRepository`, `RawMaterialRepository`, `RawMaterialBatchRepository`, `InventoryMovementRepository`, `InventoryReservationRepository`, `PackagingSlipRepository`, `OpeningStockImportRepository`, `RawMaterialMovementRepository`, `InventoryAdjustmentRepository`, `RawMaterialAdjustmentRepository` |
 
 ---
 
@@ -151,7 +151,7 @@ When a batch ID is ambiguous across raw material and finished good tables, the c
 
 `POST /api/v1/inventory/adjustments` creates a finished good stock adjustment:
 
-- Requires `Idempotency-Key` header (or `X-Idempotency-Key` legacy alias, or body-level `idempotencyKey` field)
+- Requires an idempotency key from the canonical `Idempotency-Key` header or body-level `idempotencyKey` field
 - Supports adjustment types: DAMAGED, SHRINKAGE, OBSOLETE, RECOUNT_UP
 - Each adjustment line specifies a finished good, quantity, and optional unit cost
 - For positive adjustments (RECOUNT_UP), the service creates an adjustment batch and records movement type `ADJUSTMENT_IN`
@@ -182,9 +182,9 @@ The inventory module supports three costing methods for finished goods:
 | **LIFO** | Batches consumed newest-first |
 | **WAC** (Weighted Average Cost) | Computed as aggregate `SUM(batch_quantity × batch_unit_cost) / SUM(batch_quantity)` across all non-empty batches |
 
-The active costing method is resolved per-finished-good with a fallback chain:
-1. Company-level active costing method (from `CostingMethodService`, period-aware)
-2. Per-finished-good `costingMethod` field (defaults to FIFO)
+The active costing method is resolved from the company-level active accounting period when present;
+otherwise the finished-good `costingMethod` field is used. Blank item methods default to FIFO.
+Unsupported method values fail fast instead of being treated as FIFO.
 
 `CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod()` normalizes the method string.
 
@@ -215,7 +215,7 @@ Two Spring events bridge inventory to accounting:
 `InventoryAccountingEventListener` is gated by:
 
 ```properties
-erp.inventory.accounting.events.enabled=true  # default: true (matchIfMissing)
+erp.inventory.accounting.events.enabled=true  # opt-in; default/prod posture is off
 ```
 
 When enabled, the listener:
@@ -346,7 +346,7 @@ If insufficient stock is available, the engine creates a partial slip and report
 
 ### Dispatch Controller Ownership
 
-`DispatchController` lives in the `inventory` module package at `/api/v1/dispatch/**`. However, the confirmation flow delegates to `SalesDispatchReconciliationService` (sales module) for the authoritative commercial and accounting side effects. This is a two-layer seam:
+`DispatchController` lives in the `inventory` module package at `/api/v1/dispatch/**`. Confirmation delegates to `SalesDispatchReconciliationService` (sales module) for the authoritative commercial and accounting side effects:
 
 - **Transport/controller ownership**: `inventory.DispatchController`
 - **Commercial/accounting ownership**: `sales.SalesDispatchReconciliationService`
@@ -400,7 +400,7 @@ For raw materials, `RawMaterialMovement` serves the same purpose.
 | **Inventory → Accounting** | Outbound (event) | `InventoryMovementEvent` and `InventoryValuationChangedEvent` bridge to `InventoryAccountingEventListener` |
 | **Inventory → Accounting** | Outbound (facade) | `InventoryAdjustmentService` calls `AccountingFacade.postInventoryAdjustment()` synchronously |
 | **Production → Inventory** | Read | `CatalogController` and `SkuReadinessService` read inventory entities for readiness evaluation |
-| **Dispatch controller ↔ Sales service** | Shared seam | Controller is in inventory; reconciliation service is in sales |
+| **Dispatch controller ↔ Sales service** | Shared boundary | Controller is in inventory; reconciliation service is in sales |
 
 ---
 
@@ -462,10 +462,9 @@ Both `FinishedGood.setCurrentStock()` and `RawMaterial.setCurrentStock()` reject
 ## Cross-References
 
 - [docs/INDEX.md](../INDEX.md) — canonical documentation index
-- [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — module inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/modules/catalog-setup.md](catalog-setup.md) — catalog and setup readiness (production module)
 - [docs/platform/config-feature-toggles.md](../platform/config-feature-toggles.md) — inventory-related configuration switches
 - [docs/modules/core-idempotency.md](core-idempotency.md) — shared idempotency infrastructure used by adjustments and opening stock
 - [docs/flows/inventory-management.md](../flows/inventory-management.md) — canonical inventory management flow (behavioral entrypoint)
 - [docs/frontend-portals/factory/README.md](../frontend-portals/factory/README.md) — Factory frontend handoff (inventory payloads, RBAC, stock operations)
-- [docs/deprecated/INDEX.md](../deprecated/INDEX.md) — Deprecated surfaces registry (legacy dispatch paths, raw-material intake)

@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **audit-surface ownership model**, the **runtime-gating split** between company filters and admission services, and the **global-versus-tenant settings risk** that platform maintainers must understand. It is the second slice of the core platform contracts packet, extending the security filter chain and error contract documented in [core-security-error.md](core-security-error.md).
+This document describes the **audit-surface ownership model**, the **runtime-gating split** between company filters and admission services, and the **global-versus-tenant settings risk** that platform maintainers must understand. It extends the security filter chain and error contract documented in [core-security-error.md](core-security-error.md).
 
 > **Scope note:** This slice covers audit ownership, runtime-gating architecture, and settings scoping. Shared-versus-module-local idempotency behavior is documented in [core-idempotency.md](core-idempotency.md). Together the three slices form one coherent canonical reference for core platform contracts (see the reconciled contract table in [core-idempotency.md §5](core-idempotency.md#5-reconciled-core-platform-contract)).
 
@@ -22,7 +22,7 @@ This packet documents the **audit-surface ownership model**, the **runtime-gatin
 | Company runtime enforcement | `modules/company/service/` | `TenantRuntimeEnforcementService` owns policy mutation, quota enforcement, and snapshot logic |
 | Company runtime admission | `modules/company/service/` | `TenantRuntimeRequestAdmissionService` is the thin facade used by filters and auth flows |
 | Core tenant runtime access | `core/security/` | `TenantRuntimeAccessService` provides a second enforcement layer used by the portal interceptor |
-| Portal runtime interceptor | `modules/portal/service/` | `TenantRuntimeEnforcementInterceptor` applies runtime gating to portal/reports/demo paths |
+| Portal runtime interceptor | `modules/portal/service/` | `TenantRuntimeEnforcementInterceptor` applies runtime gating to portal/reports paths |
 | Global settings | `core/config/` | `SystemSettingsService` owns runtime-tunable settings persisted in `system_settings` |
 | Accounting settings | `modules/accounting/service/` | `CompanyAccountingSettingsService` owns tenant-scoped payroll and tax account configuration |
 
@@ -104,7 +104,7 @@ This ownership split is an accepted architectural decision documented in [ADR-00
 | Transaction | **Synchronous** — within the same transaction as the accounting business operation |
 | Blocking | Blocking; if the event cannot be persisted, the entire business transaction rolls back |
 | Company scoping | Via the `Company` entity on the parent `JournalEntry` |
-| Actor resolution | Via `SecurityActorResolver.resolveActorWithSystemProcessFallback()` |
+| Actor resolution | Via `SecurityActorResolver.resolveAuditActor()` |
 | Persistence | Database-backed (`accounting_events` table); survives restarts |
 | Retry | No separate retry; shares the fate of the enclosing business transaction |
 | Sequence integrity | Per-aggregate sequence numbers with optimistic retry (up to 5 attempts) on contention |
@@ -125,7 +125,7 @@ This ownership split is an accepted architectural decision documented in [ADR-00
 
 ### 1.5 De-dup Contract
 
-Accounting journal/reversal/settlement summary events are captured by `AccountingEventStore` as the structured source of truth. Legacy summary success writes for these events in `AuditService` are fully decommissioned (not toggle-controlled). No profile may re-enable legacy summary success writes for `JOURNAL_ENTRY_POSTED`, `JOURNAL_ENTRY_REVERSED`, or `SETTLEMENT_RECORDED`.
+Accounting journal/reversal/settlement summary events are captured by `AccountingEventStore` as the structured source of truth. Retired summary success writes for these events in `AuditService` are fully decommissioned (not toggle-controlled). No profile may re-enable retired summary success writes for `JOURNAL_ENTRY_POSTED`, `JOURNAL_ENTRY_REVERSED`, or `SETTLEMENT_RECORDED`.
 
 `AuditService` remains active for:
 - Failure and security/admin signal paths
@@ -213,29 +213,26 @@ Tenant runtime gating is implemented across **three layers** that must be unders
 
 **Scope:** A second enforcement layer in `core/security/` that reads runtime policies directly from `system_settings` and maintains its own in-memory counters and cache.
 
-**Responsibility:** Provide runtime enforcement for paths that may not go through the `CompanyContextFilter` admission path (portal, reports, demo paths via the interceptor).
+**Responsibility:** Provide runtime enforcement for paths that may not go through the `CompanyContextFilter` admission path (portal and reports paths via the interceptor).
 
 **What it checks:**
 1. Runtime state: `BLOCKED` (all requests) and `HOLD` (mutating requests)
 2. Per-minute rate limit
 3. Concurrent request limit
 
-**Key difference from Layer 2:** This service has its own policy cache, its own counters, and reads settings directly from `SystemSettingsRepository`. It also writes both platform audit entries (via `AuditService`) and enterprise audit trail entries (via `EnterpriseAuditTrailService`) for denials, whereas `TenantRuntimeEnforcementService` writes only platform audit entries.
+**Key difference from Layer 2:** This service has its own policy cache, its own counters, and reads the same company-ID-scoped settings directly from `SystemSettingsRepository`. It also writes both platform audit entries (via `AuditService`) and enterprise audit trail entries (via `EnterpriseAuditTrailService`) for denials, whereas `TenantRuntimeEnforcementService` writes only platform audit entries.
 
-**Legacy settings keys:** This layer also supports legacy per-code settings keys (`tenant.runtime.{companyCode}.state`, `tenant.runtime.{companyCode}.quota.max-concurrent`, etc.) as fallbacks when company-ID-scoped keys are not present. The company-ID-scoped keys take precedence.
-
-### 2.4 Layer 3.5: TenantRuntimeEnforcementInterceptor (Portal/Reports/Demo)
+### 2.4 Layer 3.5: TenantRuntimeEnforcementInterceptor (Portal/Reports)
 
 **Source:** [`modules/portal/service/TenantRuntimeEnforcementInterceptor.java`](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/portal/service/TenantRuntimeEnforcementInterceptor.java)
 
-**Scope:** A Spring `HandlerInterceptor` that applies runtime gating to portal, reports, and demo paths.
+**Scope:** A Spring `HandlerInterceptor` that applies runtime gating to portal and reports paths.
 
 **Enforced paths:**
 - `/api/v1/reports/**`
 - `/api/v1/portal/**`
-- `/api/v1/demo/**`
 
-**Behavior:** Skips if `TenantRuntimeRequestAttributes.CANONICAL_ADMISSION_APPLIED` is already set (meaning `CompanyContextFilter` already handled admission). Otherwise, calls `TenantRuntimeRequestAdmissionService` as a fallback enforcement layer.
+**Behavior:** Skips if `TenantRuntimeRequestAttributes.CANONICAL_ADMISSION_APPLIED` is already set (meaning `CompanyContextFilter` already handled admission). Otherwise, calls `TenantRuntimeRequestAdmissionService` as the portal/reports admission path.
 
 ### 2.5 Admission Flow Diagram
 
@@ -249,9 +246,9 @@ Incoming Request
   │     │     Returns: admitted / rejected / not-tracked
   │     └─ Sets CompanyContextHolder, proceeds or returns 403
   │
-  ├─ TenantRuntimeEnforcementInterceptor (Layer 3.5, portal/reports/demo only)
+  ├─ TenantRuntimeEnforcementInterceptor (portal/reports only)
   │     If CANONICAL_ADMISSION_APPLIED is not set:
-  │     Calls TenantRuntimeRequestAdmissionService as fallback
+  │     Calls TenantRuntimeRequestAdmissionService
   │
   └─ Controller / module code
 ```
@@ -334,16 +331,6 @@ These are stored on the `Company` entity directly (not in `system_settings`):
 | `gstOutputTaxAccountId` | GST output tax account | `CompanyAccountingSettingsService` |
 | `gstPayableAccountId` | GST payable account (optional) | `CompanyAccountingSettingsService` |
 
-#### Legacy Per-Code Tenant Settings
-
-`TenantRuntimeAccessService` also reads legacy per-company-code keys as fallbacks:
-- `tenant.runtime.{companyCode}.state`
-- `tenant.runtime.{companyCode}.reason-code`
-- `tenant.runtime.{companyCode}.quota.max-concurrent`
-- `tenant.runtime.{companyCode}.quota.max-requests-per-minute`
-
-These legacy keys exist for backward compatibility and are only used when company-ID-scoped keys are absent. Company-ID-scoped keys always take precedence.
-
 ### 3.2 Risk: Shared Table, No Schema Isolation
 
 All global and tenant-scoped settings share the `system_settings` table. The distinction between global and tenant-scoped settings is purely **key-based** — there is no column, constraint, or schema-level enforcement that prevents:
@@ -360,7 +347,7 @@ All global and tenant-scoped settings share the `system_settings` table. The dis
 
 **Residual risk:**
 - Any code that reads from `SystemSettingsRepository` directly (without going through the typed services) must correctly construct or interpret setting keys. Incorrect key construction could read a global setting as tenant-scoped or vice versa.
-- `TenantRuntimeAccessService` reads settings directly from `SystemSettingsRepository` by constructing keys manually. If the company-ID-to-company-code resolution is incorrect, it could read the wrong tenant's policy.
+- `TenantRuntimeAccessService` reads settings directly from `SystemSettingsRepository` by constructing company-ID-scoped keys manually. If company-ID resolution is incorrect, it could read the wrong tenant's policy.
 
 ### 3.3 Risk: Dual Enforcement Services
 
@@ -368,8 +355,6 @@ The existence of two independent runtime enforcement services (`TenantRuntimeEnf
 
 1. **Cache desynchronization:** Both services maintain independent in-memory caches with the same TTL (15 seconds). A policy change written by `TenantRuntimeEnforcementService` takes up to 15 seconds to be visible to `TenantRuntimeAccessService`, and vice versa.
 2. **Counter divergence:** In-flight request counters are independent and in-memory. During normal operation, this means the same tenant may have different concurrent-request counts in the two services.
-3. **Legacy key fallback:** `TenantRuntimeAccessService` reads legacy per-code keys as fallbacks. If someone writes settings using company-ID keys but the legacy per-code keys still exist with different values, the two services could enforce different policies for the same tenant.
-
 **Mitigating factors:**
 - The portal interceptor (`TenantRuntimeEnforcementInterceptor`) checks `CANONICAL_ADMISSION_APPLIED` and skips if `CompanyContextFilter` already handled admission, reducing the chance of dual enforcement on the same request.
 - Policy mutations go through `TenantRuntimeEnforcementService` (via the super-admin API), which writes company-ID-scoped keys exclusively.
@@ -423,11 +408,9 @@ Listens for `AccountingEventStore.JournalEntryPostedEvent` (Spring application e
 
 5. **Settings table has no schema-level scope isolation:** Global and tenant-scoped settings share the `system_settings` table with only key naming conventions to distinguish them. See section 3.2 for the risk analysis.
 
-6. **Legacy per-code settings keys still read:** `TenantRuntimeAccessService` reads legacy per-company-code settings keys as fallbacks. These keys coexist with the newer company-ID-scoped keys and could cause policy confusion if both are present with different values.
+6. **In-memory counters reset on restart:** Concurrent-request and rate-limit counters are not persisted. A restart resets all quotas to zero. See section 3.4.
 
-7. **In-memory counters reset on restart:** Concurrent-request and rate-limit counters are not persisted. A restart resets all quotas to zero. See section 3.4.
-
-8. **Accounting-event ownership for idempotency is documented in the idempotency slice:** How `AccountingEventStore` participates in idempotency checks and the accounting idempotency delegation pattern are covered in [core-idempotency.md](core-idempotency.md) §2.7.
+7. **Accounting-event ownership for idempotency is documented in the idempotency slice:** How `AccountingEventStore` participates in idempotency checks and the accounting idempotency delegation pattern are covered in [core-idempotency.md](core-idempotency.md) §2.7.
 
 ---
 
@@ -443,5 +426,5 @@ Listens for `AccountingEventStore.JournalEntryPostedEvent` (Spring application e
 | [docs/adrs/ADR-004-layered-audit-surfaces.md](../adrs/ADR-004-layered-audit-surfaces.md) | ADR: why three audit surfaces exist and what trade-offs they carry |
 | [docs/AUDIT_TRAIL_OWNERSHIP.md](../AUDIT_TRAIL_OWNERSHIP.md) | De-dup contract and change-control rule for audit trail ownership |
 | [docs/RELIABILITY.md](../RELIABILITY.md) | Reliability: retry, dead-letter, idempotency patterns |
-| [docs/SECURITY.md](../SECURITY.md) | Security review policy |
+| [docs/SECURITY.md](../SECURITY.md) | Security controls |
 | [docs/ARCHITECTURE.md](../ARCHITECTURE.md) | Architecture overview |

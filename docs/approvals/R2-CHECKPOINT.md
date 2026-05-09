@@ -47,8 +47,8 @@ Last reviewed: 2026-05-14
   - code review found stale current-route documentation for retired auth profile; the DoD map now points at canonical self-profile/contact/security routes, and retired auth alias security/corridor shortcuts were removed instead of preserved
   - PR CI found a new `company->admin` module-boundary edge; company now depends on company-owned owner-invite/support-control ports, and the admin module implements those ports without adding an architecture allowlist entry
   - `openapi.json` was regenerated from `OpenApiSnapshotIT`; removed Super Admin flat onboarding/support reset and plan-template alias routes are absent, while the Super Admin plans route is canonical
-  - `docs/endpoint-inventory.md` was regenerated from `openapi.json` and now reports 362 paths, 428 operations, sha256 `43a4225c802b908590f39f91bdbd803139e8ad464d76d7c271b61fc541f11891`
-  - frontend/API/module/workflow/runbook/code-review docs and `.factory` handoffs now point at Add Client, activation/setup, Super Admin plans, and current route behavior instead of old compatibility surfaces
+  - `docs/openapi-endpoint-contract.md` was regenerated from `openapi.json` and now reports 362 paths, 428 operations, sha256 `43a4225c802b908590f39f91bdbd803139e8ad464d76d7c271b61fc541f11891`
+  - frontend/API/module/workflow/runbook docs now point at Add Client, activation/setup, Super Admin plans, and current route behavior instead of old compatibility surfaces
   - post-CI remediation keeps tenant usage rollups on a single canonical upsert path for snapshot/counter rows, removes the check-then-insert race exposed by workflow concurrency coverage, clears stale JPA state after native refresh upserts, and avoids no-op counter `updated_at` churn
   - entitlement-aware integration fixtures now write the same current-state feature override settings used by runtime module gates, so HR, reports, manufacturing, and portal tests no longer rely on stale `enabledModules`-only state
   - dealer invoice PDF export now runs in a writable transaction because PDF generation records tenant usage; this preserves the canonical quota/audit side effect instead of bypassing it
@@ -64,20 +64,20 @@ Last reviewed: 2026-05-14
   - `bash ci/lint-knowledgebase.sh`
   - `bash ci/check-high-risk-changes.sh`
   - `git diff --check`
-  - `rg -n "^(<<<<<<<|=======|>>>>>>>)" erp-domain/src/main/java erp-domain/src/test/java docs .factory openapi.json ci`
+  - `rg -n "^(<<<<<<<|=======|>>>>>>>)" erp-domain/src/main/java erp-domain/src/test/java docs openapi.json ci`
   - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AuditServiceTest,CompanyServiceTest,SuperAdminTenantControlPlaneServiceTest,SuperAdminControllerTest,TenantOnboardingControllerTest,AuthTenantAuthorityIT,OpenApiSnapshotIT,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeCompanyControllerExecutableCoverageTest test`
   - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_AuthDigestTokenStorageGuardTest,IamCoreSchemaAndModelHardCutMigrationIT test`
   - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AuthControllerIT,OpenApiSnapshotIT,IdentityRouteInventoryContractTest test`
   - `bash ci/check-architecture.sh`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=CompanyServiceTest,SuperAdminTenantEntitlementServiceTest test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock GATE_CANONICAL_BASE_REF=main bash scripts/gate_core.sh`
-  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=CompanyControllerIT,SuperAdminControllerIT#superAdmin_canUpdateLifecycle_listTenants_andReadTenantDetail,CR_ActuatorProdHardeningIT,CR_PayrollLegacyEndpointGatedIT,CR_CatalogImportConcurrencyIT test`
+  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=CompanyControllerIT,SuperAdminControllerIT#superAdmin_canUpdateLifecycle_listTenants_andReadTenantDetail,ActuatorProdHardeningIT,CatalogImportConcurrencyIT test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=PortalInsightsControllerIT,ReportControllerSecurityIT,TenantRuntimePolicyServiceTest test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=DealerPortalControllerSecurityIT,ProductionCatalogFinishedGoodInvariantIT test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=RawMaterialControllerSecurityIT test`
-  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TenantUsageRollupServiceTest,CR_CatalogImportConcurrencyIT test`
+  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TenantUsageRollupServiceTest,CatalogImportConcurrencyIT test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile pr-fast --label auth-tenant --maven-arg -Dtest.groups= --manifest ci/pr_manifests/pr_auth_tenant.txt`
-  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile codered --label codered-access --manifest ci/pr_manifests/pr_codered_access.txt`
+  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile risk --label risk-access --manifest ci/pr_manifests/pr_risk_access.txt`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile pr-fast --label business-slice --maven-arg -Dtest.groups= --manifest ci/pr_manifests/pr_business_slice.txt`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AccountingCatalogControllerSecurityIT,ReportExportApprovalIT test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=ReportInventoryParityIT,ReportControllerRouteContractIT test`
@@ -92,7 +92,7 @@ Last reviewed: 2026-05-14
   - module-boundary fix pack reported `CompanyServiceTest` and `SuperAdminTenantEntitlementServiceTest` green, and `ci/check-architecture.sh` passed with no `company->admin` edge
   - Gate Core reported 416 tests run, 0 failures/errors/skips; module coverage passed with line ratio `0.9611307420494699` and branch ratio `0.8980891719745223`
   - post-CI Access/Tenant manifest rerun reported 159 tests run, 0 failures/errors/skips after canonical status and entitlement fixture fixes
-  - post-CI CODE-RED Access manifest rerun reported 13 tests run, 0 failures/errors/skips after actuator and HR module-gate expectation updates
+  - post-CI risk Access manifest rerun reported 13 tests run, 0 failures/errors/skips after actuator and HR module-gate expectation updates
   - post-CI Workflow Integration manifest rerun reported 337 tests run, 0 failures/errors/skips after tenant usage rollup upserts, dealer PDF transaction, manufacturing entitlement, and retired-route assertion fixes
   - post-CI Finance/Accounting focused rerun reported `AccountingCatalogControllerSecurityIT` 8 tests and `ReportExportApprovalIT` 7 tests with 0 failures/errors/skips; the report focused rerun passed `ReportInventoryParityIT` and `ReportControllerRouteContractIT`
   - post-CI Finance/Accounting manifest rerun reported 360 tests run, 0 failures/errors/skips after entitlement-aware report/accounting fixture updates
@@ -282,5 +282,5 @@ Last reviewed: 2026-05-14
 - Artifacts/links:
   - PR: https://github.com/evilfps/bigbrightpaints-erp/pull/197
   - CI run: https://github.com/evilfps/bigbrightpaints-erp/actions/runs/25162444152
-  - frontend handoff: `docs/frontend-portals/tenant-admin/identity-iam-handoff-2026-04-30.md`
+  - frontend contract: `docs/frontend-portals/tenant-admin/identity-iam.md`
   - migration and rollback docs: `docs/runbooks/migrations.md`, `docs/runbooks/rollback.md`

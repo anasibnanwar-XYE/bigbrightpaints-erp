@@ -16,12 +16,6 @@ It owns:
 - self settings (`/api/v1/admin/self/settings` + auth self-service)
 - read-only changelog (`/api/v1/changelog`)
 
-Still-live legacy admin insight reads:
-
-- `/api/v1/portal/dashboard`
-- `/api/v1/portal/operations`
-- `/api/v1/portal/workforce`
-
 ## Users
 
 - Primary actor: `ROLE_ADMIN`
@@ -41,7 +35,7 @@ Still-live legacy admin insight reads:
 - Treat `mustChangePassword=true` as a blocking corridor state.
 - Persist tenant scope as `companyCode` and send `X-Company-Code`.
 
-## Current identity/IAM handoff
+## Identity and IAM contract
 
-- [Identity/IAM frontend handoff](./identity-iam-handoff-2026-04-30.md) is the current tenant-admin
+- [Identity and IAM contract](./identity-iam.md) is the current tenant-admin
   frontend contract for My Account, MFA, sessions, and admin user-control routes.

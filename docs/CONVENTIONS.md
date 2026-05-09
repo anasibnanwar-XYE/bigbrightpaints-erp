@@ -1,6 +1,6 @@
 # Documentation Conventions
 
-Last reviewed: 2026-04-04
+Last reviewed: 2026-05-05
 
 This document defines the writing conventions, cross-link expectations, and stale-doc handling policy for the orchestrator-erp backend documentation library.
 
@@ -26,13 +26,12 @@ Documentation must be grounded in the actual implementation. The evidence hierar
 
 ### 1.3 No duplicate truth
 
-- Each truth concern should be owned by exactly one canonical packet.
-- Module packets own structural truth.
-- Flow packets own behavioral truth.
-- Frontend handoff packets own consumer framing.
+- Each truth concern should be owned by exactly one canonical document.
+- Module documents own structural truth.
+- Flow documents own behavioral truth.
+- Frontend portal/API documents own consumer framing.
 - ADRs own decision truth.
-- Deprecated registry owns retirement truth.
-- If a packet needs to reference another packet's truth, it should link to it rather than duplicate it.
+- If a change needs to reference another document's truth, it should link to it rather than duplicate it.
 
 ## 2) Writing Style
 
@@ -50,8 +49,8 @@ Documentation must be grounded in the actual implementation. The evidence hierar
 
 ### 2.3 Explicit about limitations
 
-- If something is partial, dead-end, deprecated, or ambiguous, the docs must say so clearly.
-- Use callout sections for known gaps, deprecated surfaces, and configuration-guarded behavior.
+- If something is partial, dead-end, retired, or ambiguous, the docs must say so clearly.
+- Use callout sections for known gaps, retired boundaries, and configuration-guarded behavior.
 
 ## 3) Implemented vs Planned Language
 
@@ -78,13 +77,13 @@ When writing or updating docs, use explicit status labels:
 
 ## 4) Cross-Link Expectations
 
-### 4.1 Every packet links to related packets
+### 4.1 Every document links to related documents
 
-- Module packets link to relevant flow packets, ADRs, and frontend handoff packets.
-- Flow packets link back to their owning module packets and related ADRs.
-- Frontend handoff packets link back to canonical module and flow docs.
-- ADRs link to the module/flow packets they affect.
-- Deprecated registry entries link to their canonical replacement or state explicitly that no replacement exists.
+- Module documents link to relevant flow documents, ADRs, and frontend handoff documents.
+- Flow documents link back to their owning module documents and related ADRs.
+- Frontend portal/API documents link back to canonical module and flow docs.
+- ADRs link to the module/flow documents they affect.
+- Retired behavior notes link to their canonical replacement or state explicitly that no replacement exists.
 
 ### 4.2 Navigation is bidirectional
 
@@ -120,50 +119,27 @@ A doc is stale when:
 
 ### 6.2 Handling stale docs
 
-- **Redirect:** If a legacy doc is replaced by a new canonical packet, add a redirect notice at the top of the legacy doc pointing to the new canonical location.
-- **Archive:** If a legacy doc has historical value but is no longer active truth, add an archive notice at the top stating it is no longer maintained and pointing to the current canonical source.
-- **Mark non-canonical:** If a legacy doc must remain for reference, clearly label it as `non-canonical` or `superseded`.
-- **Do not silently delete or ignore.** Stale docs that still mention live endpoints or behavior must be aligned with the new canonical packet or explicitly redirected.
+- **Delete:** If a stale doc is replaced by a canonical change and no guard or runtime contract consumes it, remove the stale doc.
+- **Rename:** If the doc is still enforced by a guard, give it a current-purpose name rather than carrying archive-era vocabulary.
+- **Align:** If a stale doc still owns active behavior, update it in place and keep it reachable from `docs/INDEX.md`.
+- **Do not keep archive-only docs by default.** Historical value belongs in git history unless the current maintenance workflow needs the file.
 
 ### 6.3 Competing truth is not allowed
 
-- No two active packets may claim to own the same truth.
-- If a new packet replaces an old one, the old packet must be redirected, archived, or marked non-canonical in the same change that introduces the new packet.
-
-### 6.4 Canonical banner template for legacy docs
-
-When marking a legacy doc as non-canonical or reference-only, use one of these standardized banner formats at the top of the file:
-
-**NON-CANONICAL (superseded by canonical docs):**
-```markdown
-> ⚠️ **NON-CANONICAL**: This document is superseded by the canonical flow packets in [docs/flows/](flows/). The current [area] behavior is documented in [docs/flows/AREA-FLOW.md](../flows/AREA-FLOW.md).
-```
-
-**REFERENCE ONLY (replaced by primary truth source):**
-```markdown
-> ⚠️ **REFERENCE ONLY**: This document is no longer the canonical source of truth. Use `openapi.json` and the module packets in [docs/modules/](modules/) as the primary API contract reference. The authoritative [area] inventory is now available through [docs/modules/MODULE-INVENTORY.md](modules/MODULE-INVENTORY.md).
-```
-
-**Key elements:**
-- Start with `> ⚠️` (warning emoji + blockquote) for visual prominence
-- Use **bold** for the banner type (NON-CANONICAL or REFERENCE ONLY)
-- State what the reader should use instead (canonical packet path)
-- Keep the message brief but informative
-
-Use these templates consistently so future legacy-doc redirects follow one uniform format across the docs tree.
+- No two active documents may claim to own the same truth.
+- If a new document replaces an old one, the old document must be deleted or renamed in the same change unless an active guard requires it.
 
 ## 7) Docs-Only Lane
 
-Docs-only packets are limited to the canonical docs/governance lane:
+Docs-only changes are limited to the canonical docs/governance lane:
 
 - repo-root signposts/governance: `README.md`, `AGENTS.md`, `ARCHITECTURE.md`, `CHANGELOG.md`
 - canonical docs spine files: `docs/INDEX.md`, `docs/ARCHITECTURE.md`, `docs/CONVENTIONS.md`, `docs/SECURITY.md`, `docs/RELIABILITY.md`, `docs/BACKEND-FEATURE-CATALOG.md`, `docs/RECOMMENDATIONS.md`
-- canonical directories: `docs/adrs/**`, `docs/agents/**`, `docs/approvals/**`, `docs/deprecated/**`, `docs/modules/**`, `docs/flows/**`, `docs/frontend-api/**`, `docs/frontend-portals/**`
-- internal worker-guidance lane: `.factory/library/**`
+- canonical directories: `docs/adrs/**`, `docs/agents/**`, `docs/approvals/**`, `docs/modules/**`, `docs/flows/**`, `docs/frontend-api/**`, `docs/frontend-portals/**`
 
-Markdown outside that lane is **not** docs-only. That includes `docs/platform/**`, `docs/runbooks/**`, `docs/design/**`, `docs/code-review/**`, `docs/developer/**`, `docs/frontend-update-v2/**`, root worklogs/reports, and any mixed markdown-plus-code/config/test/script/OpenAPI diff.
+Markdown outside that lane is **not** docs-only. That includes `docs/platform/**`, `docs/runbooks/**`, root worklogs/reports, and any mixed markdown-plus-code/config/test/script/OpenAPI diff.
 
-Docs-only packets:
+Docs-only changes:
 
 - run `bash ci/lint-knowledgebase.sh` only
 - skip manual review/subagent review

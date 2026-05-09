@@ -66,5 +66,5 @@ The three audit surfaces coexist with clear ownership boundaries:
 ## Cross-references
 
 - [docs/RELIABILITY.md](../RELIABILITY.md) — retry and dead-letter handling
-- [docs/SECURITY.md](../SECURITY.md) — security review policy
+- [docs/SECURITY.md](../SECURITY.md) — security controls
 - ADR-003 — outbox pattern for event publishing, which also uses async persistence with retry semantics

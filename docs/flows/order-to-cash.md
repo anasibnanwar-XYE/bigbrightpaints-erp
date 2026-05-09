@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-04-07
 
-This packet documents the **order-to-cash flow**: the canonical commercial lifecycle from dealer onboarding through sales order creation, confirmation, dispatch, invoicing, and settlement. It covers credit management, inventory reservation, dispatch execution, invoice generation, and the accounting boundary for AR (accounts receivable).
+This document describes the **order-to-cash flow**: the canonical commercial lifecycle from dealer onboarding through sales order creation, confirmation, dispatch, invoicing, and settlement. It covers credit management, inventory reservation, dispatch execution, invoice generation, and the accounting boundary for AR (accounts receivable).
 
-This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, the packet explicitly states the current limitation instead of presenting partial behavior as complete.
+This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, this document explicitly states the current limitation instead of presenting partial behavior as complete.
 
 ---
 
@@ -42,13 +42,13 @@ This flow is **behavior-first** and **code-grounded**. Where the backend is inco
 | --- | --- | --- | --- | --- |
 | Create Order | POST | `/api/v1/sales/orders` | SALES, ADMIN | Create sales order (idempotent; `201` for draft-lifecycle payloads, otherwise `200`) |
 | List Orders | GET | `/api/v1/sales/orders` | ADMIN, SALES, FACTORY, ACCOUNTING | List orders (paginated) |
-| Search Orders | GET | `/api/v1/sales/orders/search` | ADMIN, SALES, FACTORY, ACCOUNTING | Search with filters (`orderNumber` contains match; canonical status filters normalize legacy stored statuses) |
+| Search Orders | GET | `/api/v1/sales/orders/search` | ADMIN, SALES, FACTORY, ACCOUNTING | Search with filters (`orderNumber` contains match; status filters use the canonical lifecycle) |
 | Update Order | PUT | `/api/v1/sales/orders/{id}` | SALES, ADMIN | Update draft order |
 | Delete Order | DELETE | `/api/v1/sales/orders/{id}` | SALES, ADMIN | Delete draft order |
 | Confirm Order | POST | `/api/v1/sales/orders/{id}/confirm` | SALES, ADMIN | Confirm order (credit check + stock validation/reservation) |
 | Cancel Order | POST | `/api/v1/sales/orders/{id}/cancel` | SALES, ADMIN | Cancel order (requires reason) |
 | Update Status | PATCH | `/api/v1/sales/orders/{id}/status` | SALES, ADMIN | Manual status (ON_HOLD, REJECTED, CLOSED) |
-| Order Timeline | GET | `/api/v1/sales/orders/{id}/timeline` | ADMIN, SALES, FACTORY, ACCOUNTING | Status history (`toStatus` + alias `status`, `changedBy` + alias `actor`, `changedAt` + alias `timestamp`) |
+| Order Timeline | GET | `/api/v1/sales/orders/{id}/timeline` | ADMIN, SALES, FACTORY, ACCOUNTING | Status history (`toStatus`, `changedBy`, `changedAt`) |
 | List Promotions | GET | `/api/v1/sales/promotions` | SALES, ADMIN | List active promotions |
 | Create Promotion | POST | `/api/v1/sales/promotions` | SALES, ADMIN | Create promotion (`201 Created`) |
 
@@ -61,7 +61,7 @@ This flow is **behavior-first** and **code-grounded**. Where the backend is inco
 | Update Dealer | PUT | `/api/v1/dealers/{dealerId}` | ADMIN, SALES, ACCOUNTING | Update dealer |
 | Dunning Hold | POST | `/api/v1/dealers/{dealerId}/dunning/hold` | ADMIN, SALES, ACCOUNTING | Explicit hold action (returns `dealerId`, `dunningHeld`, `status`, `alreadyOnHold`) |
 
-Dealer-directory compatibility rules:
+Dealer-directory response rules:
 
 - omit `page` and `size` for the full active-only directory
 - send `status=ALL` to include non-active dealers
@@ -153,7 +153,7 @@ Generate order number → Save order → [Optional: Reserve stock] →
 - Stock shortage triggers → PENDING_PRODUCTION
 - Credit check fails with `422` only when no approved override headroom can cover the request
 - Approved credit overrides raise effective dealer headroom until expiry
-- Idempotency key supported via canonical `Idempotency-Key`
+- Idempotency key required via canonical `Idempotency-Key`
 
 ### 4.3 Order Confirmation Lifecycle
 
@@ -237,9 +237,7 @@ The flow is complete when:
 
 ---
 
-## 6. Canonical vs Non-Canonical Paths
-
-### Canonical Paths
+## 6. Current API Paths
 
 | Path | Owner | Notes |
 | --- | --- | --- |
@@ -248,17 +246,6 @@ The flow is complete when:
 | `POST /api/v1/dispatch/confirm` | `DispatchController` | Dispatch triggers AR, COGS, invoice via SalesDispatchReconciliationService |
 | `POST /api/v1/credit/limit-requests` | `CreditLimitRequestController` | Durable credit limit increase |
 | `POST /api/v1/dealer-portal/credit-limit-requests` | `DealerPortalController` | Dealer self-service credit request |
-
-### Non-Canonical / Deprecated Paths
-
-| Path | Status | Replacement |
-| --- | --- | --- |
-| `GET /api/v1/sales/dealers` | Deprecated (frontend alias) | Use `/api/v1/dealers` |
-| Legacy idempotency key resolution | Deprecated | Use canonical `Idempotency-Key` header |
-| Legacy order statuses (BOOKED, SHIPPED, etc.) | Legacy compatibility | Use canonical statuses only |
-| `POST /api/v1/sales/promotions` | Canonical | Promotion create endpoint (`201 Created`) for SALES/ADMIN users |
-
----
 
 ## 7. Cross-Module Dependencies
 
@@ -297,14 +284,13 @@ The O2C flow publishes domain events that can trigger downstream processing:
 
 ## 10. Related Documentation
 
-- [docs/modules/sales.md](../modules/sales.md) — Sales module canonical packet
+- [docs/modules/sales.md](../modules/sales.md) — Sales module doc
 - [docs/modules/invoice.md](../modules/invoice.md) — Invoice module for invoice lifecycle
-- [docs/modules/inventory.md](../modules/inventory.md) — Inventory for stock and dispatch truth
+- [docs/modules/inventory-stock-control.md](../modules/inventory-stock-control.md) — Inventory for stock and dispatch truth
 - [docs/modules/admin-portal-rbac.md](../modules/admin-portal-rbac.md) — Host ownership and role matrices
-- [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/frontend-portals/sales/README.md](../frontend-portals/sales/README.md) — Sales frontend handoff (sales, order-to-cash, payloads, RBAC)
 - [docs/adrs/ADR-006-portal-and-host-boundary-separation.md](../adrs/ADR-006-portal-and-host-boundary-separation.md) — Portal/host boundary separation (enforces `/api/v1/dealer-portal/**` vs `/api/v1/portal/**` isolation)
-- [docs/deprecated/INDEX.md](../deprecated/INDEX.md) — Deprecated surfaces registry (legacy paths, replacement notes)
 
 ---
 

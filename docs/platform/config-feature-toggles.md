@@ -2,11 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the high-impact platform settings and feature toggles that maintainers must understand. A maintainer should be able to discover the important platform knobs without searching `application.yml` by hand, and understand their scope, defaults, and operational caveats.
+This document describes the high-impact platform settings and feature toggles that maintainers must understand. A maintainer should be able to discover the important platform knobs without searching `application.yml` by hand, and understand their scope, defaults, and operational caveats.
 
-It fulfills VAL-PLAT-007.
-
-> **Scope note:** This packet covers the configuration surface that controls platform-wide and per-tenant behavior. For the runtime-gating architecture that consumes some of these settings, see [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md). For the security filter chain and error contract, see [core-security-error.md](../modules/core-security-error.md). For module gating mechanics, see [company.md](../modules/company.md).
+> **Scope note:** This document covers the configuration surface that controls platform-wide and per-tenant behavior. For the runtime-gating architecture that consumes some of these settings, see [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md). For the security filter chain and error contract, see [core-security-error.md](../modules/core-security-error.md). For module gating mechanics, see [company.md](../modules/company.md).
 
 ---
 
@@ -152,9 +150,7 @@ These settings are scoped to individual tenants and are not directly tunable thr
 
 **Cache TTL:** `erp.tenant.runtime.policy-cache-seconds=15` — both `TenantRuntimeEnforcementService` and `TenantRuntimeAccessService` cache policies in-memory with this TTL.
 
-**Managed by:** `TenantRuntimeEnforcementService` via the super-admin control-plane API.
-
-**Legacy fallback:** `TenantRuntimeAccessService` also reads legacy per-company-code keys (`tenant.runtime.{companyCode}.state`, `tenant.runtime.{companyCode}.quota.max-concurrent`, etc.) as fallbacks when company-ID-scoped keys are absent. Company-ID-scoped keys always take precedence.
+**Managed by:** `TenantRuntimeEnforcementService` via the super-admin control-plane API. `TenantRuntimeAccessService` reads the same company-ID-scoped keys.
 
 **Detailed documentation:** See [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md) §2–3 for the full runtime-gating architecture, dual-enforcement-service risk, and counter-reset caveats.
 
@@ -244,7 +240,7 @@ These settings are scoped to individual tenants and are not directly tunable thr
 
 | Property | Default | Scope | Description |
 | --- | --- | --- | --- |
-| `security.mfa.issuer` | Legacy literal default `BigBright ERP` | Config-only | Issuer name displayed in TOTP authenticator apps during MFA enrollment. Override this value when deployments should present current `orchestrator-erp` branding. |
+| `security.mfa.issuer` | `orchestrator-erp` | Config-only | Issuer name displayed in TOTP authenticator apps during MFA enrollment. |
 
 ---
 
@@ -270,12 +266,12 @@ These settings are scoped to individual tenants and are not directly tunable thr
 
 | Property | Default | Scope | Description |
 | --- | --- | --- | --- |
-| `orchestrator.payroll.enabled` | `false` | Config-only | Whether the orchestrator's payroll coordination flow is active. When `false`, payroll-related orchestrator commands and event bridges are skipped. |
+| `orchestrator.payroll.enabled` | `false` | Config-only | Whether the remaining orchestrator payroll coordination helpers are active. Payroll run creation is owned by `/api/v1/payroll/runs`, not the orchestrator. |
 | `orchestrator.factory-dispatch.enabled` | `false` | Config-only | Whether the orchestrator's factory-to-dispatch coordination flow is active. When `false`, factory-dispatch orchestrator commands and event bridges are skipped. |
 
 **Consumer:** `OrchestratorFeatureFlags` bean, injected into orchestrator services.
 
-**Default caveat:** Both flags default to `false`, meaning the orchestrator's payroll and factory-dispatch coordination paths are inactive unless explicitly enabled. This is a deliberate safety choice: these flows involve cross-module side effects (accounting postings, inventory adjustments) and should only be activated when the corresponding modules and configuration are ready.
+**Default caveat:** Both flags default to `false`, meaning the orchestrator's remaining payroll coordination helpers and factory-dispatch coordination paths are inactive unless explicitly enabled. This is a deliberate safety choice: these flows involve cross-module side effects (accounting postings, inventory adjustments) and should only be activated when the corresponding modules and configuration are ready.
 
 ### 5.1 Outbox Tuning
 
@@ -311,9 +307,8 @@ These settings are scoped to individual tenants and are not directly tunable thr
 | Property | Default | Scope | Description |
 | --- | --- | --- | --- |
 | `erp.inventory.opening-stock.enabled` | `false` | Config-only | Whether opening-stock import is enabled. When `false`, the opening-stock import endpoint returns `OPENING_STOCK_IMPORT_DISABLED`. |
-| `erp.raw-material.intake.enabled` | `false` | Config-only | Whether raw-material intake operations are enabled. When `false`, raw-material intake endpoints return `RAW_MATERIAL_INTAKE_DISABLED`. |
 
-**Operational note:** Both toggles default to `false`. They are operational gates that prevent premature use of these inventory surfaces before the corresponding setup (accounts, warehouses, batch conventions) is complete.
+**Operational note:** Opening-stock import defaults to `false`. Raw-material intake no longer has a toggle or endpoint; supplier receipts use the procure-to-pay GRN flow.
 
 ---
 
@@ -419,7 +414,6 @@ The following toggles are read once at application startup and cannot be changed
 - All `security.monitoring.*` properties
 - `erp.inventory.accounting.events.enabled`
 - `erp.inventory.opening-stock.enabled`
-- `erp.raw-material.intake.enabled`
 - `erp.accounting.event-trail.strict`
 - `erp.environment.validation.*`
 - `erp.seed.*` and `erp.validation-seed.*`
@@ -436,10 +430,9 @@ Several toggles have `false` defaults that guard against premature activation of
 | Toggle | Default | Why `false` |
 | --- | --- | --- |
 | `erp.licensing.enforce` | `false` | Prevents blocking local development and CI. Must be explicitly enabled in secured environments. |
-| `orchestrator.payroll.enabled` | `false` | Payroll coordination involves accounting postings; should only be activated when payroll accounts and period controls are configured. |
+| `orchestrator.payroll.enabled` | `false` | Remaining payroll coordination helpers involve accounting postings; should only be activated when payroll accounts and period controls are configured. |
 | `orchestrator.factory-dispatch.enabled` | `false` | Factory-dispatch coordination involves inventory adjustments; should only be activated when inventory and dispatch surfaces are ready. |
 | `erp.inventory.opening-stock.enabled` | `false` | Opening-stock import affects batch and valuation state; should only be activated when chart of accounts and batch conventions are configured. |
-| `erp.raw-material.intake.enabled` | `false` | Raw-material intake affects inventory and cost tracking; should only be activated when inventory accounts and warehouse setup are complete. |
 | `erp.environment.validation.health-indicator.enabled` | (not set) | Config health checks are DB-intensive and should be enabled explicitly where needed. |
 | `HR_PAYROLL` module | **Not in default set** | HR/Payroll is an optional module that requires payroll accounts to be configured before use. |
 

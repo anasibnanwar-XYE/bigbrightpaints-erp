@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-04-30
 
-This packet documents the **auth module** (`modules/auth`) and the core security infrastructure that underpins the authentication corridor. It covers login, refresh, logout, MFA, password management, must-change-password enforcement, token/session revocation, JWT-based tenant scoping, and the key security filters in the request pipeline.
+This document describes the **auth module** (`modules/auth`) and the core security infrastructure that underpins the authentication corridor. It covers login, refresh, logout, MFA, password management, must-change-password enforcement, token/session revocation, JWT-based tenant scoping, and the key security filters in the request pipeline.
 
 ## Ownership Summary
 
@@ -153,7 +153,7 @@ Centralizes token digest computation. All token types (refresh, password-reset) 
 The filters execute in this order (configured in `SecurityConfig`):
 
 1. **JwtAuthenticationFilter** — validates JWT from `Authorization: Bearer` header, resolves `UserAccount` + roles/permissions, sets `SecurityContext`.
-2. **CompanyContextFilter** — reads `companyCode` from JWT claims, validates against header, enforces company lifecycle state, performs tenant runtime admission, sets `CompanyContextHolder`. Rejects legacy `X-Company-Id` header.
+2. **CompanyContextFilter** — reads `companyCode` from JWT claims, validates against header, enforces company lifecycle state, performs tenant runtime admission, sets `CompanyContextHolder`. Rejects retired `X-Company-Id` header.
 3. **MustChangePasswordCorridorFilter** — blocks all requests except the must-change-password corridor when `mustChangePassword` is true.
 
 ### SecurityConfig Behavior
@@ -334,9 +334,9 @@ Login and refresh both require a `companyCode` parameter. The user must exist wi
 ## Cross-References
 
 - [docs/modules/company.md](company.md) — company/tenant module (lifecycle, runtime admission, module gating)
-- [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — canonical module inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/adrs/ADR-002-multi-tenant-auth-scoping.md](../adrs/ADR-002-multi-tenant-auth-scoping.md) — ADR for multi-tenant auth scoping via JWT company claims
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — overall architecture reference
-- [docs/SECURITY.md](../SECURITY.md) — security review policy and R2 escalation
+- [docs/SECURITY.md](../SECURITY.md) — security controls and R2 escalation
 - [docs/RELIABILITY.md](../RELIABILITY.md) — reliability posture
 - [docs/flows/auth-identity.md](../flows/auth-identity.md) — canonical auth/identity flow (behavioral entrypoint)

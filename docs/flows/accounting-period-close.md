@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-04-26
 
-This packet documents the **accounting and period close flow**: journal posting, correction, bank reconciliation, subledger reconciliation, discrepancy handling, month-end checklist controls, and the maker-checker close workflow. It is code-grounded and describes only current backend routes.
+This document describes the **accounting and period close flow**: journal posting, correction, bank reconciliation, subledger reconciliation, discrepancy handling, month-end checklist controls, and the maker-checker close workflow. It is code-grounded and describes only current backend routes.
 
 Accounting is the financial truth boundary for the ERP. Other modules may trigger accounting effects, but period state, reconciliation evidence, journal correction, and close artifacts are owned by accounting.
 
@@ -181,9 +181,7 @@ The flow is complete when:
 
 ---
 
-## 6. Canonical vs Non-Canonical Paths
-
-### Canonical Paths
+## 6. Current API Paths
 
 | Path | Owner | Notes |
 | --- | --- | --- |
@@ -198,22 +196,6 @@ The flow is complete when:
 | `POST /api/v1/accounting/reconciliation/bank/sessions/{sessionId}/complete` | `ReconciliationController` | Complete bank session. |
 | `GET /api/v1/accounting/reconciliation/subledger` | `ReconciliationController` | AR/AP reconciliation. |
 | `POST /api/v1/accounting/reconciliation/discrepancies/{discrepancyId}/resolve` | `ReconciliationController` | Discrepancy resolution. |
-
-### Non-Canonical / Retired Paths
-
-| Path | Status | Replacement |
-| --- | --- | --- |
-| Direct period close route | Not exposed | Request close, then approve close. |
-| Legacy close-request alias | Stale alias | `/api/v1/accounting/periods/{periodId}/request-close` |
-| Legacy close-approve alias | Stale alias | `/api/v1/accounting/periods/{periodId}/approve-close` |
-| Legacy close-finalize alias | Not exposed | No separate finalize route; approval closes. |
-| Legacy bank-session prefix without `/bank` | Stale alias | `/api/v1/accounting/reconciliation/bank/sessions/**` |
-| Legacy bank-session match/unmatch aliases | Not exposed | `PUT /api/v1/accounting/reconciliation/bank/sessions/{sessionId}/items` |
-| Dealer-specific reconciliation alias | Not exposed | `GET /api/v1/accounting/reconciliation/subledger` |
-| Supplier-specific reconciliation alias | Not exposed | `GET /api/v1/accounting/reconciliation/subledger` |
-| Legacy full reconciliation run route | Not exposed | `GET /api/v1/accounting/reconciliation/subledger` and discrepancy routes. |
-
----
 
 ## 7. Cross-Module Dependencies
 
@@ -239,11 +221,11 @@ The flow is complete when:
 
 ## 9. Related Documentation
 
-- [Accounting Workflow Architecture](accounting-workflow-architecture.md) — connected accounting architecture for client sharing
+- [Accounting Workflow Architecture](accounting-workflow-architecture.md) — connected accounting workflow doc
 - [Reporting / Export Flow](reporting-export.md) — reports and export approvals
 - [Invoice / Dealer Finance Flow](invoice-dealer-finance.md) — settlement and dealer finance reads
-- [docs/modules/reports.md](../modules/reports.md) — reporting module packet
-- [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — flow inventory
+- [docs/modules/reports.md](../modules/reports.md) — reporting module doc
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 
 ---
 

@@ -44,7 +44,7 @@ happens to expose the same APIs.
 4. Submit reverse with related-entry options through the canonical reverse
    route.
 5. Assert original entry becomes reversed and reversal reference is visible.
-6. Assert no legacy manual-journal or alternate reverse route is called.
+6. Assert no retired manual-journal or alternate reverse route is called.
 
 ## 5. Settlement And Reconciliation
 

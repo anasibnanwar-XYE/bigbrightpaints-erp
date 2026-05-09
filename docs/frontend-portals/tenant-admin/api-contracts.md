@@ -42,8 +42,7 @@ Self-service boundaries:
   hashes.
 - Session routes are current-principal-only. Tenant-admin user session revocation for target users
   remains `DELETE /api/v1/admin/users/{userId}/sessions`.
-- Retired aliases such as `/api/v1/auth/profile` and
-  `/api/v1/auth/password/forgot/superadmin` are absent/non-mutating; do not call them.
+- Password recovery is scoped through `POST /api/v1/auth/password/forgot`.
 
 ## Dashboard
 

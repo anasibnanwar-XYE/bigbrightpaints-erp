@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **procure-to-pay flow**: the canonical purchasing lifecycle from supplier onboarding through purchase order creation, goods receipt (GRN), purchase invoice capture, and supplier payment/settlement. It covers the stock truth boundary (GRN → inventory) and the AP truth boundary (purchase invoice → accounting).
+This document describes the **procure-to-pay flow**: the canonical purchasing lifecycle from supplier onboarding through purchase order creation, goods receipt (GRN), purchase invoice capture, and supplier payment/settlement. It covers the stock truth boundary (GRN → inventory) and the AP truth boundary (purchase invoice → accounting).
 
-This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, the packet explicitly states the current limitation instead of presenting partial behavior as complete.
+This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, this document explicitly states the current limitation instead of presenting partial behavior as complete.
 
 ---
 
@@ -235,9 +235,7 @@ The flow is complete when:
 
 ---
 
-## 6. Canonical vs Non-Canonical Paths
-
-### Canonical Paths
+## 6. Current API Paths
 
 | Path | Owner | Notes |
 | --- | --- | --- |
@@ -246,16 +244,6 @@ The flow is complete when:
 | `POST /api/v1/purchasing/goods-receipts` | `PurchasingWorkflowController` | GRN (stock truth boundary) |
 | `POST /api/v1/purchasing/raw-material-purchases` | `RawMaterialPurchaseController` | Purchase invoice (AP truth) |
 | `POST /api/v1/accounting/suppliers/{id}/auto-settle` | Accounting | Auto-settlement |
-
-### Non-Canonical / Deprecated Paths
-
-| Path | Status | Replacement |
-| --- | --- | --- |
-| `X-Idempotency-Key` header on GRN | Rejected (400 error) | Use `Idempotency-Key` |
-| PO creation idempotency | Not supported | Rely on order number uniqueness |
-| Purchase invoice idempotency | Not supported | Rely on invoice number uniqueness |
-
----
 
 ## 7. Cross-Module Dependencies
 
@@ -270,10 +258,10 @@ The P2P flow intersects with the inventory→accounting event bridge at the GRN 
 
 | Event | Listener | Phase | Effect on P2P |
 | --- | --- | --- | --- |
-| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | When GRN creates a `RawMaterialBatch`, this event triggers automatic inventory valuation journal entries in accounting if `erp.inventory.accounting.events.enabled=true` (default: true). This is a material hidden coupling: if the toggle is disabled, inventory movements silently skip accounting side effects. |
+| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | GRN posts canonical accounting entries through the P2P flow. `InventoryAccountingEventListener` only runs when `erp.inventory.accounting.events.enabled=true` and is not the default posting path. |
 | `InventoryValuationChangedEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Triggers accounting entries for raw material valuation changes. |
 
-**Key boundary note:** The GRN is the stock truth boundary—`RawMaterialBatch` is created in the inventory module. The `InventoryAccountingEventListener` (when enabled) automatically creates corresponding accounting entries for raw material valuation. This bridge is conditional on the feature flag `erp.inventory.accounting.events.enabled`. See [orchestrator.md](../modules/orchestrator.md) for the full event bridge map and configuration-guarded risks.
+**Key boundary note:** The GRN is the stock truth boundary—`RawMaterialBatch` is created in the inventory module. GRN owns its accounting postings directly; the listener is opt-in automation for standalone inventory movements. See [orchestrator.md](../modules/orchestrator.md) for the full event map.
 
 ---
 
@@ -287,12 +275,11 @@ The P2P flow intersects with the inventory→accounting event bridge at the GRN 
 
 ## 10. Related Documentation
 
-- [docs/modules/purchasing.md](../modules/purchasing.md) — Purchasing module canonical packet
-- [docs/modules/inventory.md](../modules/inventory.md) — Inventory for stock truth (RawMaterialBatch)
+- [docs/modules/purchasing.md](../modules/purchasing.md) — Purchasing module doc
+- [docs/modules/inventory-stock-control.md](../modules/inventory-stock-control.md) — Inventory for stock truth (RawMaterialBatch)
 - [docs/modules/core-idempotency.md](../modules/core-idempotency.md) — Idempotency helpers
-- [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/frontend-portals/factory/README.md](../frontend-portals/factory/README.md) — Factory frontend handoff (procure-to-pay payloads, supplier management)
-- [docs/deprecated/INDEX.md](../deprecated/INDEX.md) — Deprecated surfaces registry (PO idempotency, GRN headers)
 
 ### Relevant ADRs
 - [ADR-003-outbox-pattern-for-cross-module-events.md](../adrs/ADR-003-outbox-pattern-for-cross-module-events.md) — Cross-module event bridges (P2P uses inventory→accounting event bridges for GRN→journal entry)

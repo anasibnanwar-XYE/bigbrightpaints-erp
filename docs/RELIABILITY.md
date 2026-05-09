@@ -124,12 +124,12 @@ Every `migration_v2` change must update both `docs/runbooks/migrations.md` and `
 - **Mixed idempotency coverage:** not all write paths have the same idempotency rigor.
 - **Event listener error handling:** varies by module; not all paths are fail-closed.
 - **Configuration-dependent safety:** some important guarantees rely on correct runtime configuration rather than hard enforcement.
-- **Dual migration tracks:** require discipline to ensure parity for features touching schema-critical paths.
+- **Schema-change blast radius:** `migration_v2` is the only supported track, so schema-critical changes need focused dry-run and rollback evidence before release.
 
 ## Cross-references
 
 - [docs/ARCHITECTURE.md](ARCHITECTURE.md) — full architecture reference
-- [docs/SECURITY.md](SECURITY.md) — security review policy
+- [docs/SECURITY.md](SECURITY.md) — security controls
 - [docs/INDEX.md](INDEX.md) — canonical documentation index
 - [docs/runbooks/rollback.md](runbooks/rollback.md) — rollback runbook
 - [docs/runbooks/migrations.md](runbooks/migrations.md) — migration runbook

@@ -7,6 +7,7 @@ Last reviewed: 2026-04-30
 - The executable contract is `openapi.json`; this document is the frontend route/payload/error checklist for the Super Admin shell.
 - All `/api/v1/superadmin/**` routes require `ROLE_SUPER_ADMIN` and return the standard `ApiResponse` envelope.
 - Public activation routes and tenant-owner setup routes are listed here because Add Client hands off to them, but they are not Super Admin shell screens.
+- Session bootstrap uses `GET /api/v1/auth/me` before entering the Super Admin shell.
 - Control-plane routes target tenants by path id. Do not send `X-Company-Id`. Do not rely on `X-Company-Code` to switch tenants from the platform shell.
 - All responses must expose or preserve `traceId`/correlation metadata. Frontend should capture it in error banners and support copy actions.
 - Examples use placeholders only. Never log bearer tokens, passwords, activation/reset links, Sentry/Datadog credentials, SMTP credentials, database secrets, or `.env` values.
@@ -119,6 +120,8 @@ Activation evidence may show `messageId=<MAILHOG_MESSAGE_ID>` and `activationUrl
 
 ### Client list/detail and tenant operations
 
+Runtime limits are mutated through `PUT /api/v1/superadmin/tenants/{id}/limits`.
+
 | Method | Path | Purpose | Request/query |
 | --- | --- | --- | --- |
 | GET | `/api/v1/superadmin/tenants` | client list | `status`, `q`, `page`, `size`, `sort`, `includeArchived` |
@@ -200,4 +203,4 @@ Support/bug free text is sanitized and bounded. Sentry/Datadog metadata is pseud
 
 ## Retired route handling
 
-Retired Super Admin route details live in `docs/deprecated/INDEX.md`. Current frontend docs and `openapi.json` must not present retired flat onboarding, platform-issued admin credential reset, old external support-sync aliases, or stale tenant setup payloads as active V1 APIs.
+Current frontend docs and `openapi.json` must not present retired flat onboarding, platform-issued admin credential reset, old external support-sync aliases, or stale tenant setup payloads as active V1 APIs.

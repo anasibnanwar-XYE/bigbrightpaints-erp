@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the factory/manufacturing module, which owns **manufacturing execution truth** for the ERP. It covers production logs, packing operations, packaging mappings, batch registration, cost allocation, and the dispatch handoff boundary into sales.
+This document describes the factory/manufacturing module, which owns **manufacturing execution truth** for the ERP. It covers production logs, packing operations, packaging mappings, batch registration, cost allocation, and the dispatch handoff boundary into sales.
 
-Catalog/setup truth (brands, items, SKU readiness) is documented separately in [catalog-setup.md](catalog-setup.md). Stock and dispatch execution truth is documented in [inventory.md](inventory.md). The factory module creates finished-good batches and posts WIP/cost journals; inventory tracks them and manages the physical dispatch lifecycle.
+Catalog/setup truth (brands, items, SKU readiness) is documented separately in [catalog-setup.md](catalog-setup.md). Stock and dispatch execution truth is documented in [inventory-stock-control.md](inventory-stock-control.md). The factory module creates finished-good batches and posts WIP/cost journals; inventory tracks them and manages the physical dispatch lifecycle.
 
 ---
 
@@ -16,10 +16,9 @@ Catalog/setup truth (brands, items, SKU readiness) is documented separately in [
 | Controllers | `FactoryController`, `PackingController`, `PackagingMappingController`, `ProductionLogController` |
 | Primary services | `FactoryService` (plans, tasks, dashboard), `ProductionLogService` (material mixing, WIP costing), `PackingService` (packing orchestration), `CostAllocationService` (monthly variance), `PackagingMaterialService` (packaging consumption), `PackingAllowedSizeService` (size resolution), `PackingBatchService` (FG batch creation), `FinishedGoodBatchRegistrar` (batch registration), `BulkPackingService`, `BulkPackingReadService` (bulk batch queries) |
 | Supporting services | `PackingIdempotencyService`, `PackingLineResolver`, `PackingProductSupport`, `PackingInventoryService`, `PackingJournalBuilder`, `PackingJournalLinkHelper`, `PackingReadService`, `PackagingSizeParser` |
-| Domain entities | `ProductionPlan`, `ProductionBatch`, `ProductionLog`, `ProductionLogMaterial`, `ProductionLogStatus` (enum), `PackingRecord`, `PackingRequestRecord`, `PackagingSizeMapping`, `SizeVariant`, `FactoryTask` |
+| Domain entities | `ProductionPlan`, `ProductionLog`, `ProductionLogMaterial`, `ProductionLogStatus` (enum), `PackingRecord`, `PackingRequestRecord`, `PackagingSizeMapping`, `SizeVariant`, `FactoryTask` |
 | DTO families | Production plan DTOs, production log DTOs, packing DTOs, packaging mapping DTOs, cost allocation DTOs, wastage report DTOs, factory task DTOs, bulk batch DTOs |
-| Events | `PackagingSlipEvent` (Spring ApplicationEvent, consumed by `FactorySlipEventListener`) |
-| Repositories | `ProductionPlanRepository`, `ProductionBatchRepository`, `ProductionLogRepository`, `ProductionLogMaterialRepository`, `PackingRecordRepository`, `PackingRequestRecordRepository`, `PackagingSizeMappingRepository`, `SizeVariantRepository`, `FactoryTaskRepository` |
+| Repositories | `ProductionPlanRepository`, `ProductionLogRepository`, `ProductionLogMaterialRepository`, `PackingRecordRepository`, `PackingRequestRecordRepository`, `PackagingSizeMappingRepository`, `SizeVariantRepository`, `FactoryTaskRepository` |
 
 ---
 
@@ -214,7 +213,7 @@ The service:
 | `wipAccountId` | WIP account for production costs | Production log creation |
 | `laborAppliedAccountId` | Credit account for labor costs | Production log creation |
 | `overheadAppliedAccountId` | Credit account for overhead costs | Production log creation |
-| `semiFinishedAccountId` | Semi-finished inventory account (fallback: `fgValuationAccountId`) | Packing |
+| `semiFinishedAccountId` | Semi-finished inventory account | Production log creation and packing |
 | `fgValuationAccountId` | Finished good valuation (asset) account | FG batch creation |
 | `fgCogsAccountId` | COGS account for dispatch | Dispatch |
 | `fgRevenueAccountId` | Revenue account for invoicing | Invoicing |
@@ -275,13 +274,7 @@ Dispatch is a shared boundary where controller ownership and financial ownership
 | Revenue/COGS posting | sales | `SalesDispatchReconciliationService` |
 | Challan PDF generation | inventory | `DispatchController` |
 
-Factory-role users can view pending slips and previews. Dispatch confirmation is accessible to factory users with transport metadata validation enforced. For full dispatch documentation, see [inventory.md](inventory.md).
-
-### 9.3 FactorySlipEventListener
-
-`FactorySlipEventListener` listens to `PackagingSlipEvent` (Spring ApplicationEvent) published when packaging slips change state. **Currently only logs the event.** No operational side effects are triggered. Designed as a placeholder for future queue/notification integration.
-
----
+Factory-role users can view pending slips and previews. Dispatch confirmation is accessible to factory users with transport metadata validation enforced. For full dispatch documentation, see [inventory-stock-control.md](inventory-stock-control.md).
 
 ## 10. Terminology Warning: Packaging Slip vs Packing Record
 
@@ -319,8 +312,7 @@ Despite similar names, these are separate entities in separate modules with sepa
 | **Factory → Inventory** | Outbound | Packing creates `FinishedGoodBatch` and `InventoryMovement`; consumes `RawMaterialBatch` and creates `RawMaterialMovement`; production log creates semi-finished `RawMaterial` and `RawMaterialBatch` |
 | **Factory → Accounting** | Outbound (facade) | Production log and packing post journals via `AccountingFacade`; cost allocation posts variance journals |
 | **Factory → Production** | Read | `PackingAllowedSizeService` reads `ProductionProduct` and `ProductionBrand` for size resolution; production log reads catalog for SKU resolution |
-| **Factory → Sales** | Read-only | Production log optionally links to `SalesOrder`; dispatch is a two-layer seam (see inventory module) |
-| **Inventory → Factory** | Inbound (event) | `FactorySlipEventListener` listens to `PackagingSlipEvent` (currently no-op) |
+| **Factory → Sales** | Read-only | Production log optionally links to `SalesOrder`; dispatch crosses the inventory controller and sales reconciliation boundary |
 | **Production → Factory** | Read | `SkuReadinessService` reads `PackagingSizeMappingRepository` for packing readiness |
 
 ---
@@ -336,29 +328,21 @@ Despite similar names, these are separate entities in separate modules with sepa
 
 ---
 
-## 14. Deprecated and Non-Canonical Surfaces
+## 14. Current Route Notes
 
-### 14.1 Explicitly Rejected Legacy Headers
+### 14.1 Rejected Idempotency Headers
 
-`PackingController` explicitly rejects the legacy idempotency headers:
+`PackingController` rejects old idempotency headers:
 - `X-Idempotency-Key` → `VALIDATION_INVALID_INPUT` error with detail `canonicalHeader=Idempotency-Key`
 - `X-Request-Id` → `VALIDATION_INVALID_INPUT` error with detail `canonicalHeader=Idempotency-Key`
 
-These are **not** compatibility aliases — they are explicitly rejected to prevent silent migration from deprecated patterns. Use `Idempotency-Key` (the canonical header) for all packing requests.
+Use `Idempotency-Key` for all packing requests.
 
-### 14.2 ProductionBatch Entity (Unused)
-
-The `ProductionBatch` entity exists in the factory domain but is **not actively used** in current controllers or service flows. Production execution happens through `ProductionLog`, not `ProductionBatch`. This entity may represent planned functionality that was superseded or deferred. **No replacement** — the canonical execution path is `ProductionPlan` (planning) → `ProductionLog` (execution).
-
-### 14.3 FactorySlipEventListener (No-Op)
-
-`FactorySlipEventListener` listens to `PackagingSlipEvent` but **currently only logs the event**. No operational side effects are triggered. Operators should not expect any automated factory response to dispatch events. **No replacement** — this is a placeholder for future extension.
-
-### 14.4 No Approval Workflow for Factory Operations
+### 14.2 No Approval Workflow for Factory Operations
 
 There are **no** dedicated approval workflows in the factory/production module. Production and packing operations execute directly by users with `ROLE_FACTORY` or `ROLE_ADMIN` without an approval gate. This differs from commercial flows (sales orders, dispatch) where approvals and credit checks exist.
 
-### 14.5 Production Plan Status Is Manual
+### 14.3 Production Plan Status Is Manual
 
 Production plan status transitions (`PLANNED` → `COMPLETED`) are **manually triggered** via `PATCH /api/v1/factory/production-plans/{id}/status`. There is no automated status progression, no workflow guard, and no validation that the production has actually occurred before marking a plan as completed.
 
@@ -422,10 +406,10 @@ Each packing request can create multiple FG batches and post multiple journals. 
 ## Cross-References
 
 - [docs/INDEX.md](../INDEX.md) — canonical documentation index
-- [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — module inventory (factory entry)
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/modules/catalog-setup.md](catalog-setup.md) — catalog and setup readiness (production module)
-- [docs/modules/inventory.md](inventory.md) — stock truth, batches, dispatch execution
-- [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory (Manufacturing/Packing flow)
+- [docs/modules/inventory-stock-control.md](inventory-stock-control.md) — stock truth, batches, dispatch execution
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/flows/manufacturing-packing.md](../flows/manufacturing-packing.md) — canonical manufacturing/packing flow (behavioral entrypoint)
 - [docs/modules/core-idempotency.md](core-idempotency.md) — shared idempotency infrastructure
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — architecture reference

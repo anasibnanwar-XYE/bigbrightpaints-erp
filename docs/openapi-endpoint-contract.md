@@ -1,8 +1,8 @@
-# Endpoint Inventory (OpenAPI)
+# OpenAPI Endpoint Contract
 
-> WARNING: **REFERENCE ONLY**: This inventory is retained for review and governance cross-reference, but it is not the canonical API truth. Use repo-root `openapi.json`, [docs/frontend-api/README.md](frontend-api/README.md), and the module/flow packets linked from [docs/INDEX.md](INDEX.md) as the primary contract surfaces.
+Last reviewed: 2026-05-04
 
-Last reviewed: 2026-05-01
+Status: generated contract guard input. Repo-root `openapi.json` remains the machine source of truth; this file is the reviewed, human-readable endpoint contract used by `scripts/guard_openapi_contract_drift.sh`.
 
 Source: `openapi.json`
 Updated: 2026-05-01
@@ -19,11 +19,11 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `39a623dae25910e847e927813be82cdafde0614159068f275eb3c55c8a9ec955`)
-- OpenAPI total paths: `361`
-- OpenAPI total operations: `427`
-- Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
-- Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, direct `/api/v1/accounting/periods/{periodId}/close`, removed Super Admin flat onboarding, and removed Super Admin support-reset routes are intentionally absent from this inventory and must not be reintroduced in frontend or review docs.
+- OpenAPI snapshot: `openapi.json` (sha256 `6b1ccccb67b29e756603810578fdcd2d1d4b1b5ebb5978692385d11cd0793720`)
+- OpenAPI total paths: `357`
+- OpenAPI total operations: `422`
+- Guard remediation flow: if parity drifts, regenerate this contract from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
+- Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, direct `/api/v1/accounting/periods/{periodId}/close`, removed Super Admin flat onboarding, and removed Super Admin support-reset routes are intentionally absent from this contract and must not be reintroduced in frontend or review docs.
 
 ## Summary by module
 
@@ -39,7 +39,6 @@ Portal scope guardrail:
 | `credit` | 6 | /api/v1/credit/limit-requests, /api/v1/credit/limit-requests/{id}/approve, /api/v1/credit/limit-requests/{id}/reject |
 | `dealer-portal` | 10 | /api/v1/dealer-portal/aging, /api/v1/dealer-portal/credit-limit-requests, /api/v1/dealer-portal/dashboard |
 | `dealers` | 5 | /api/v1/dealers, /api/v1/dealers/import, /api/v1/dealers/search |
-| `demo` | 1 | /api/v1/demo/ping |
 | `dispatch` | 8 | /api/v1/dispatch/backorder/{slipId}/cancel, /api/v1/dispatch/confirm, /api/v1/dispatch/order/{orderId} |
 | `exports` | 2 | /api/v1/exports/request, /api/v1/exports/{requestId}/download |
 | `factory` | 17 | /api/v1/factory/bulk-batches/{finishedGoodId}, /api/v1/factory/bulk-batches/{parentBatchId}/children, /api/v1/factory/cost-allocation |
@@ -54,7 +53,7 @@ Portal scope guardrail:
 | `purchasing` | 12 | /api/v1/purchasing/goods-receipts, /api/v1/purchasing/goods-receipts/{id}, /api/v1/purchasing/purchase-orders |
 | `raw-materials` | 5 | /api/v1/raw-materials, /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory |
 | `reports` | 20 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/receivables |
-| `sales` | 15 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
+| `sales` | 13 | /api/v1/sales/dashboard, /api/v1/sales/dispatch/reconcile-order-markers, /api/v1/sales/orders |
 | `setup` | 6 | /api/v1/setup/accounting, /api/v1/setup/company-details, /api/v1/setup/finish |
 | `superadmin` | 80 | /api/v1/superadmin/audit/platform-events, /api/v1/superadmin/audit/security-events, /api/v1/superadmin/audit/suspicious-events |
 | `suppliers` | 6 | /api/v1/suppliers, /api/v1/suppliers/import, /api/v1/suppliers/{id} |
@@ -214,10 +213,6 @@ Portal scope guardrail:
 - `GET, PUT` `/api/v1/dealers/{dealerId}`
 - `POST` `/api/v1/dealers/{dealerId}/dunning/hold`
 
-## `demo`
-
-- `GET` `/api/v1/demo/ping`
-
 ## `dispatch`
 
 - `POST` `/api/v1/dispatch/backorder/{slipId}/cancel`
@@ -279,7 +274,6 @@ Portal scope guardrail:
 - `GET, POST` `/api/v1/hr/leave-requests`
 - `PATCH` `/api/v1/hr/leave-requests/{id}/status`
 - `GET` `/api/v1/hr/leave-types`
-- `GET, POST` `/api/v1/hr/payroll-runs`
 - `GET, POST` `/api/v1/hr/salary-structures`
 - `PUT` `/api/v1/hr/salary-structures/{id}`
 
@@ -391,8 +385,6 @@ Portal scope guardrail:
 ## `sales`
 
 - `GET` `/api/v1/sales/dashboard`
-- `GET` `/api/v1/sales/dealers`
-- `GET` `/api/v1/sales/dealers/search`
 - `POST` `/api/v1/sales/dispatch/reconcile-order-markers`
 - `GET, POST` `/api/v1/sales/orders`
 - `GET` `/api/v1/sales/orders/search`

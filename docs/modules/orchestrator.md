@@ -2,11 +2,11 @@
 
 Last reviewed: 2026-04-02
 
-This packet documents the orchestrator module, event/listener bridges, schedulers, retry/dead-letter behavior, feature flags, and the distinction between background coordination and canonical module ownership. It is grounded in the actual implementation rather than aspirational redesign.
+This document describes the orchestrator module, event/listener bridges, schedulers, retry/dead-letter behavior, feature flags, and the distinction between background coordination and canonical module ownership. It is grounded in the actual implementation rather than aspirational redesign.
 
 A reader can understand the outbox path, listener model, and scheduler surfaces without reading source code.
 
-Deprecated, dead, or incomplete orchestration seams are disclosed explicitly rather than flattened into generic background-work prose.
+Retired, dead, or incomplete orchestration paths are disclosed explicitly rather than flattened into generic background-work prose.
 
 ---
 
@@ -35,11 +35,8 @@ Deprecated, dead, or incomplete orchestration seams are disclosed explicitly rat
 | `OrchestratorIdempotencyService` | Idempotency key reservation and payload-hash-based replay detection for orchestrator commands |
 | `OrderAutoApprovalListener` | Spring `@TransactionalEventListener` that auto-approves sales orders after commit when the system setting is enabled |
 | `TraceService` | Audit-trail persistence and lookup for orchestrator operations |
-| `DashboardAggregationService` | Thin wrapper around `IntegrationCoordinator` dashboard methods |
 | `SchedulerService` | Dynamic cron-based job registration, pause, and execution tracking |
 | `CorrelationIdentifierSanitizer` | Input sanitization for trace IDs, request IDs, and idempotency keys |
-| `PolicyEnforcer` | Access-control checks for orchestrator command permissions |
-| `ExternalSyncService` | Retryable external sync stubs (costing snapshots, accounting data export) |
 
 ### Key Entities
 
@@ -58,7 +55,15 @@ Deprecated, dead, or incomplete orchestration seams are disclosed explicitly rat
 | `DomainEvent` | Orchestrator-internal event record persisted to the outbox |
 | `ApproveOrderRequest` | Order approval command payload |
 | `OrderFulfillmentRequest` | Fulfillment status update payload |
-| `PayrollRunRequest` | Payroll run command payload |
+
+### Write Contract
+
+| Endpoint | Idempotency | Request ID |
+| --- | --- | --- |
+| `POST /api/v1/orchestrator/orders/{orderId}/approve` | `Idempotency-Key` header is required | Optional `X-Request-Id` for correlation only |
+| `POST /api/v1/orchestrator/orders/{orderId}/fulfillment` | `Idempotency-Key` header is required | Optional `X-Request-Id` for correlation only |
+
+The orchestrator does not derive idempotency keys from request IDs or payload hashes. Missing or malformed `Idempotency-Key` values fail before command dispatch.
 
 ---
 
@@ -153,15 +158,14 @@ The orchestrator participates in two kinds of event bridges: internal Spring eve
 
 | Source Event | Listener | Phase | Target | Config Guard |
 | --- | --- | --- | --- | --- |
-| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` (`REQUIRES_NEW` tx) | Accounting journal entries | `erp.inventory.accounting.events.enabled` (default: `true`) |
-| `InventoryValuationChangedEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` (`REQUIRES_NEW` tx) | Accounting journal entries | `erp.inventory.accounting.events.enabled` (default: `true`) |
-| `PackagingSlipEvent` | `FactorySlipEventListener` | `@EventListener` (synchronous) | Log only | None |
+| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` (`REQUIRES_NEW` tx) | Accounting journal entries | `erp.inventory.accounting.events.enabled` (default: `false`) |
+| `InventoryValuationChangedEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` (`REQUIRES_NEW` tx) | Accounting journal entries | `erp.inventory.accounting.events.enabled` (default: `false`) |
 | `SalesOrderCreatedEvent` | `OrderAutoApprovalListener` | `AFTER_COMMIT` | Orchestrator auto-approval | `SystemSettingsService.isAutoApprovalEnabled()` |
 | `JournalEntryPostedEvent` | `JournalEntryPostedAuditListener` | `AFTER_COMMIT` (`fallbackExecution = true`) | Core audit marker | None |
 
 ### Important Notes on the Inventory–Accounting Bridge
 
-The `InventoryAccountingEventListener` is conditional on `erp.inventory.accounting.events.enabled`. When this property is `false`, inventory movements and valuation changes will **not** automatically create accounting entries. The event bridge is disabled silently. If the toggle is misconfigured, the system silently skips expected accounting side effects rather than failing closed. This is a significant hidden coupling risk.
+The `InventoryAccountingEventListener` is conditional on `erp.inventory.accounting.events.enabled`. The current default/prod posture is disabled. Workflow owners post accounting directly; enabling this listener is reserved for standalone inventory movements that need automatic GL entries.
 
 The listener skips canonical-workflow movements (`GOODS_RECEIPT`, `SALES_ORDER`, `PACKAGING_SLIP` related entity types) to avoid duplicate posting when the canonical module path already handles the GL posting.
 
@@ -199,8 +203,7 @@ The `SchedulerConfig` configures a `ThreadPoolTaskScheduler` with a 5-thread poo
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `orchestrator.payroll.enabled` | `false` | Controls whether the orchestrator payroll run command is active. When `false` (CODE-RED), the command throws `OrchestratorFeatureDisabledException` with a pointer to `/api/v1/payroll/runs`. |
-| `orchestrator.factory-dispatch.enabled` | `false` | Controls whether the orchestrator factory-dispatch command is active. When `false` (CODE-RED), the command is rejected with `OrchestratorFeatureDisabledException`. |
+| `orchestrator.factory-dispatch.enabled` | `false` | Controls whether the orchestrator factory-dispatch command is active. Current orchestrator dispatch shortcuts are not exposed; dispatch writes use `/api/v1/dispatch/confirm`. |
 | `erp.inventory.accounting.events.enabled` | `true` | Controls whether the inventory→accounting event bridge is active. When `false`, inventory events do **not** trigger accounting journal entries. |
 | `SystemSettingsService.isAutoApprovalEnabled()` | dynamic | Controls whether the `OrderAutoApprovalListener` fires after `SalesOrderCreatedEvent`. Evaluated at runtime from the system settings service. |
 
@@ -212,7 +215,7 @@ The `SchedulerConfig` configures a `ThreadPoolTaskScheduler` with a 5-thread poo
 
 The older orchestrator-side dispatch shortcut is retired and intentionally not recoverable. Orchestrator guidance must not describe any dispatch-posting writer inside this module; the surviving public dispatch writer is `POST /api/v1/dispatch/confirm`.
 
-**Dispatch is explicitly a two-layer seam:**
+**Dispatch ownership is split across two module boundaries:**
 - **Transport/controller ownership**: `inventory.DispatchController` at `/api/v1/dispatch/**`
 - **Commercial/accounting ownership**: `sales.SalesDispatchReconciliationService` handles the authoritative commercial and accounting side effects
 
@@ -220,35 +223,16 @@ The canonical public write remains `POST /api/v1/dispatch/confirm`: inventory ow
 
 **Action:** Treat historical orchestrator dispatch references as retired and route shipment posting through `POST /api/v1/dispatch/confirm` only.
 
-### Deprecated: Orchestrator Payroll Run (HARD BLOCK)
+### Retired: Orchestrator Payroll Run (HARD CUT)
 
-`IntegrationCoordinator.generatePayroll()` throws `ApplicationException` with a deprecation message pointing to `/api/v1/payroll/runs`. The canonical payroll run path is `POST /api/v1/payroll/runs`, owned by the HR module. The orchestrator still wraps `recordPayrollPayment()` for accounting, but the generate step is replaced by the HR module's own payroll run implementation.
-
-**Action:** Do not call `runPayroll` through the orchestrator. The response is a business error redirecting to `/api/v1/payroll/runs`.
-
-### No-Op / Stub: ExternalSyncService
-
-`ExternalSyncService` contains two `@Retryable` methods (`sendCostingSnapshot`, `exportAccountingData`) that log only and perform no meaningful work. These appear to be placeholder stubs for future external integrations rather than active integrations. They should not be treated as production-ready behavior.
-
-### No-Op: WorkflowService State Machine Definitions
-
-`WorkflowService` maintains an in-memory `ConcurrentHashMap` of named workflow step definitions (`order-approval`, `order-auto-approval`, `order-fulfillment`, `dispatch`, `payroll`). These are used to generate trace IDs and validate workflow names but do **not actually execute workflow steps**. The `startWorkflow` method generates a UUID but does not orchestrate a multi-step sequence. The step definitions are informational only.
-
-### No-Op: PolicyEnforcer
-
-`PolicyEnforcer` contains basic null checks for `userId` and `companyId` for order approval, dispatch, and payroll permissions. It does not perform actual RBAC enforcement — the real enforcement happens at the controller `@PreAuthorize` annotations and the module-level RBAC infrastructure. `PolicyEnforcer` is a placeholder for future policy expansion.
-
-### Weak: FactorySlipEventListener
-
-`FactorySlipEventListener` listens to `PackagingSlipEvent` via `@EventListener` (synchronous, within the originating transaction). It only logs the event details. There is no downstream processing, no queue integration, and no side effects. It is a lightweight observer that may be removed or replaced by a more meaningful integration in the future.
+The orchestrator payroll-run command and payload are deleted. The canonical payroll run path is `POST /api/v1/payroll/runs`, owned by the HR module. The orchestrator still wraps `recordPayrollPayment()` for accounting coordination, but it no longer creates payroll runs.
 
 ### Configuration-Guarded Safety Risks
 
 | Seam | Risk | Impact |
 | --- | --- | --- |
-| `erp.inventory.accounting.events.enabled = false` | Inventory movements and valuation changes will **not** trigger accounting journal entries. | If this toggle is off, inventory operations silently skip financial side effects rather than failing closed. This is a significant hidden coupling risk. |
-| `orchestrator.payroll.enabled = false` | Orchestrator payroll run commands will be rejected. | This is the correct fail-closed behavior but means the orchestrator payroll path is a dead end. |
-| `orchestrator.factory-dispatch.enabled = false` | Historical orchestrator dispatch shortcuts stay disabled. | Dispatch is a two-layer seam: inventory owns transport/controller (`/api/v1/dispatch/**`), sales owns commercial/accounting side effects. The canonical dispatch path is `POST /api/v1/dispatch/confirm`, not the orchestrator. |
+| `erp.inventory.accounting.events.enabled = true` | Non-canonical inventory movements auto-post GL entries. | Keep disabled unless a current inventory operation explicitly depends on listener-owned posting. |
+| `orchestrator.factory-dispatch.enabled = false` | Retired orchestrator dispatch shortcuts stay disabled. | Inventory owns transport/controller (`/api/v1/dispatch/**`), sales owns commercial/accounting side effects. The canonical dispatch path is `POST /api/v1/dispatch/confirm`, not the orchestrator. |
 | `auto-approval disabled` | `SalesOrderCreatedEvent` will be consumed but the listener will log and skip. | No inventory reservation or orchestrator event is published. Orders stay in their initial status until manually approved. |
 
 ---
@@ -263,7 +247,7 @@ A reader must understand the distinction between what the orchestrator coordinat
 | Inventory reservation | Performs reservation on behalf of the approval workflow | Inventory module owns reservation logic (`FinishedGoodsService`) |
 | Production scheduling | Creates urgent production plans for shortfalls | Factory module owns production plans (`FactoryService`) |
 | Dispatch confirmation | **Retired from orchestrator ownership** | Two-layer seam: inventory owns transport/controller (`/api/v1/dispatch/**`), sales owns commercial/accounting (`SalesDispatchReconciliationService`). Canonical path: `POST /api/v1/dispatch/confirm` |
-| Payroll run + payment | **Deprecated** for generation; still wraps payment recording | HR module owns canonical payroll (`POST /api/v1/payroll/runs`) |
+| Payroll payment | Wraps payment recording | HR module owns payroll runs (`POST /api/v1/payroll/runs`); accounting owns payment posting |
 | Dashboard aggregation | Aggregates cross-module read models for admin/factory/finance dashboards | Each module owns its own read models; orchestrator only composes them |
 | Outbox event publishing | Owns the full outbox lifecycle | Orchestrator owns this; it is not delegated to business modules |
 | Audit/trace recording | Owns orchestrator-scoped audit trail | Separate from platform audit and enterprise audit trail (see ADR-004) |
