@@ -47,10 +47,12 @@ Last reviewed: 2026-05-14
   - `MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -Dtest=CommandDispatcherTest,TS_RuntimeOrchestratorExecutableCoverageTest test`
   - `MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -Dtest=TS_RuntimeTraceServiceExecutableCoverageTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest test`
   - `MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `bash scripts/guard_orchestrator_correlation_contract.sh`
   - `git diff --check`
 - Result summary:
   - command dispatcher focused pack reported 16 tests run, 0 failures/errors/skips after fixture cleanup
   - trace/idempotency focused pack reported 14 tests run, 0 failures/errors/skips
+  - orchestrator correlation guard now asserts the leased canonical idempotency key is propagated downstream and the request-key fallback stays absent
   - Spotless and whitespace diff checks passed
 
 ## Addendum — `hard-cut-sales-order-status-canonicalization`
