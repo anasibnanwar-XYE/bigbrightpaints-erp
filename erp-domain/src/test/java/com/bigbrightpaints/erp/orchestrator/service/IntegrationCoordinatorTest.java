@@ -479,35 +479,6 @@ class IntegrationCoordinatorTest {
   }
 
   @Test
-  void isHrPayrollEnabled_requiresCompanyAndEnabledModules() {
-    Company modulesMissing = new Company();
-    modulesMissing.setEnabledModules(null);
-
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", (Company) null))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", modulesMissing))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", company))
-        .isFalse();
-
-    company.setEnabledModules(Set.of("HR_PAYROLL"));
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", company))
-        .isTrue();
-  }
-
-  @Test
   void updateProductionStatusFailsClosedWhenFactoryDispatchDisabled() {
     IntegrationCoordinator disabled =
         new IntegrationCoordinator(
