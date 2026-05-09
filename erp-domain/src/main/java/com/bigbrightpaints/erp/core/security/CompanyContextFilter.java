@@ -104,7 +104,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
           "/api/v1/admin/self",
           "/api/v1/admin/support",
           "/api/v1/admin/exports",
-          "/api/v1/admin/notify",
           "/api/v1/admin/users");
   private static final Map<String, Set<String>> PUBLIC_AUTH_ENDPOINTS_BY_METHOD =
       Map.of(
@@ -149,12 +148,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         TenantRuntimeEnforcementService.TenantRequestAdmission.notTracked();
     try {
       String runtimePath = normalizePath(resolveApplicationPath(request));
-      if (isRetiredAdminHostPath(request, runtimePath)) {
-        // Retired host paths are intentionally unresolved by handlers and should return 404
-        // consistently, independent of auth/company-context binding.
-        filterChain.doFilter(request, response);
-        return;
-      }
       CompanyBoundControlBinding controlBinding =
           resolveCompanyBoundControlBinding(runtimePath, request.getMethod());
       boolean lifecycleControlRequest = controlBinding != null;
@@ -172,12 +165,12 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         writeAccessDenied(response, "SUPER_ADMIN_PLATFORM_ONLY", SUPER_ADMIN_PLATFORM_ONLY_MESSAGE);
         return;
       }
-      String legacyHeaderCompanyId = request.getHeader("X-Company-Id");
-      if (StringUtils.hasText(legacyHeaderCompanyId)) {
+      String retiredHeaderCompanyId = request.getHeader("X-Company-Id");
+      if (StringUtils.hasText(retiredHeaderCompanyId)) {
         writeAccessDenied(
             request,
             response,
-            "COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED",
+            "COMPANY_CONTEXT_RETIRED_HEADER_UNSUPPORTED",
             "Use X-Company-Code for company context binding");
         return;
       }
@@ -493,7 +486,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       metadata.put("deniedPath", normalizePath(resolveApplicationPath(request)));
       metadata.put("deniedMethod", request.getMethod());
       if (StringUtils.hasText(request.getHeader("X-Company-Id"))) {
-        metadata.put("legacyCompanyIdHeaderPresent", "true");
+        metadata.put("retiredCompanyIdHeaderPresent", "true");
       }
       if (StringUtils.hasText(request.getHeader("X-Company-Code"))) {
         metadata.put("companyCodeHeaderPresent", "true");
@@ -755,19 +748,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (normalizedPath.equals("/api/v1/companies")) {
       return true;
     }
-    if (RetiredTenantAdminHostPaths.matchesNormalizedPath(normalizedPath)) {
-      // Let retired admin hosts fall through to dispatcher 404 uniformly.
-      return true;
-    }
     return normalizedPath.equals("/api/v1/auth")
         || normalizedPath.startsWith("/api/v1/auth/")
         || normalizedPath.equals("/api/v1/superadmin")
         || normalizedPath.startsWith("/api/v1/superadmin/");
-  }
-
-  private boolean isRetiredAdminHostPath(HttpServletRequest request, String normalizedPath) {
-    return RetiredTenantAdminHostPaths.matchesNormalizedPath(
-        normalizedPath, request == null ? null : request.getMethod());
   }
 
   private boolean isSetupCorridorRequestAllowed(String path) {

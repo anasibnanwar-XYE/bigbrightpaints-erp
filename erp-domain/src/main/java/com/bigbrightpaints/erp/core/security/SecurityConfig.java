@@ -119,9 +119,6 @@ public class SecurityConfig {
                       "/api/v1/auth/password/reset",
                       "/api/v1/auth/activation/verify",
                       "/api/v1/auth/activation/complete")
-                  .permitAll()
-                  // Keep retired tenant-admin hosts unresolved (dispatcher 404) for every caller.
-                  .requestMatchers(RetiredTenantAdminHostPaths.requestMatchers())
                   .permitAll();
               if (isSwaggerAllowed()) {
                 registry

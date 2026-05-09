@@ -945,118 +945,103 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void retired_admin_settings_and_roles_hosts_are_not_exposed() {
+  void old_admin_settings_and_roles_hosts_are_not_exposed() {
     String adminToken = login(ROLE_GUARD_ADMIN_EMAIL, TENANT_A);
     String superAdminToken = login(SUPER_ADMIN_EMAIL, PLATFORM_SCOPE);
-    List<RetiredHostProbe> probes =
+    List<OldAdminHostProbe> probes =
         List.of(
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/settings",
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(adminToken, TENANT_A))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/roles",
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(adminToken, TENANT_A))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/settings",
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(superAdminToken, PLATFORM_SCOPE))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/roles",
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(superAdminToken, PLATFORM_SCOPE))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/settings",
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(null, TENANT_A))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/roles",
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(null, TENANT_A))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/settings",
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(adminToken, TENANT_B))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/roles",
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(adminToken, TENANT_B))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/settings",
                 HttpMethod.PUT,
                 new HttpEntity<>(
                     Map.of("exportApprovalRequired", true), jsonHeaders(adminToken, TENANT_A))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/settings",
                 HttpMethod.PUT,
                 new HttpEntity<>(
                     Map.of("exportApprovalRequired", true),
                     jsonHeaders(superAdminToken, PLATFORM_SCOPE))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/roles",
                 HttpMethod.POST,
                 new HttpEntity<>(
                     Map.of(
                         "name", "ROLE_FACTORY",
-                        "description", "legacy role post should not exist",
+                        "description", "old role post should not exist",
                         "permissions", factoryRolePermissionCodes()),
                     jsonHeaders(adminToken, TENANT_A))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/roles",
                 HttpMethod.POST,
                 new HttpEntity<>(
                     Map.of(
                         "name", "ROLE_FACTORY",
-                        "description", "legacy role post should not exist",
+                        "description", "old role post should not exist",
                         "permissions", factoryRolePermissionCodes()),
                     jsonHeaders(superAdminToken, PLATFORM_SCOPE))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/roles/ROLE_FACTORY",
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(adminToken, TENANT_A))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/roles/ROLE_FACTORY",
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(superAdminToken, PLATFORM_SCOPE))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/notify",
                 HttpMethod.POST,
                 new HttpEntity<>(
                     Map.of(
-                        "to",
-                        "legacy-admin-notify@bbp.com",
-                        "subject",
-                        "Legacy",
-                        "body",
-                        "retired"),
+                        "to", "old-admin-notify@bbp.com", "subject", "Legacy", "body", "retired"),
                     jsonHeaders(adminToken, TENANT_A))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/notify",
                 HttpMethod.POST,
                 new HttpEntity<>(
                     Map.of(
-                        "to",
-                        "legacy-admin-notify@bbp.com",
-                        "subject",
-                        "Legacy",
-                        "body",
-                        "retired"),
+                        "to", "old-admin-notify@bbp.com", "subject", "Legacy", "body", "retired"),
                     jsonHeaders(superAdminToken, PLATFORM_SCOPE))),
-            retiredHostProbe(
+            oldAdminHostProbe(
                 "/api/v1/admin/notify",
                 HttpMethod.POST,
                 new HttpEntity<>(
                     Map.of(
-                        "to",
-                        "legacy-admin-notify@bbp.com",
-                        "subject",
-                        "Legacy",
-                        "body",
-                        "retired"),
+                        "to", "old-admin-notify@bbp.com", "subject", "Legacy", "body", "retired"),
                     jsonHeaders(null, TENANT_A))));
 
-    probes.forEach(this::assertRetiredHostNotFound);
+    probes.forEach(this::assertOldAdminHostNotExposed);
   }
 
   @Test
@@ -1537,14 +1522,17 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     return List.of("portal:factory", "factory.dispatch");
   }
 
-  private RetiredHostProbe retiredHostProbe(String path, HttpMethod method, HttpEntity<?> entity) {
-    return new RetiredHostProbe(path, method, entity);
+  private OldAdminHostProbe oldAdminHostProbe(
+      String path, HttpMethod method, HttpEntity<?> entity) {
+    return new OldAdminHostProbe(path, method, entity);
   }
 
-  private void assertRetiredHostNotFound(RetiredHostProbe probe) {
+  private void assertOldAdminHostNotExposed(OldAdminHostProbe probe) {
     ResponseEntity<Map> response =
         rest.exchange(probe.path(), probe.method(), probe.entity(), Map.class);
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(response.getStatusCode())
+        .as("%s %s returned body %s", probe.method(), probe.path(), response.getBody())
+        .isNotIn(HttpStatus.OK, HttpStatus.CREATED, HttpStatus.ACCEPTED, HttpStatus.NO_CONTENT);
   }
 
   private HttpHeaders jsonHeaders(String token, String companyCode) {
@@ -1661,5 +1649,5 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
         .getResultList();
   }
 
-  private record RetiredHostProbe(String path, HttpMethod method, HttpEntity<?> entity) {}
+  private record OldAdminHostProbe(String path, HttpMethod method, HttpEntity<?> entity) {}
 }

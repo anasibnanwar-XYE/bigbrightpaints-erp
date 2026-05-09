@@ -246,7 +246,7 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
-  void companyScopedRequest_rejectsLegacyCompanyIdHeader() throws ServletException, IOException {
+  void companyScopedRequest_rejectsRetiredCompanyIdHeader() throws ServletException, IOException {
     authenticate("tenant-admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("TENANT-A"));
     MockHttpServletRequest request = request("GET", "/api/v1/private");
     request.setAttribute("jwtClaims", claimsFor("TENANT-A"));
@@ -256,7 +256,8 @@ class CompanyContextFilterControlPlaneBindingTest {
     filter.doFilter(request, response, filterChain);
 
     assertThat(response.getStatus()).isEqualTo(403);
-    assertThat(response.getContentAsString()).contains("COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED");
+    assertThat(response.getContentAsString())
+        .contains("COMPANY_CONTEXT_RETIRED_HEADER_UNSUPPORTED");
     verifyNoInteractions(companyService);
     verify(tenantRuntimeRequestAdmissionService, never())
         .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
