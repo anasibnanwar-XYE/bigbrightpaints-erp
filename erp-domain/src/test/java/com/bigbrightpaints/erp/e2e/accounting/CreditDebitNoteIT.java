@@ -112,17 +112,16 @@ class CreditDebitNoteIT extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("Credit note normalizes legacy reference to CRN and is idempotent by reference")
+  @DisplayName("Credit note requires CRN reference key and is idempotent by reference")
   void creditNote_ReversesAndIdempotent() {
     Invoice invoice = createDispatchedInvoice(new BigDecimal("1"), new BigDecimal("150.00"));
-    String submittedReference = "CN-" + invoice.getInvoiceNumber();
     String canonicalReference = "CRN-" + invoice.getInvoiceNumber();
     Map<String, Object> payload =
         Map.of(
             "invoiceId",
             invoice.getId(),
             "referenceNumber",
-            submittedReference,
+            canonicalReference,
             "memo",
             "Credit for return");
 
@@ -400,7 +399,7 @@ class CreditDebitNoteIT extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/sales/orders",
             HttpMethod.POST,
-            new HttpEntity<>(orderReq, headers),
+            new HttpEntity<>(orderReq, headersWithIdempotencyKey("cdn-order-" + System.nanoTime())),
             Map.class);
     Long orderId = ((Number) requireData(orderResp, "create order").get("id")).longValue();
 

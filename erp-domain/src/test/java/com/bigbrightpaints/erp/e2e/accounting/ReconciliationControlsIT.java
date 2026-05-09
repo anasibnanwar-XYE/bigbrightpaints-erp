@@ -82,7 +82,7 @@ public class ReconciliationControlsIT extends AbstractIntegrationTest {
                               accountingService
                                   .createAccount(
                                       new AccountRequest(
-                                          "OPEN-BAL", "Opening Balance", AccountType.EQUITY))
+                                          "OPEN-BAL", "Opening Balance", AccountType.EQUITY, null))
                                   .id())
                           .orElseThrow());
 

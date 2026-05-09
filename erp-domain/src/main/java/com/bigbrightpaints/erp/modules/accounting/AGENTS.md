@@ -24,7 +24,7 @@ The accounting module owns financial posting, corrections, period controls, sett
 - `JournalController` — journal CRUD, manual journals, accruals, payroll payment posting seam, credit/debit notes, and bad-debt write-off.
 - `SettlementController` — dealer receipts, dealer/supplier settlements, and auto-settle flows with idempotency handling.
 - `PeriodController` — period lifecycle (list/create/update/close/lock/reopen/request-close/approve-close/reject-close) and month-end controls.
-- `ReconciliationController` — bank reconciliation sessions, discrepancy workflows, and inter-company reconciliation; the legacy `POST /reconciliation/bank` route is retired.
+- `ReconciliationController` — bank reconciliation sessions, discrepancy workflows, and inter-company reconciliation.
 - `StatementReportController` — statements, aging, temporal/date-context, GST/reporting, and sales-return reporting surfaces.
 - `InventoryAccountingController` — landed cost, revaluation, and WIP accounting adjustments.
 - `OpeningBalanceImportController` — CSV opening balance import.
@@ -41,10 +41,10 @@ The accounting module owns financial posting, corrections, period controls, sett
   - `SettlementAllocationResolutionService` — resolves explicit/header/replay allocations for dealer/supplier settlement writers.
   - `SettlementTotalsValidationService` — owns settlement/payment allocation validation, totals, application-type resolution, and override detection.
   - `SettlementJournalLineDraftService` — drafts dealer/supplier settlement journal lines from resolved totals and account bindings.
-  - `DealerSettlementService`, `SupplierSettlementService`, and `SupplierPaymentService` consume the focused collaborators directly; `SettlementRequestResolutionService` is retired.
+  - `DealerSettlementService`, `SupplierSettlementService`, and `SupplierPaymentService` consume the focused collaborators directly.
 - `OpeningBalanceImportService` — opening balance import processing.
 
-Canonical module-boundary guidance: route new cross-module work through `AccountingFacade`, `AccountingService`, `AccountingPeriodService`, and `ReconciliationService`. Do not treat legacy support or `*Core` classes as public accounting seams.
+Canonical module-boundary guidance: route new cross-module work through `AccountingFacade`, `AccountingService`, `AccountingPeriodService`, and `ReconciliationService`. Do not treat `*Core` implementation classes as public accounting entrypoints.
 
 ## DTO Families
 
@@ -88,11 +88,11 @@ Accounting enforces strict immutability for posted journal entries:
 - Period close uses a maker-checker workflow, but reopen is super-admin-only.
 - Partner ledgers (`DealerLedgerEntry`, `SupplierLedgerEntry`) track per-partner financial position but are derived from journal entries rather than independently posted.
 
-## Deprecated and Non-Canonical Surfaces
+## Canonical Constraints
 
-### Legacy Period Reopen Behavior
+### Period Reopen Behavior
 
-Period reopen is currently super-admin-only with no maker-checker workflow. This differs from period close which uses maker-checker. There is no plans to add maker-checker to period reopen - this is by design rather than incomplete implementation.
+Period reopen is super-admin-only with no maker-checker workflow. This differs from period close, which uses maker-checker. There are no plans to add maker-checker to period reopen; this is the current product design rather than an incomplete implementation.
 
 ### Partner Ledger Derivation
 

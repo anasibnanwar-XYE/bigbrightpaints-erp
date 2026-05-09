@@ -162,7 +162,7 @@ class AccountCatalogServiceTest {
     assertThatThrownBy(
             () ->
                 service.createAccount(
-                    new AccountRequest("CASH-RACE", "Cash Race", AccountType.ASSET)))
+                    new AccountRequest("CASH-RACE", "Cash Race", AccountType.ASSET, null)))
         .isInstanceOf(ApplicationException.class)
         .satisfies(
             ex -> {
@@ -188,7 +188,7 @@ class AccountCatalogServiceTest {
     assertThatThrownBy(
             () ->
                 service.createAccount(
-                    new AccountRequest("cash-race-ci", "Cash Race CI", AccountType.ASSET)))
+                    new AccountRequest("cash-race-ci", "Cash Race CI", AccountType.ASSET, null)))
         .isInstanceOf(ApplicationException.class)
         .satisfies(
             ex -> {

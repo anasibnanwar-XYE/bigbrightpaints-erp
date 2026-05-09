@@ -432,21 +432,21 @@ public class AccountingEventStore {
   }
 
   private UUID resolveFlowCorrelationId(JournalEntry entry, String... additionalKeys) {
-    List<String> fallbackKeys = new ArrayList<>();
-    appendCorrelationFallback(fallbackKeys, entry.getSourceReference());
-    appendCorrelationFallback(fallbackKeys, entry.getSourceModule());
+    List<String> candidateKeys = new ArrayList<>();
+    appendCorrelationCandidate(candidateKeys, entry.getSourceReference());
+    appendCorrelationCandidate(candidateKeys, entry.getSourceModule());
     for (String additionalKey : additionalKeys) {
-      appendCorrelationFallback(fallbackKeys, additionalKey);
+      appendCorrelationCandidate(candidateKeys, additionalKey);
     }
     return AuditCorrelationIdResolver.resolveCorrelationId(
-        AuditCorrelationIdResolver.currentRequest(), fallbackKeys.toArray(String[]::new));
+        AuditCorrelationIdResolver.currentRequest(), candidateKeys.toArray(String[]::new));
   }
 
-  private void appendCorrelationFallback(List<String> fallbackKeys, String value) {
+  private void appendCorrelationCandidate(List<String> candidateKeys, String value) {
     if (!StringUtils.hasText(value)) {
       return;
     }
-    fallbackKeys.add(value.trim());
+    candidateKeys.add(value.trim());
   }
 
   private void incrementJournalsCreatedMetric(Company company) {

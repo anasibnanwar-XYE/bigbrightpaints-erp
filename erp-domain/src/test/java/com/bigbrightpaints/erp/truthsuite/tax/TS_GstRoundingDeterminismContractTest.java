@@ -11,8 +11,10 @@ class TS_GstRoundingDeterminismContractTest {
 
   private static final String SALES_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesCoreEngine.java";
-  private static final String PURCHASING_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java";
+  private static final String PURCHASE_INVOICE_ENGINE =
+      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseInvoiceEngine.java";
+  private static final String PURCHASE_TAX_POLICY =
+      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseTaxPolicy.java";
   private static final String TAX_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/TaxService.java";
 
@@ -33,7 +35,7 @@ class TS_GstRoundingDeterminismContractTest {
   @Test
   void purchasingTaxAllocationUsesDeterministicHalfUpRounding() {
     TruthSuiteFileAssert.assertContains(
-        PURCHASING_SERVICE,
+        PURCHASE_INVOICE_ENGINE,
         "lineTax = currency(lineNet.multiply(",
         ".divide(new BigDecimal(\"100\"), 6, RoundingMode.HALF_UP));",
         "BigDecimal allocatedTax = (i == computedLines.size() - 1)",
@@ -50,7 +52,7 @@ class TS_GstRoundingDeterminismContractTest {
             + " treatment \" + value);");
 
     TruthSuiteFileAssert.assertContains(
-        PURCHASING_SERVICE,
+        PURCHASE_TAX_POLICY,
         "if (lineRequest != null && lineRequest.taxRate() != null) {",
         "if (rawMaterial != null && rawMaterial.getGstRate() != null) {",
         "if (company != null && company.getDefaultGstRate() != null) {",

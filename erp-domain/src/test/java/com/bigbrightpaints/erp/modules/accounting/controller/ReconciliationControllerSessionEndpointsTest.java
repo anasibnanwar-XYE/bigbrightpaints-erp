@@ -37,7 +37,7 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 class ReconciliationControllerSessionEndpointsTest {
 
   @Test
-  void legacyBankEndpoint_isUnmapped() throws Exception {
+  void retiredBankEndpoint_isUnmapped() throws Exception {
     MockMvc mvc =
         MockMvcBuilders.standaloneSetup(
                 controller(

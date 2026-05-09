@@ -421,11 +421,11 @@ public class TaxService {
     if (explicitTaxable != null && explicitTaxable.compareTo(BigDecimal.ZERO) >= 0) {
       return MoneyUtils.roundCurrency(explicitTaxable);
     }
-    BigDecimal fallback = safe(lineTotal).subtract(safe(taxAmount));
-    if (fallback.compareTo(BigDecimal.ZERO) < 0) {
+    BigDecimal derivedTaxable = safe(lineTotal).subtract(safe(taxAmount));
+    if (derivedTaxable.compareTo(BigDecimal.ZERO) < 0) {
       return BigDecimal.ZERO;
     }
-    return MoneyUtils.roundCurrency(fallback);
+    return MoneyUtils.roundCurrency(derivedTaxable);
   }
 
   private boolean isIncludedInvoiceStatus(String status) {

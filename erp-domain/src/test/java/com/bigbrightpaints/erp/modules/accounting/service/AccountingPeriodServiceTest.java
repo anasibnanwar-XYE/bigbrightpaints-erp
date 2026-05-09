@@ -1175,7 +1175,7 @@ class AccountingPeriodServiceTest {
   }
 
   @Test
-  void correctionLinkageHelpers_coverEmptyBlankAndCnReferencePaths() {
+  void correctionLinkageHelpers_requireCanonicalCreditNoteReferencePrefix() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
     AccountingPeriodCorrectionJournalClassifier classifier =
@@ -1193,9 +1193,13 @@ class AccountingPeriodServiceTest {
     blankReference.setReferenceNumber("   ");
     assertThat(classifier.isCorrectionJournal(blankReference)).isFalse();
 
-    JournalEntry cnReference = new JournalEntry();
-    cnReference.setReferenceNumber(" cn-2201 ");
-    assertThat(classifier.isCorrectionJournal(cnReference)).isTrue();
+    JournalEntry creditNote = new JournalEntry();
+    creditNote.setReferenceNumber(" crn-2201 ");
+    assertThat(classifier.isCorrectionJournal(creditNote)).isTrue();
+
+    JournalEntry retiredCreditNote = new JournalEntry();
+    retiredCreditNote.setReferenceNumber(" cn-2201 ");
+    assertThat(classifier.isCorrectionJournal(retiredCreditNote)).isFalse();
 
     JournalEntry missingReason = new JournalEntry();
     missingReason.setCorrectionType(
@@ -1840,61 +1844,6 @@ class AccountingPeriodServiceTest {
     assertThatThrownBy(() -> service.confirmBankReconciliation(43L, null, "locked mutation"))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("locked or closed period");
-  }
-
-  @Test
-  void countCorrectionLinkageGaps_ignoresLegacyReturnJournalsWhenDealerOrSupplierLinkExists() {
-    Company company = company(1L, "ACME");
-    AccountingPeriod period = openPeriod(company, 2026, 3);
-    AccountingPeriodChecklistDiagnosticsService diagnosticsService =
-        checklistDiagnosticsService(new AccountingPeriodCorrectionJournalClassifier());
-
-    JournalEntry salesReturn = new JournalEntry();
-    salesReturn.setCompany(company);
-    salesReturn.setReferenceNumber("CRN-INV-REF-ONLY");
-    salesReturn.setEntryDate(period.getStartDate().plusDays(1));
-    salesReturn.setStatus("POSTED");
-    salesReturn.setDealer(dealer(company, 10L, "DLR-10"));
-
-    JournalEntry purchaseReturn = new JournalEntry();
-    purchaseReturn.setCompany(company);
-    purchaseReturn.setReferenceNumber("PRN-RMP-REF-ONLY");
-    purchaseReturn.setEntryDate(period.getStartDate().plusDays(2));
-    purchaseReturn.setStatus("POSTED");
-    purchaseReturn.setSupplier(supplier(company, 20L, "SUP-20"));
-
-    JournalEntry malformedCorrection = new JournalEntry();
-    malformedCorrection.setCompany(company);
-    malformedCorrection.setReferenceNumber("DN-2001");
-    malformedCorrection.setEntryDate(period.getStartDate().plusDays(3));
-    malformedCorrection.setStatus("POSTED");
-    malformedCorrection.setCorrectionType(
-        com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType.REVERSAL);
-    malformedCorrection.setCorrectionReason("PRICE_ADJUSTMENT");
-    malformedCorrection.setSourceModule("PURCHASING");
-
-    when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
-            company, period.getStartDate(), period.getEndDate()))
-        .thenReturn(List.of(salesReturn, purchaseReturn, malformedCorrection));
-
-    long gaps = diagnosticsService.countCorrectionLinkageGaps(company, period);
-
-    assertThat(gaps).isEqualTo(1L);
-  }
-
-  @Test
-  void isMissingCorrectionLinkage_flagsLegacyReturnJournalsWithoutDealerOrSupplierAssociation() {
-    AccountingPeriodCorrectionJournalClassifier classifier =
-        new AccountingPeriodCorrectionJournalClassifier();
-
-    JournalEntry orphanedSalesReturn = new JournalEntry();
-    orphanedSalesReturn.setReferenceNumber("CRN-ORPHAN-1");
-
-    JournalEntry orphanedPurchaseReturn = new JournalEntry();
-    orphanedPurchaseReturn.setReferenceNumber("PRN-ORPHAN-1");
-
-    assertThat(classifier.isMissingCorrectionLinkage(orphanedSalesReturn)).isTrue();
-    assertThat(classifier.isMissingCorrectionLinkage(orphanedPurchaseReturn)).isTrue();
   }
 
   private AccountingPeriodChecklistDiagnosticsService checklistDiagnosticsService(

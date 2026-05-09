@@ -208,14 +208,14 @@ class DealerSettlementService {
         JournalEntry entry =
             journalReplayService.resolveReplayJournalEntry(
                 trimmedIdempotencyKey, existingEntry, existingAllocations);
-        String replayReference = canonicalReplayReference(entry, reference);
+        requireDealerReplayJournalEntry("Dealer settlement", trimmedIdempotencyKey, dealer, entry);
         PartnerPaymentEvent paymentEvent =
             resolveDealerSettlementPaymentEvent(
                 company,
                 dealer,
                 totals.totalApplied(),
-                entry != null ? entry.getEntryDate() : requestedEffectiveSettlementDate,
-                replayReference,
+                entry.getEntryDate(),
+                entry.getReferenceNumber(),
                 trimmedIdempotencyKey,
                 memo,
                 sourceRoute);
@@ -249,14 +249,14 @@ class DealerSettlementService {
       JournalEntry entry =
           journalReplayService.resolveReplayJournalEntryFromExistingAllocations(
               company, reference, trimmedIdempotencyKey, existingAllocations);
-      String replayReference = canonicalReplayReference(entry, reference);
+      requireDealerReplayJournalEntry("Dealer settlement", trimmedIdempotencyKey, dealer, entry);
       PartnerPaymentEvent paymentEvent =
           resolveDealerSettlementPaymentEvent(
               company,
               dealer,
               totals.totalApplied(),
-              entry != null ? entry.getEntryDate() : requestedEffectiveSettlementDate,
-              replayReference,
+              entry.getEntryDate(),
+              entry.getReferenceNumber(),
               trimmedIdempotencyKey,
               memo,
               sourceRoute);
@@ -487,11 +487,12 @@ class DealerSettlementService {
         sourceRoute);
   }
 
-  private String canonicalReplayReference(JournalEntry entry, String fallbackReference) {
-    if (entry != null && StringUtils.hasText(entry.getReferenceNumber())) {
-      return entry.getReferenceNumber().trim();
+  private void requireDealerReplayJournalEntry(
+      String subject, String idempotencyKey, Dealer dealer, JournalEntry entry) {
+    if (entry == null || !StringUtils.hasText(entry.getReferenceNumber())) {
+      throw journalReplayService.missingReservedPartnerAllocation(
+          subject, idempotencyKey, PartnerType.DEALER, dealer.getId());
     }
-    return fallbackReference;
   }
 
   private void attachPaymentEventToSettlementRows(

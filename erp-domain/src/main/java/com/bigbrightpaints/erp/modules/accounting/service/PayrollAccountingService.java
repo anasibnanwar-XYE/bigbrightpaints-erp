@@ -241,14 +241,12 @@ class PayrollAccountingService {
   private String resolvePayrollRunToken(String runNumber, Long runId) {
     if (StringUtils.hasText(runNumber)) {
       String normalizedRunNumber = runNumber.trim();
-      if (runId == null
-          || normalizedRunNumber.equalsIgnoreCase("LEGACY-" + runId)
-          || normalizedRunNumber.endsWith("-" + runId)) {
+      if (runId == null || normalizedRunNumber.endsWith("-" + runId)) {
         return normalizedRunNumber;
       }
       return normalizedRunNumber + "-" + runId;
     }
-    return runId != null ? "LEGACY-" + runId : null;
+    return runId != null ? runId.toString() : null;
   }
 
   private void validatePayrollPaymentIdempotency(
