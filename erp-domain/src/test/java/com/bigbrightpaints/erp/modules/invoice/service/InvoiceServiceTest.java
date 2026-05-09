@@ -91,7 +91,8 @@ class InvoiceServiceTest {
     order.setOrderNumber("SO-44");
     order.setCurrency("INR");
 
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, orderId))
         .thenReturn(List.of());
 
@@ -119,7 +120,8 @@ class InvoiceServiceTest {
     order.setCurrency("INR");
     ReflectionTestUtils.setField(order, "id", orderId);
 
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
     PackagingSlip slip = new PackagingSlip();
     ReflectionTestUtils.setField(slip, "id", 99L);
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, orderId))
@@ -153,7 +155,8 @@ class InvoiceServiceTest {
     order.setOrderNumber("SO-59");
     ReflectionTestUtils.setField(order, "id", orderId);
 
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
 
     assertThrows(ApplicationException.class, () -> invoiceService.issueInvoiceForOrder(orderId));
   }
@@ -177,7 +180,8 @@ class InvoiceServiceTest {
     order.setCurrency("INR");
     ReflectionTestUtils.setField(order, "id", orderId);
 
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
     PackagingSlip slip = new PackagingSlip();
     ReflectionTestUtils.setField(slip, "id", 99L);
     PackagingSlip otherSlip = new PackagingSlip();
@@ -212,7 +216,8 @@ class InvoiceServiceTest {
     order.setFulfillmentInvoiceId(999L);
     ReflectionTestUtils.setField(order, "id", orderId);
 
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
     PackagingSlip slip = new PackagingSlip();
     ReflectionTestUtils.setField(slip, "id", 99L);
     PackagingSlip otherSlip = new PackagingSlip();
@@ -246,7 +251,8 @@ class InvoiceServiceTest {
     order.setCurrency("INR");
     ReflectionTestUtils.setField(order, "id", orderId);
 
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
     PackagingSlip slip = new PackagingSlip();
     ReflectionTestUtils.setField(slip, "id", 99L);
     PackagingSlip cancelledSlip = new PackagingSlip();
@@ -277,7 +283,8 @@ class InvoiceServiceTest {
     order.setCurrency("INR");
     ReflectionTestUtils.setField(order, "id", orderId);
 
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
 
     PackagingSlip activeSlip = new PackagingSlip();
     ReflectionTestUtils.setField(activeSlip, "id", 199L);
@@ -305,7 +312,8 @@ class InvoiceServiceTest {
     order.setCurrency("INR");
     ReflectionTestUtils.setField(order, "id", orderId);
 
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
     PackagingSlip firstSlip = new PackagingSlip();
     ReflectionTestUtils.setField(firstSlip, "id", 101L);
     firstSlip.setStatus("RESERVED");
@@ -353,7 +361,8 @@ class InvoiceServiceTest {
     journalEntry.setStatus("POSTED");
     existingInvoice.setJournalEntry(journalEntry);
 
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
 
     PackagingSlip activeSlip = new PackagingSlip();
     ReflectionTestUtils.setField(activeSlip, "id", 201L);
@@ -401,7 +410,8 @@ class InvoiceServiceTest {
     order.setOrderNumber("SO-77");
     order.setCurrency("INR");
 
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
 
     PackagingSlip slip = new PackagingSlip();
     ReflectionTestUtils.setField(slip, "id", 99L);
@@ -434,7 +444,8 @@ class InvoiceServiceTest {
     order.setDealer(dealer);
     order.setOrderNumber("SO-780");
     ReflectionTestUtils.setField(order, "id", orderId);
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
 
     PackagingSlip slip = new PackagingSlip();
     ReflectionTestUtils.setField(slip, "id", 7801L);
@@ -463,7 +474,8 @@ class InvoiceServiceTest {
     order.setDealer(dealer);
     order.setOrderNumber("SO-80");
     ReflectionTestUtils.setField(order, "id", orderId);
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
 
     PackagingSlip slip = new PackagingSlip();
     ReflectionTestUtils.setField(slip, "id", 801L);
@@ -484,7 +496,8 @@ class InvoiceServiceTest {
     order.setCompany(company);
     order.setDealer(dealer);
     ReflectionTestUtils.setField(order, "id", orderId);
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
 
     PackagingSlip firstSlip = new PackagingSlip();
     ReflectionTestUtils.setField(firstSlip, "id", 8101L);
@@ -510,7 +523,8 @@ class InvoiceServiceTest {
     order.setCompany(company);
     order.setDealer(dealer);
     ReflectionTestUtils.setField(order, "id", orderId);
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
+        .thenReturn(Optional.of(order));
 
     PackagingSlip cancelledSlip = new PackagingSlip();
     ReflectionTestUtils.setField(cancelledSlip, "id", 8201L);
@@ -820,7 +834,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void getInvoice_omitsDispatchReferencesWhenLegacySlipLinkageIsAmbiguous() {
+  void getInvoice_omitsDispatchReferencesWhenSlipInvoiceLinkageIsAmbiguous() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     SalesOrder order = new SalesOrder();
@@ -835,21 +849,21 @@ class InvoiceServiceTest {
     invoice.setInvoiceNumber("INV-1802");
     invoice.setStatus("ISSUED");
 
-    PackagingSlip firstLegacySlip = new PackagingSlip();
-    ReflectionTestUtils.setField(firstLegacySlip, "id", 1803L);
-    firstLegacySlip.setSalesOrder(order);
-    firstLegacySlip.setSlipNumber("PS-1803");
-    firstLegacySlip.setStatus("DISPATCHED");
+    PackagingSlip firstUnlinkedSlip = new PackagingSlip();
+    ReflectionTestUtils.setField(firstUnlinkedSlip, "id", 1803L);
+    firstUnlinkedSlip.setSalesOrder(order);
+    firstUnlinkedSlip.setSlipNumber("PS-1803");
+    firstUnlinkedSlip.setStatus("DISPATCHED");
 
-    PackagingSlip secondLegacySlip = new PackagingSlip();
-    ReflectionTestUtils.setField(secondLegacySlip, "id", 1804L);
-    secondLegacySlip.setSalesOrder(order);
-    secondLegacySlip.setSlipNumber("PS-1804");
-    secondLegacySlip.setStatus("DISPATCHED");
+    PackagingSlip secondUnlinkedSlip = new PackagingSlip();
+    ReflectionTestUtils.setField(secondUnlinkedSlip, "id", 1804L);
+    secondUnlinkedSlip.setSalesOrder(order);
+    secondUnlinkedSlip.setSlipNumber("PS-1804");
+    secondUnlinkedSlip.setStatus("DISPATCHED");
 
     when(invoiceRepository.findByCompanyAndId(company, 1802L)).thenReturn(Optional.of(invoice));
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1801L)))
-        .thenReturn(List.of(firstLegacySlip, secondLegacySlip));
+        .thenReturn(List.of(firstUnlinkedSlip, secondUnlinkedSlip));
     when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
             company, List.of(1802L)))
         .thenReturn(List.of());
@@ -860,7 +874,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void getInvoice_omitsLegacyDispatchReferenceWithoutExplicitSlipInvoiceLink() {
+  void getInvoice_omitsDispatchReferenceWithoutExplicitSlipInvoiceLink() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     SalesOrder order = new SalesOrder();
@@ -875,17 +889,17 @@ class InvoiceServiceTest {
     invoice.setInvoiceNumber("INV-1812");
     invoice.setStatus("ISSUED");
 
-    PackagingSlip legacySlip = new PackagingSlip();
-    ReflectionTestUtils.setField(legacySlip, "id", 1813L);
-    legacySlip.setSalesOrder(order);
-    legacySlip.setSlipNumber("PS-1813");
-    legacySlip.setStatus("DISPATCHED");
+    PackagingSlip unlinkedSlip = new PackagingSlip();
+    ReflectionTestUtils.setField(unlinkedSlip, "id", 1813L);
+    unlinkedSlip.setSalesOrder(order);
+    unlinkedSlip.setSlipNumber("PS-1813");
+    unlinkedSlip.setStatus("DISPATCHED");
 
     when(invoiceRepository.findByCompanyAndId(company, 1812L)).thenReturn(Optional.of(invoice));
     when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(1811L)))
         .thenReturn(List.of(invoice));
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1811L)))
-        .thenReturn(List.of(legacySlip));
+        .thenReturn(List.of(unlinkedSlip));
     when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
             company, List.of(1812L)))
         .thenReturn(List.of());
@@ -896,7 +910,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void getInvoice_omitsSingleLegacyDispatchReferenceWhenOrderHasMultipleInvoices() {
+  void getInvoice_omitsDispatchReferenceWhenOrderHasMultipleInvoices() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     SalesOrder order = new SalesOrder();
@@ -918,17 +932,17 @@ class InvoiceServiceTest {
     otherInvoice.setInvoiceNumber("INV-1823");
     otherInvoice.setStatus("ISSUED");
 
-    PackagingSlip legacySlip = new PackagingSlip();
-    ReflectionTestUtils.setField(legacySlip, "id", 1824L);
-    legacySlip.setSalesOrder(order);
-    legacySlip.setSlipNumber("PS-1824");
-    legacySlip.setStatus("DISPATCHED");
+    PackagingSlip unlinkedSlip = new PackagingSlip();
+    ReflectionTestUtils.setField(unlinkedSlip, "id", 1824L);
+    unlinkedSlip.setSalesOrder(order);
+    unlinkedSlip.setSlipNumber("PS-1824");
+    unlinkedSlip.setStatus("DISPATCHED");
 
     when(invoiceRepository.findByCompanyAndId(company, 1822L)).thenReturn(Optional.of(invoice));
     when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(1821L)))
         .thenReturn(List.of(invoice, otherInvoice));
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1821L)))
-        .thenReturn(List.of(legacySlip));
+        .thenReturn(List.of(unlinkedSlip));
     when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
             company, List.of(1822L)))
         .thenReturn(List.of());
@@ -939,7 +953,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void getInvoice_omitsLegacyDispatchReferenceWhenOnlyHistoricalFallbackWouldMatch() {
+  void getInvoice_omitsDispatchReferenceWhenOnlyHistoricalInvoiceStateWouldMatch() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     SalesOrder order = new SalesOrder();
@@ -954,15 +968,15 @@ class InvoiceServiceTest {
     invoice.setInvoiceNumber("INV-1832");
     invoice.setStatus("ISSUED");
 
-    PackagingSlip legacySlip = new PackagingSlip();
-    ReflectionTestUtils.setField(legacySlip, "id", 1833L);
-    legacySlip.setSalesOrder(order);
-    legacySlip.setSlipNumber("PS-1833");
-    legacySlip.setStatus("DISPATCHED");
+    PackagingSlip unlinkedSlip = new PackagingSlip();
+    ReflectionTestUtils.setField(unlinkedSlip, "id", 1833L);
+    unlinkedSlip.setSalesOrder(order);
+    unlinkedSlip.setSlipNumber("PS-1833");
+    unlinkedSlip.setStatus("DISPATCHED");
 
     when(invoiceRepository.findByCompanyAndId(company, 1832L)).thenReturn(Optional.of(invoice));
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1831L)))
-        .thenReturn(List.of(legacySlip));
+        .thenReturn(List.of(unlinkedSlip));
     when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
             company, List.of(1832L)))
         .thenReturn(List.of());
@@ -982,7 +996,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void getInvoice_omitsLegacyDispatchWhenBatchInvoiceLookupReturnsNullForCurrentInvoice() {
+  void getInvoice_omitsDispatchWhenBatchInvoiceLookupReturnsNullForCurrentInvoice() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     SalesOrder order = new SalesOrder();
@@ -997,15 +1011,15 @@ class InvoiceServiceTest {
     invoice.setInvoiceNumber("INV-1842");
     invoice.setStatus("ISSUED");
 
-    PackagingSlip legacySlip = new PackagingSlip();
-    ReflectionTestUtils.setField(legacySlip, "id", 1843L);
-    legacySlip.setSalesOrder(order);
-    legacySlip.setSlipNumber("PS-1843");
-    legacySlip.setStatus("DISPATCHED");
+    PackagingSlip unlinkedSlip = new PackagingSlip();
+    ReflectionTestUtils.setField(unlinkedSlip, "id", 1843L);
+    unlinkedSlip.setSalesOrder(order);
+    unlinkedSlip.setSlipNumber("PS-1843");
+    unlinkedSlip.setStatus("DISPATCHED");
 
     when(invoiceRepository.findByCompanyAndId(company, 1842L)).thenReturn(Optional.of(invoice));
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1841L)))
-        .thenReturn(List.of(legacySlip));
+        .thenReturn(List.of(unlinkedSlip));
     when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(1841L)))
         .thenReturn(null);
     when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
@@ -1018,7 +1032,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void getInvoice_omitsLegacyDispatchWhenFallbackInvoiceStatusIsNotCurrent() {
+  void getInvoice_omitsDispatchWhenInvoiceStatusIsNotCurrent() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     SalesOrder order = new SalesOrder();
@@ -1033,15 +1047,15 @@ class InvoiceServiceTest {
     invoice.setInvoiceNumber("INV-1852");
     invoice.setStatus("WRITTEN_OFF");
 
-    PackagingSlip legacySlip = new PackagingSlip();
-    ReflectionTestUtils.setField(legacySlip, "id", 1853L);
-    legacySlip.setSalesOrder(order);
-    legacySlip.setSlipNumber("PS-1853");
-    legacySlip.setStatus("DISPATCHED");
+    PackagingSlip unlinkedSlip = new PackagingSlip();
+    ReflectionTestUtils.setField(unlinkedSlip, "id", 1853L);
+    unlinkedSlip.setSalesOrder(order);
+    unlinkedSlip.setSlipNumber("PS-1853");
+    unlinkedSlip.setStatus("DISPATCHED");
 
     when(invoiceRepository.findByCompanyAndId(company, 1852L)).thenReturn(Optional.of(invoice));
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1851L)))
-        .thenReturn(List.of(legacySlip));
+        .thenReturn(List.of(unlinkedSlip));
     when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(1851L)))
         .thenReturn(null);
     when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
@@ -1054,7 +1068,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void helperMethods_coverLockedOrderAndSlipFallbackBranches() {
+  void helperMethods_coverLockedOrderAndEmptySlipBranches() {
     Long orderId = 990L;
     SalesOrder lockedOrder = new SalesOrder();
     lockedOrder.setCompany(company);
@@ -1076,15 +1090,18 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void helperMethods_coverFallbackAndNoOpBranches() {
+  void helperMethods_failFastWhenLockedOrderIsMissingAndCoverNoOpBranches() {
     Long orderId = 991L;
     when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId))
         .thenReturn(Optional.empty());
 
-    SalesOrder fallbackOrder = new SalesOrder();
-    fallbackOrder.setCompany(company);
-    ReflectionTestUtils.setField(fallbackOrder, "id", orderId);
-    when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(fallbackOrder);
+    ApplicationException missingOrder =
+        assertThrows(
+            ApplicationException.class,
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    invoiceService, "requireOrderForUpdate", company, orderId));
+    assertThat(missingOrder.getMessage()).contains("Sales order not found: 991");
 
     PackagingSlip existingSlip = new PackagingSlip();
     ReflectionTestUtils.setField(existingSlip, "id", 911L);
@@ -1092,16 +1109,12 @@ class InvoiceServiceTest {
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdForUpdate(company, orderId))
         .thenReturn(List.of(existingSlip));
 
-    SalesOrder resolved =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            invoiceService, "requireOrderForUpdate", company, orderId);
     @SuppressWarnings("unchecked")
     List<PackagingSlip> slips =
         (List<PackagingSlip>)
             com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 invoiceService, "findOrderSlips", company, orderId, true);
 
-    assertThat(resolved).isSameAs(fallbackOrder);
     assertThat(slips).containsExactly(existingSlip);
     assertThat(
             (Long)
@@ -1116,7 +1129,7 @@ class InvoiceServiceTest {
     assertThat(
             (Boolean)
                 com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    invoiceService, "reconcileOrderInvoiceMarker", fallbackOrder, 1L, false))
+                    invoiceService, "reconcileOrderInvoiceMarker", null, 1L, false))
         .isFalse();
   }
 
@@ -1194,7 +1207,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void unpagedAccessors_coverFallbackLookupAndLineMappingBranches() {
+  void unpagedAccessors_coverDealerLookupAndLineMappingBranches() {
     Dealer dealer = new Dealer();
     ReflectionTestUtils.setField(dealer, "id", 1500L);
     dealer.setName("Dealer 1500");
@@ -1655,7 +1668,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void helperMethods_defaultCurrentInvoiceCount_andExplicitLinkContext_coverRemainingFallbacks()
+  void helperMethods_defaultCurrentInvoiceCountAndExplicitLinkContext_coverRemainingBranches()
       throws Exception {
     Invoice currentInvoice = new Invoice();
     currentInvoice.setStatus("ISSUED");
@@ -1733,17 +1746,17 @@ class InvoiceServiceTest {
     invoice.setInvoiceNumber("INV-NULL-COUNT");
     invoice.setStatus("ISSUED");
 
-    PackagingSlip legacySlip = new PackagingSlip();
-    ReflectionTestUtils.setField(legacySlip, "id", 18113L);
-    legacySlip.setSalesOrder(order);
-    legacySlip.setSlipNumber("PS-NULL-COUNT");
+    PackagingSlip unlinkedSlip = new PackagingSlip();
+    ReflectionTestUtils.setField(unlinkedSlip, "id", 18113L);
+    unlinkedSlip.setSalesOrder(order);
+    unlinkedSlip.setSlipNumber("PS-NULL-COUNT");
 
     Invoice orphanInvoice = new Invoice();
     orphanInvoice.setCompany(company);
     orphanInvoice.setStatus("ISSUED");
 
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(18111L)))
-        .thenReturn(List.of(legacySlip));
+        .thenReturn(List.of(unlinkedSlip));
     when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(18111L)))
         .thenReturn(java.util.Arrays.asList(null, orphanInvoice));
     when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
@@ -1779,10 +1792,10 @@ class InvoiceServiceTest {
     invoice.setInvoiceNumber("INV-COUNT-CURRENT");
     invoice.setStatus("ISSUED");
 
-    PackagingSlip legacySlip = new PackagingSlip();
-    ReflectionTestUtils.setField(legacySlip, "id", 18123L);
-    legacySlip.setSalesOrder(order);
-    legacySlip.setSlipNumber("PS-COUNT-CURRENT");
+    PackagingSlip unlinkedSlip = new PackagingSlip();
+    ReflectionTestUtils.setField(unlinkedSlip, "id", 18123L);
+    unlinkedSlip.setSalesOrder(order);
+    unlinkedSlip.setSlipNumber("PS-COUNT-CURRENT");
 
     Invoice currentPeer = new Invoice();
     currentPeer.setCompany(company);
@@ -1804,7 +1817,7 @@ class InvoiceServiceTest {
     missingIdPeer.setSalesOrder(new SalesOrder());
 
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(18121L)))
-        .thenReturn(List.of(legacySlip));
+        .thenReturn(List.of(unlinkedSlip));
     when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(18121L)))
         .thenReturn(
             java.util.Arrays.asList(currentPeer, historicalPeer, malformedPeer, missingIdPeer));
@@ -1841,13 +1854,13 @@ class InvoiceServiceTest {
     invoice.setInvoiceNumber("INV-NULL-BATCH-COUNT");
     invoice.setStatus("ISSUED");
 
-    PackagingSlip legacySlip = new PackagingSlip();
-    ReflectionTestUtils.setField(legacySlip, "id", 18133L);
-    legacySlip.setSalesOrder(order);
-    legacySlip.setSlipNumber("PS-NULL-BATCH-COUNT");
+    PackagingSlip unlinkedSlip = new PackagingSlip();
+    ReflectionTestUtils.setField(unlinkedSlip, "id", 18133L);
+    unlinkedSlip.setSalesOrder(order);
+    unlinkedSlip.setSlipNumber("PS-NULL-BATCH-COUNT");
 
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(18131L)))
-        .thenReturn(List.of(legacySlip));
+        .thenReturn(List.of(unlinkedSlip));
     when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(18131L)))
         .thenReturn(null);
     when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
@@ -1880,7 +1893,8 @@ class InvoiceServiceTest {
     order.setCompany(company);
     order.setDealer(dealer);
     ReflectionTestUtils.setField(order, "id", nullResponseOrderId);
-    when(salesOrderCrudService.getOrderWithItems(nullResponseOrderId)).thenReturn(order);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, nullResponseOrderId))
+        .thenReturn(Optional.of(order));
 
     PackagingSlip slip = new PackagingSlip();
     ReflectionTestUtils.setField(slip, "id", 1202L);
@@ -1897,7 +1911,8 @@ class InvoiceServiceTest {
     secondOrder.setCompany(company);
     secondOrder.setDealer(dealer);
     ReflectionTestUtils.setField(secondOrder, "id", missingIdOrderId);
-    when(salesOrderCrudService.getOrderWithItems(missingIdOrderId)).thenReturn(secondOrder);
+    when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, missingIdOrderId))
+        .thenReturn(Optional.of(secondOrder));
 
     PackagingSlip secondSlip = new PackagingSlip();
     ReflectionTestUtils.setField(secondSlip, "id", 1204L);
