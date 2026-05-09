@@ -48,7 +48,7 @@ public class DatadogTelemetryFilter extends OncePerRequestFilter {
     try {
       int statusCode = failed && response.getStatus() < 400 ? 500 : response.getStatus();
       datadogTelemetryService.recordSuperAdminRequest(request, statusCode, durationNanos, failed);
-    } catch (RuntimeException ignored) {
+    } catch (RuntimeException ex) {
       // Observability is degraded-mode by default: local API flows must not fail because telemetry
       // export, meter construction, or provider-safe tagging failed.
     }

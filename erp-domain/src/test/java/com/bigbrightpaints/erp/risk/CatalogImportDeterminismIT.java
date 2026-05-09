@@ -1,0 +1,205 @@
+package com.bigbrightpaints.erp.risk;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.UUID;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mock.web.MockMultipartFile;
+
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogItemCreateCommand;
+import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogService;
+import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+
+@Tag("critical")
+class CatalogImportDeterminismIT extends AbstractIntegrationTest {
+
+  @Autowired private CompanyRepository companyRepository;
+  @Autowired private AccountRepository accountRepository;
+  @Autowired private ProductionCatalogService productionCatalogService;
+  @Autowired private ProductionBrandRepository brandRepository;
+  @Autowired private ProductionProductRepository productRepository;
+
+  @AfterEach
+  void clearCompanyContext() {
+    CompanyContextHolder.clear();
+  }
+
+  @Test
+  void import_reusesExistingProductWhenSkuMissing() {
+    String companyCode = "RISK-CAT-IMP-" + shortId();
+    Company company = ensureCompany(companyCode);
+    ensureDefaultAccounts(company);
+
+    CompanyContextHolder.setCompanyCode(companyCode);
+    CatalogImportResponse first = productionCatalogService.importCatalog(csvFile());
+    List<ProductionProduct> productsAfterFirst =
+        productRepository.findByCompanyOrderByProductNameAsc(company);
+    assertThat(productsAfterFirst).hasSize(1);
+    String skuAfterFirst = productsAfterFirst.get(0).getSkuCode();
+
+    CatalogImportResponse second = productionCatalogService.importCatalog(csvFile());
+    List<ProductionProduct> productsAfterSecond =
+        productRepository.findByCompanyOrderByProductNameAsc(company);
+    List<ProductionBrand> brandsAfterSecond = brandRepository.findByCompanyOrderByNameAsc(company);
+    CompanyContextHolder.clear();
+
+    assertThat(second.errors()).isEmpty();
+    assertThat(productsAfterSecond).hasSize(1);
+    assertThat(brandsAfterSecond).hasSize(1);
+    assertThat(productsAfterSecond.get(0).getSkuCode()).isEqualTo(skuAfterFirst);
+    assertThat(productsAfterSecond.get(0).getId()).isEqualTo(productsAfterFirst.get(0).getId());
+    assertThat(first.rowsProcessed()).isEqualTo(1);
+  }
+
+  @Test
+  void createProduct_rejectsCrossTenantBrandId() {
+    Company companyA = ensureCompany("RISK-CAT-A-" + shortId());
+    Company companyB = ensureCompany("RISK-CAT-B-" + shortId());
+
+    ProductionBrand brand = new ProductionBrand();
+    brand.setCompany(companyA);
+    brand.setName("Tenant A Brand");
+    brand.setCode("TENANTA");
+    brand = brandRepository.save(brand);
+
+    CompanyContextHolder.setCompanyCode(companyB.getCode());
+    CatalogItemCreateCommand request =
+        new CatalogItemCreateCommand(
+            brand.getId(),
+            null,
+            null,
+            "Cross-Tenant Raw",
+            "RAW_MATERIAL",
+            "RAW_MATERIAL",
+            null,
+            null,
+            "KG",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+    assertThatThrownBy(() -> productionCatalogService.createCatalogItem(request))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Production brand not found");
+    CompanyContextHolder.clear();
+  }
+
+  @Test
+  void import_rejectsFinishedGoodAccountOverrideWhenRawMaterialCacheHasSameAccountId() {
+    String companyCode = "RISK-CAT-CACHE-" + shortId();
+    Company company = ensureCompany(companyCode);
+    ensureDefaultAccounts(company);
+
+    String token = shortId().toUpperCase();
+    String rawSku = "RM-CACHE-" + token;
+    String finishedSku = "FG-CACHE-" + token;
+    Long inventoryAccountId = company.getDefaultInventoryAccountId();
+    String csv =
+        String.join(
+            "\n",
+            "brand,product_name,sku_code,category,unit_of_measure,inventory_account_id,fg_cogs_account_id",
+            "CacheBrand,Cache Primer Raw,"
+                + rawSku
+                + ",RAW_MATERIAL,KG,"
+                + inventoryAccountId
+                + ",",
+            "CacheBrand,Cache Primer FG,"
+                + finishedSku
+                + ",FINISHED_GOOD,L,,"
+                + inventoryAccountId);
+
+    CompanyContextHolder.setCompanyCode(companyCode);
+    CatalogImportResponse response = productionCatalogService.importCatalog(csvFile(csv));
+    CompanyContextHolder.clear();
+
+    assertThat(response.rowsProcessed()).isEqualTo(1);
+    assertThat(response.errors()).hasSize(1);
+    CatalogImportResponse.ImportError error = response.errors().getFirst();
+    assertThat(error.rowNumber()).isEqualTo(2L);
+    assertThat(error.message()).contains("requires fgCogsAccountId to reference a COGS account");
+    assertThat(productRepository.findByCompanyAndSkuCode(company, finishedSku)).isEmpty();
+  }
+
+  private Company ensureCompany(String code) {
+    return companyRepository
+        .findByCodeIgnoreCase(code)
+        .orElseGet(
+            () -> {
+              Company company = new Company();
+              company.setCode(code);
+              company.setName("CR Catalog " + code);
+              company.setTimezone("UTC");
+              return companyRepository.save(company);
+            });
+  }
+
+  private void ensureDefaultAccounts(Company company) {
+    Account inventory = ensureAccount(company, "CAT-INV", "Catalog Inventory", AccountType.ASSET);
+    Account cogs = ensureAccount(company, "CAT-COGS", "Catalog COGS", AccountType.COGS);
+    Account revenue = ensureAccount(company, "CAT-REV", "Catalog Revenue", AccountType.REVENUE);
+    Account discount = ensureAccount(company, "CAT-DISC", "Catalog Discount", AccountType.EXPENSE);
+    Account tax = ensureAccount(company, "CAT-TAX", "Catalog Tax", AccountType.LIABILITY);
+
+    company.setDefaultInventoryAccountId(inventory.getId());
+    company.setDefaultCogsAccountId(cogs.getId());
+    company.setDefaultRevenueAccountId(revenue.getId());
+    company.setDefaultDiscountAccountId(discount.getId());
+    company.setDefaultTaxAccountId(tax.getId());
+    companyRepository.save(company);
+  }
+
+  private Account ensureAccount(Company company, String code, String name, AccountType type) {
+    return accountRepository
+        .findByCompanyAndCodeIgnoreCase(company, code)
+        .orElseGet(
+            () -> {
+              Account account = new Account();
+              account.setCompany(company);
+              account.setCode(code);
+              account.setName(name);
+              account.setType(type);
+              return accountRepository.save(account);
+            });
+  }
+
+  private MockMultipartFile csvFile() {
+    String csv =
+        String.join(
+            "\n",
+            "brand,product_name,category,default_colour,size,unit_of_measure,base_price,gst_rate,min_discount_percent,min_selling_price",
+            "Safari,Emulsion White,EMULSION,WHITE,1L,L,100.00,18,5,90.00");
+    return csvFile(csv);
+  }
+
+  private MockMultipartFile csvFile(String csv) {
+    return new MockMultipartFile(
+        "file", "catalog.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static String shortId() {
+    return UUID.randomUUID().toString().substring(0, 8);
+  }
+}
