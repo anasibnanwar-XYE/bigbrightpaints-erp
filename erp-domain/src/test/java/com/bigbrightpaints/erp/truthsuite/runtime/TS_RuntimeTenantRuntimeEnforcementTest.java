@@ -237,7 +237,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
   }
 
   private void authenticateForCompany(String email, String companyCode, String authority) {
-    UserAccount user = new UserAccount(email, "hash", "Operator");
+    UserAccount user = new UserAccount(email, "TEST", "hash", "Operator");
     Company company = new Company();
     company.setCode(companyCode);
     user.setCompany(company);

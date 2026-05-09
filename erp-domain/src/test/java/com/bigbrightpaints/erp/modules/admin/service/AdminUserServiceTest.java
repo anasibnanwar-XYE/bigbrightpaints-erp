@@ -285,7 +285,11 @@ class AdminUserServiceTest {
             invocation -> {
               UserAccount persisted = invocation.getArgument(0);
               UserAccount detached =
-                  new UserAccount(persisted.getEmail(), "encoded", persisted.getDisplayName());
+                  new UserAccount(
+                      persisted.getEmail(),
+                      persisted.getAuthScopeCode(),
+                      "encoded",
+                      persisted.getDisplayName());
               ReflectionTestUtils.setField(detached, "id", 401L);
               detached.setEnabled(persisted.isEnabled());
               detached.setMfaEnabled(persisted.isMfaEnabled());
@@ -435,7 +439,7 @@ class AdminUserServiceTest {
 
   @Test
   void listUsers_includesLastLoginAtDerivedFromLatestLoginAuditEvent() {
-    UserAccount user = new UserAccount("audited-user@example.com", "hash", "Audited User");
+    UserAccount user = new UserAccount("audited-user@example.com", "TEST", "hash", "Audited User");
     ReflectionTestUtils.setField(user, "id", 301L);
     user.setCompany(company);
     Role role = new Role();
@@ -480,7 +484,8 @@ class AdminUserServiceTest {
 
   @Test
   void listUsers_ignoresNullRolesAndBlankCompanyCodes() {
-    UserAccount user = new UserAccount("filtered-user@example.com", "hash", "Filtered User");
+    UserAccount user =
+        new UserAccount("filtered-user@example.com", "TEST", "hash", "Filtered User");
     ReflectionTestUtils.setField(user, "id", 303L);
     user.setCompany(company);
 
@@ -508,7 +513,8 @@ class AdminUserServiceTest {
 
   @Test
   void listUsers_filtersTenantAdminProtectedTargets() {
-    UserAccount tenantAdmin = new UserAccount("tenant-admin@example.com", "hash", "Tenant Admin");
+    UserAccount tenantAdmin =
+        new UserAccount("tenant-admin@example.com", "TEST", "hash", "Tenant Admin");
     ReflectionTestUtils.setField(tenantAdmin, "id", 910L);
     tenantAdmin.setCompany(company);
     Role tenantAdminRole = new Role();
@@ -516,14 +522,15 @@ class AdminUserServiceTest {
     tenantAdmin.addRole(tenantAdminRole);
 
     UserAccount tenantSuperAdmin =
-        new UserAccount("tenant-superadmin@example.com", "hash", "Tenant Super Admin");
+        new UserAccount("tenant-superadmin@example.com", "TEST", "hash", "Tenant Super Admin");
     ReflectionTestUtils.setField(tenantSuperAdmin, "id", 911L);
     tenantSuperAdmin.setCompany(company);
     Role tenantSuperAdminRole = new Role();
     tenantSuperAdminRole.setName("ROLE_SUPER_ADMIN");
     tenantSuperAdmin.addRole(tenantSuperAdminRole);
 
-    UserAccount tenantSales = new UserAccount("tenant-sales@example.com", "hash", "Tenant Sales");
+    UserAccount tenantSales =
+        new UserAccount("tenant-sales@example.com", "TEST", "hash", "Tenant Sales");
     ReflectionTestUtils.setField(tenantSales, "id", 912L);
     tenantSales.setCompany(company);
     Role tenantSalesRole = new Role();
@@ -547,7 +554,7 @@ class AdminUserServiceTest {
 
   @Test
   void getUser_returnsScopedUserWithLastLoginAt() {
-    UserAccount user = new UserAccount("detail-user@example.com", "hash", "Detail User");
+    UserAccount user = new UserAccount("detail-user@example.com", "TEST", "hash", "Detail User");
     ReflectionTestUtils.setField(user, "id", 304L);
     user.setCompany(company);
     Role role = new Role();
@@ -579,7 +586,8 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
 
-    UserAccount foreignUser = new UserAccount("foreign-detail@example.com", "hash", "Foreign User");
+    UserAccount foreignUser =
+        new UserAccount("foreign-detail@example.com", "TEST", "hash", "Foreign User");
     ReflectionTestUtils.setField(foreignUser, "id", 305L);
     foreignUser.setCompany(foreignCompany);
 
@@ -606,7 +614,8 @@ class AdminUserServiceTest {
   @Test
   void getUser_rejectsSameTenantProtectedRoleTargetForTenantAdmin() {
     UserAccount tenantSuperAdmin =
-        new UserAccount("tenant-superadmin-detail@example.com", "hash", "Tenant Super Admin");
+        new UserAccount(
+            "tenant-superadmin-detail@example.com", "TEST", "hash", "Tenant Super Admin");
     ReflectionTestUtils.setField(tenantSuperAdmin, "id", 399L);
     tenantSuperAdmin.setCompany(company);
     Role superAdminRole = new Role();
@@ -657,7 +666,7 @@ class AdminUserServiceTest {
 
   @Test
   void updateUserStatus_disablingUserRevokesTokensSendsNotificationAndAudits() {
-    UserAccount user = new UserAccount("status-user@example.com", "hash", "Status User");
+    UserAccount user = new UserAccount("status-user@example.com", "TEST", "hash", "Status User");
     ReflectionTestUtils.setField(user, "id", 302L);
     user.setCompany(company);
     Role role = new Role();
@@ -685,7 +694,8 @@ class AdminUserServiceTest {
 
   @Test
   void updateUserStatus_enablingUserChecksQuotaAndDoesNotSendSuspensionEmail() {
-    UserAccount user = new UserAccount("reenable-user@example.com", "hash", "Reenabled User");
+    UserAccount user =
+        new UserAccount("reenable-user@example.com", "TEST", "hash", "Reenabled User");
     ReflectionTestUtils.setField(user, "id", 303L);
     user.setEnabled(false);
     user.setCompany(company);
@@ -715,7 +725,7 @@ class AdminUserServiceTest {
 
   @Test
   void forceResetPassword_delegatesToPasswordResetServiceAndAudits() {
-    UserAccount user = new UserAccount("force-reset@example.com", "hash", "Force Reset");
+    UserAccount user = new UserAccount("force-reset@example.com", "TEST", "hash", "Force Reset");
     ReflectionTestUtils.setField(user, "id", 304L);
     user.setCompany(company);
     Role role = new Role();
@@ -741,7 +751,8 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
 
-    UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+    UserAccount foreignUser =
+        new UserAccount("foreign-user@example.com", "TEST", "hash", "Foreign User");
     ReflectionTestUtils.setField(foreignUser, "id", 311L);
     foreignUser.setCompany(foreignCompany);
 
@@ -771,7 +782,7 @@ class AdminUserServiceTest {
   @Test
   void forceResetPassword_sameTenantProtectedRole_forTenantAdmin_returnsProtectedTargetDenial() {
     UserAccount protectedUser =
-        new UserAccount("tenant-admin-protected@example.com", "hash", "Tenant Admin");
+        new UserAccount("tenant-admin-protected@example.com", "TEST", "hash", "Tenant Admin");
     ReflectionTestUtils.setField(protectedUser, "id", 313L);
     protectedUser.setCompany(company);
     Role protectedRole = new Role();
@@ -808,7 +819,8 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
 
-    UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+    UserAccount foreignUser =
+        new UserAccount("foreign-user@example.com", "TEST", "hash", "Foreign User");
     ReflectionTestUtils.setField(foreignUser, "id", 312L);
     foreignUser.setCompany(foreignCompany);
 
@@ -833,7 +845,8 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
 
-    UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+    UserAccount foreignUser =
+        new UserAccount("foreign-user@example.com", "TEST", "hash", "Foreign User");
     ReflectionTestUtils.setField(foreignUser, "id", 305L);
     foreignUser.setCompany(foreignCompany);
     Role role = new Role();
@@ -864,7 +877,7 @@ class AdminUserServiceTest {
 
   @Test
   void updateUser_withoutRoleChangeDoesNotTriggerReauthRevocation() {
-    UserAccount user = new UserAccount("same-enabled@example.com", "hash", "Same Enabled");
+    UserAccount user = new UserAccount("same-enabled@example.com", "TEST", "hash", "Same Enabled");
     ReflectionTestUtils.setField(user, "id", 401L);
     user.setCompany(company);
     Role role = new Role();
@@ -888,7 +901,7 @@ class AdminUserServiceTest {
 
   @Test
   void updateUser_updatesRolesAndRevokesTokens() {
-    UserAccount user = new UserAccount("update-user@example.com", "hash", "Update User");
+    UserAccount user = new UserAccount("update-user@example.com", "TEST", "hash", "Update User");
     ReflectionTestUtils.setField(user, "id", 402L);
     user.setCompany(company);
     Role existingRole = new Role();
@@ -913,7 +926,8 @@ class AdminUserServiceTest {
 
   @Test
   void updateUser_equivalentRoleSetDoesNotTriggerReauthRevocation() {
-    UserAccount user = new UserAccount("update-same-role@example.com", "hash", "Update User");
+    UserAccount user =
+        new UserAccount("update-same-role@example.com", "TEST", "hash", "Update User");
     ReflectionTestUtils.setField(user, "id", 409L);
     user.setCompany(company);
     user.setEnabled(true);
@@ -940,7 +954,8 @@ class AdminUserServiceTest {
 
   @Test
   void updateUser_rejectsUnsupportedRoleBeforeMutatingAssignedRoles() {
-    UserAccount user = new UserAccount("update-invalid-role@example.com", "hash", "Update User");
+    UserAccount user =
+        new UserAccount("update-invalid-role@example.com", "TEST", "hash", "Update User");
     ReflectionTestUtils.setField(user, "id", 403L);
     user.setCompany(company);
     user.setEnabled(true);
@@ -970,7 +985,8 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
 
-    UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+    UserAccount foreignUser =
+        new UserAccount("foreign-user@example.com", "TEST", "hash", "Foreign User");
     ReflectionTestUtils.setField(foreignUser, "id", 306L);
     foreignUser.setCompany(foreignCompany);
 
@@ -995,7 +1011,8 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
 
-    UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+    UserAccount foreignUser =
+        new UserAccount("foreign-user@example.com", "TEST", "hash", "Foreign User");
     ReflectionTestUtils.setField(foreignUser, "id", 308L);
     foreignUser.setCompany(foreignCompany);
 
@@ -1020,7 +1037,8 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
 
-    UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+    UserAccount foreignUser =
+        new UserAccount("foreign-user@example.com", "TEST", "hash", "Foreign User");
     ReflectionTestUtils.setField(foreignUser, "id", 309L);
     foreignUser.setCompany(foreignCompany);
 
@@ -1046,7 +1064,8 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
 
-    UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+    UserAccount foreignUser =
+        new UserAccount("foreign-user@example.com", "TEST", "hash", "Foreign User");
     ReflectionTestUtils.setField(foreignUser, "id", 310L);
     foreignUser.setCompany(foreignCompany);
 
@@ -1067,7 +1086,8 @@ class AdminUserServiceTest {
 
   @Test
   void disableMfa_clearsOnlyMfaStateAndRevokesSessionsWithoutCredentialResetMutation() {
-    UserAccount user = new UserAccount("mfa-reset-target@example.com", "hash", "MFA Reset Target");
+    UserAccount user =
+        new UserAccount("mfa-reset-target@example.com", "TEST", "hash", "MFA Reset Target");
     ReflectionTestUtils.setField(user, "id", 311L);
     user.setCompany(company);
     user.setEnabled(true);
@@ -1104,7 +1124,8 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
 
-    UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+    UserAccount foreignUser =
+        new UserAccount("foreign-user@example.com", "TEST", "hash", "Foreign User");
     ReflectionTestUtils.setField(foreignUser, "id", 307L);
     foreignUser.setCompany(foreignCompany);
 

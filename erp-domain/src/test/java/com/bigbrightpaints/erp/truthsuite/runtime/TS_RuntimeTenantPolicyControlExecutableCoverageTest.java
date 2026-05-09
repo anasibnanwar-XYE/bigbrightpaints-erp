@@ -274,10 +274,10 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
     assertThat(traceAllowed.isAdmitted()).isTrue();
     admissionService.completeRequest(traceAllowed, 200);
 
-    TenantRuntimeEnforcementService.TenantRequestAdmission retiredAdminPolicyControl =
+    TenantRuntimeEnforcementService.TenantRequestAdmission nonCanonicalAdminPolicyControl =
         admissionService.beginRequest(
             "ACME", "/api/v1/admin/tenant-runtime/policy", "PUT", "super", true);
-    assertThat(retiredAdminPolicyControl.isAdmitted()).isFalse();
+    assertThat(nonCanonicalAdminPolicyControl.isAdmitted()).isFalse();
     // Privileged canonical superadmin limits path bypasses hold/rate checks.
     TenantRuntimeEnforcementService.TenantRequestAdmission policyControl =
         admissionService.beginRequest(
@@ -394,7 +394,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
   }
 
   @Test
-  void tenantAdminProvisioningService_provisionInitialAdmin_covers_guards_and_fallback_display() {
+  void tenantAdminProvisioningService_provisionInitialAdmin_covers_guards_and_default_display() {
     UserAccountRepository userAccountRepository = mock(UserAccountRepository.class);
     RoleService roleService = mock(RoleService.class);
     RoleRepository roleRepository = mock(RoleRepository.class);
@@ -474,7 +474,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
     Company target = company(55L, "SKE");
     Company other = company(56L, "OTH");
 
-    UserAccount outsider = new UserAccount("outsider@ske.com", "hash", "Out");
+    UserAccount outsider = new UserAccount("outsider@ske.com", "TEST", "hash", "Out");
     outsider.setCompany(other);
     Role outsiderRole = new Role();
     outsiderRole.setName("ROLE_ADMIN");
@@ -486,7 +486,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("not assigned to company");
 
-    UserAccount nonAdmin = new UserAccount("user@ske.com", "hash", "User");
+    UserAccount nonAdmin = new UserAccount("user@ske.com", "TEST", "hash", "User");
     nonAdmin.setCompany(target);
     Role userRole = new Role();
     userRole.setName("ROLE_USER");

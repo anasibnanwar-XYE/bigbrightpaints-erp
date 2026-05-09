@@ -238,15 +238,18 @@ class DataInitializerTest {
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "ensureCompanyMembership", null, targetCompany);
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-        initializer, "ensureCompanyMembership", new UserAccount("u@x.com", "hash", "User"), null);
+        initializer,
+        "ensureCompanyMembership",
+        new UserAccount("u@x.com", "TEST", "hash", "User"),
+        null);
 
-    UserAccount userWithCodeMatch = new UserAccount("a@x.com", "hash", "User A");
+    UserAccount userWithCodeMatch = new UserAccount("a@x.com", "TEST", "hash", "User A");
     userWithCodeMatch.setCompany(company("bbp"));
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "ensureCompanyMembership", userWithCodeMatch, targetCompany);
     assertThat(userWithCodeMatch.getCompany()).isNotNull();
 
-    UserAccount userWithIdMatch = new UserAccount("b@x.com", "hash", "User B");
+    UserAccount userWithIdMatch = new UserAccount("b@x.com", "TEST", "hash", "User B");
     Company existing = company("OTHER");
     ReflectionTestUtils.setField(existing, "id", 7L);
     Company sameId = company("DIFFERENT");
@@ -264,9 +267,12 @@ class DataInitializerTest {
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "ensureRoleMembership", null, adminRole);
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-        initializer, "ensureRoleMembership", new UserAccount("u@x.com", "hash", "User"), null);
+        initializer,
+        "ensureRoleMembership",
+        new UserAccount("u@x.com", "TEST", "hash", "User"),
+        null);
 
-    UserAccount user = new UserAccount("seed@x.com", "hash", "Seed");
+    UserAccount user = new UserAccount("seed@x.com", "TEST", "hash", "Seed");
     user.addRole(role("role_admin"));
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "ensureRoleMembership", user, adminRole);

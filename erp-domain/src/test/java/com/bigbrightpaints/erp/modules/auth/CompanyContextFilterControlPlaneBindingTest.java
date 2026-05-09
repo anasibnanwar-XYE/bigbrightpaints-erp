@@ -601,7 +601,7 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   private void authenticate(String email, Set<String> authorities, Set<String> companyCodes) {
-    UserAccount user = new UserAccount(email, "hash", "Operator");
+    UserAccount user = new UserAccount(email, "TEST", "hash", "Operator");
     if (!companyCodes.isEmpty()) {
       String companyCode = companyCodes.iterator().next();
       Company company = new Company();

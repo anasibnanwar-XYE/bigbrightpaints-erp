@@ -90,11 +90,6 @@ public class UserAccount extends VersionedEntity {
 
   public UserAccount() {}
 
-  public UserAccount(String email, String passwordHash, String displayName) {
-    this(
-        email, "LEGACY-" + UUID.randomUUID().toString().substring(0, 8), passwordHash, displayName);
-  }
-
   public UserAccount(String email, String authScopeCode, String passwordHash, String displayName) {
     this.publicId = UUID.randomUUID();
     this.email = email;

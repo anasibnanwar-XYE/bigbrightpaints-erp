@@ -63,13 +63,13 @@ class MfaServiceTest {
             refreshTokenService,
             iamCanonicalStorageService,
             accountLockoutService,
-            "BigBright ERP",
+            "orchestrator-erp",
             clock);
   }
 
   @Test
   void verifyDuringLoginSkipsWhenMfaDisabled() {
-    UserAccount user = new UserAccount("user@bbp.dev", "hash", "User");
+    UserAccount user = new UserAccount("user@bbp.dev", "TEST", "hash", "User");
     user.setMfaEnabled(false);
 
     assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, null, null));
@@ -292,7 +292,7 @@ class MfaServiceTest {
   }
 
   private UserAccount userWithSecret() {
-    UserAccount user = new UserAccount("user@bbp.dev", "hash", "User");
+    UserAccount user = new UserAccount("user@bbp.dev", "TEST", "hash", "User");
     user.setMfaSecret("JBSWY3DPEHPK3PXP");
     user.setMfaEnabled(true);
     return user;

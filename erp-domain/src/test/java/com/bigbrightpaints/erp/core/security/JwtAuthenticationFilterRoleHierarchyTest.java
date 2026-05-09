@@ -385,7 +385,7 @@ class JwtAuthenticationFilterRoleHierarchyTest {
   }
 
   private UserPrincipal principalWithRole(String email, String roleName) {
-    UserAccount user = new UserAccount(email, "hash", "Test User");
+    UserAccount user = new UserAccount(email, "TEST", "hash", "Test User");
     Role role = new Role();
     role.setName(roleName);
     user.addRole(role);
