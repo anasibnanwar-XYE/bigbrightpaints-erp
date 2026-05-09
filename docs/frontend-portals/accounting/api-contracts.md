@@ -154,14 +154,16 @@ Request and response rules:
 - `GET /api/v1/accounting/month-end/checklist`
 - `POST /api/v1/accounting/month-end/checklist/{periodId}`
 - `POST /api/v1/accounting/periods/{periodId}/request-close`
-- `POST /api/v1/accounting/periods/{periodId}/approve-close`
-- `POST /api/v1/accounting/periods/{periodId}/reject-close`
 - `POST /api/v1/accounting/periods/{periodId}/reopen`
 
 Rules:
 
 - Direct `POST /api/v1/accounting/periods/{periodId}/close` is not a supported
   frontend action.
+- Normal frontend approval/rejection is tenant-admin owned through
+  `POST /api/v1/admin/approvals/PERIOD_CLOSE_REQUEST/{id}/decisions`.
+- The accounting approve/reject service routes remain backend operational
+  surfaces and should not be wired into accounting portal chrome.
 - Reopen is not part of normal accounting navigation and should appear only in
   the superadmin experience.
 - Frontend should treat closed-period write rejection as a blocked state, not as

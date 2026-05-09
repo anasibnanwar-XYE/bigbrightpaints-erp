@@ -2,7 +2,7 @@
 
 `docs/frontend-api/` documents shared API rules across all frontend portal shells.
 
-Last reviewed: 2026-04-16
+Last reviewed: 2026-05-09
 
 ## Purpose
 
@@ -58,9 +58,11 @@ This folder defines canonical frontend contracts for:
 
 | Role | File |
 | --- | --- |
+| Superadmin (`ROLE_SUPER_ADMIN`) | [superadmin portal](../frontend-portals/superadmin/README.md) |
 | Admin (`ROLE_ADMIN`) | [admin-role.md](./admin-role.md) |
 | Accounting (`ROLE_ACCOUNTING`) | [accounting-role.md](./accounting-role.md) |
 | Sales (`ROLE_SALES`) | [sales-role.md](./sales-role.md) |
+| Factory (`ROLE_FACTORY`) | [factory portal](../frontend-portals/factory/README.md) |
 | Dealer (`ROLE_DEALER`) | [dealer-role.md](./dealer-role.md) |
 
 ## Relationship to Portal Docs

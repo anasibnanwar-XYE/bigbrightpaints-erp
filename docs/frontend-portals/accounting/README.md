@@ -19,7 +19,7 @@ already exist.
 - create manual journals through the canonical journal-entry route
 - reverse journals through the canonical reverse route
 - run bank, subledger, inventory, and GST reconciliation
-- drive request-close, approve-close, and reject-close workflow
+- submit period-close requests and reflect tenant-admin approval outcomes
 - review and import opening stock only after accounting readiness is complete
 - review dealer and supplier settlement flows
 - own finance reports and export-governed downloads
@@ -49,9 +49,9 @@ already exist.
   `POST /api/v1/accounting/journal-entries/{entryId}/reverse`.
 - Direct `POST /api/v1/accounting/periods/{periodId}/close` is not a frontend
   action.
-- Supported close flow is
-  `request-close -> approve-close|reject-close`, with reopen reserved for
-  superadmin.
+- Supported frontend close flow is accounting `request-close`, then
+  tenant-admin `PERIOD_CLOSE_REQUEST` approval or rejection, with reopen
+  reserved for superadmin.
 - Product setup remains `POST /api/v1/catalog/items`; opening stock remains
   `POST /api/v1/inventory/opening-stock`.
 - Finished-good and raw-material account readiness stays fail-closed until

@@ -4,7 +4,7 @@
 This tree is the source of truth for routing, API ownership, and portal
 placement.
 
-Last reviewed: 2026-04-08
+Last reviewed: 2026-05-09
 
 Exact portal folders:
 - `superadmin`
@@ -28,6 +28,9 @@ Each folder must carry the same file set:
 ## Canonical Portal Navigation Map
 
 Use this map to navigate every active portal contract surface from this README.
+
+- [Frontend portal build guide](./build-guide.md)
+- [Portal matrix](./portal-matrix.md)
 
 ### Superadmin
 
@@ -113,12 +116,13 @@ Use this map to navigate every active portal contract surface from this README.
 
 ## How frontend engineers should use this tree
 
-1. Read [`portal-matrix.md`](./portal-matrix.md) to place a screen in the correct folder.
-2. Open the target portal `README.md` first.
-3. Build the page using that portal's `routes.md`, `api-contracts.md`, and `workflows.md`.
-4. Use `states-and-errors.md` to implement loading, empty, validation, and failure UX.
-5. Convert `playwright-journeys.md` into browser tests after screens are wired.
-6. Treat this tree and `docs/frontend-api/` as the frontend contract source.
+1. Read [`build-guide.md`](./build-guide.md) for the portal/persona overview.
+2. Read [`portal-matrix.md`](./portal-matrix.md) to place a screen in the correct folder.
+3. Open the target portal `README.md` first.
+4. Build the page using that portal's `routes.md`, `api-contracts.md`, and `workflows.md`.
+5. Use `states-and-errors.md` to implement loading, empty, validation, and failure UX.
+6. Convert `playwright-journeys.md` into browser tests after screens are wired.
+7. Treat this tree and `docs/frontend-api/` as the frontend contract source.
 
 ## Shared shell rules
 

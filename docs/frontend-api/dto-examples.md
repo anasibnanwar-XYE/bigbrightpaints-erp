@@ -821,11 +821,20 @@ POST /api/v1/accounting/periods/12/request-close
 }
 ```
 
-The same `PeriodCloseRequestActionRequest` body applies to:
+Accounting uses `PeriodCloseRequestActionRequest` only to create the close
+request:
 
 - `POST /api/v1/accounting/periods/{periodId}/request-close`
-- `POST /api/v1/accounting/periods/{periodId}/approve-close`
-- `POST /api/v1/accounting/periods/{periodId}/reject-close`
+
+Tenant-admin approval or rejection uses the generic approval decision endpoint:
+
+```json
+POST /api/v1/admin/approvals/PERIOD_CLOSE_REQUEST/77/decisions
+{
+  "decision": "APPROVE",
+  "reason": "Bank reconciliation and checklist reviewed"
+}
+```
 
 ## Period reopen request
 
