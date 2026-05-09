@@ -30,6 +30,36 @@ Last reviewed: 2026-05-14
   - `bash ci/lint-knowledgebase.sh`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
 
+## Addendum — `hard-cut-runtime-auth-cleanup`
+
+- Scope: hard-cut cleanup branch that removes the duplicate tenant runtime access layer, unused SQL-backed IAM entity mirrors, and unused DTO leftovers while keeping the canonical runtime/auth/API contracts intact.
+- Risk trigger: touches high-risk auth/company/runtime paths and related tests/docs/CI manifests under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/**`, `erp-domain/src/test/java/**`, `ci/**`, and canonical docs.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary expansion, destructive migration, or compatibility shim was introduced. Runtime admission remains on `TenantRuntimeEnforcementService`, portal/report interception keeps the same policy service, and IAM persistence remains on the SQL-backed canonical storage services.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the runtime/auth cleanup commits and rerun compile, targeted auth/runtime/IAM tests, stale-reference scans, high-risk guard, whitespace checks, and broader PR gates.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - duplicate `TenantRuntimeAccessService`, `TenantRuntimeRequestAdmissionService`, stale runtime truth tests, and related wrapper references are absent from source/docs/CI manifests
+  - runtime admission is still documented and routed through `TenantRuntimeEnforcementService`, including portal/report interceptor paths
+  - unused IAM entity mirror classes are absent; SQL-backed `IamCanonicalStorageService`, `AuthSessionService`, migrations, and IAM contract tests remain canonical
+  - removed accounting/admin/sales/production DTO class names have no remaining source/docs references
+- Commands run:
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Dtest=TenantRuntimeEnforcementServiceTest,TenantRuntimeEnforcementInterceptorTest,CompanyContextFilterControlPlaneBindingTest,CompanyContextFilterPasswordResetBypassTest,TS_RuntimeTenantRuntimeEnforcementTest,TS_RuntimeTenantPolicyControlExecutableCoverageTest,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TenantRuntimeEnforcementAuthIT,PortalInsightsControllerIT,SuperAdminUsageServiceTest -Djacoco.skip=true test`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp clean -DskipTests test-compile`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Dtest=IamCoreSchemaAndModelHardCutMigrationIT,TS_IamCoreSchemaAndModelHardCutMigrationContractTest,AuthControllerIT,MfaControllerIT,ScopedAccountBootstrapServiceIT,AdminUserSecurityIT -Djacoco.skip=true test`
+  - exact stale-name scans for removed runtime services, runtime truth tests, unused DTOs, and IAM entity mirror classes
+  - `git diff --check`
+  - `bash ci/check-high-risk-changes.sh`
+- Result summary:
+  - targeted runtime/auth pack reported 166 tests run, 0 failures/errors/skips
+  - clean compile after runtime cleanup passed with 1081 main sources and 589 tests
+  - clean compile after unused accounting DTO cleanup passed with 1077 main sources and 589 tests
+  - clean compile after unused portal DTO cleanup passed with 1073 main sources and 589 tests
+  - clean compile after IAM entity deletion passed with 1065 main sources and 589 tests
+  - targeted auth/IAM pack reported 80 tests run, 0 failures/errors/skips
+  - stale-name scans, `git diff --check`, and high-risk guard passed
+
 ## Addendum — `active-flyway-v2-hard-cut-baseline`
 
 - Scope: hard-cut schema-resource cleanup that removes the retired Flyway v1 tree, keeps `erp-domain/src/main/resources/db/migration_v2` as the only supported migration track, removes the retired Tally import table from the active v2 baseline, and renames journal reference mapping storage from `legacy_reference` to `reference_key`.
