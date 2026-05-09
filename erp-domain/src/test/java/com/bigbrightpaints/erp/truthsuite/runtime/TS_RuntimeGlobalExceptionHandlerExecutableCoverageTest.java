@@ -250,10 +250,10 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
             handler, "resolveNormalizedRequestPaths", (Object) null);
     assertThat(emptyPaths).isEmpty();
 
-    String pathInfoFallback =
+    String pathInfoDefault =
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler, "joinServletPathAndPathInfo", "/", CATALOG_ITEM_PATH);
-    assertThat(pathInfoFallback).isEqualTo(CATALOG_ITEM_PATH);
+    assertThat(pathInfoDefault).isEqualTo(CATALOG_ITEM_PATH);
 
     String emptyUri =
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
