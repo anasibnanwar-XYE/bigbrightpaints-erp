@@ -318,6 +318,39 @@ Last reviewed: 2026-05-14
   - targeted tenant usage metrics suite reported 17 tests run, 0 failures/errors/skips
   - high-risk guard, docs lint, Spotless, and test-compile passed
 
+## Addendum — `journal-reference-key-forward-migration`
+
+- Scope: accounting journal reference mapping column canonicalization.
+- Risk trigger: touches Flyway v2 migration ownership under `erp-domain/src/main/resources/db/migration_v2/`.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary change, destructive data rewrite, or rollback-blocking schema change was introduced. Historical migrations remain immutable; the `legacy_reference` to `reference_key` rename now lives in a forward migration so already-applied v2 databases avoid checksum drift.
+- Rollback owner: Droid mission orchestrator.
+- Rollback method: revert this packet and rerun migration validation, accounting shard tests, high-risk guard, Spotless, compile/test-compile, and PR CI.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - `V2__accounting_core.sql` and `V8__idempotency_case_insensitive_lookup_indexes.sql` preserve the originally applied `legacy_reference` schema/index names
+  - `V204__journal_reference_mapping_reference_key.sql` performs the current-state rename and recreates canonical `reference_key` indexes
+  - current Java/JPA/repository code continues to target `reference_key`
+- Commands run:
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=ReconciliationServiceTest,BankReconciliationSessionServiceTest test`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AccountingCatalogControllerSecurityIT test`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=PurchasingServiceTest test`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=ReconciliationServiceTest,BankReconciliationSessionServiceTest,PurchasingServiceTest,AccountingCatalogControllerSecurityIT test`
+  - `bash ci/check-high-risk-changes.sh`
+  - `bash ci/lint-knowledgebase.sh`
+  - `bash scripts/guard_openapi_contract_drift.sh`
+  - `bash scripts/guard_accounting_portal_scope_contract.sh`
+  - `python3 -m unittest testing/ci/test_pr_review_ci_contract.py`
+  - `python3 -m py_compile scripts/ci_risk_router.py scripts/changed_files_coverage.py scripts/pr_ci_parity.py testing/ci/test_pr_review_ci_contract.py`
+  - `MIGRATION_SET=v2 mvn -B -ntp spotless:apply && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 bash scripts/gate_fast.sh`
+- Result summary:
+  - Targeted accounting reconciliation, catalog, and purchasing tests passed with 39, 8, 23, and 70 tests respectively.
+  - Flyway validated 93 migrations and a fresh Testcontainers PostgreSQL schema applied through `V204__journal_reference_mapping_reference_key.sql`.
+  - High-risk, knowledgebase, OpenAPI drift, accounting portal scope, PR CI contract, Python compile, Spotless, and test-compile checks passed.
+  - `gate_fast` passed with 904 tests, 0 failures/errors/skips; changed-files coverage recorded `threshold_gap_allowed=true` and `passes=true` for PR long-branch convergence parity.
+
 ## Scope
 - Feature: `identity-account-hardcut-20260427` / PR #197
 - Branch: codex identity-account-hardcut-20260427

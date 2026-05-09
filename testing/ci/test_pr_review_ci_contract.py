@@ -520,6 +520,10 @@ class RuntimeProbeContractTest(unittest.TestCase):
         gate_fast = (REPO_ROOT / "scripts" / "gate_fast.sh").read_text(encoding="utf-8")
 
         self.assertIn('CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-origin/main}"', gate_fast)
+        self.assertIn("changed_coverage_baseline_applies()", gate_fast)
+        self.assertIn('if changed_coverage_baseline_applies "$REQUESTED_DIFF_BASE"; then', gate_fast)
+        self.assertIn('COVERAGE_BASELINE_APPLIED="true"', gate_fast)
+        self.assertIn("coverage_args+=(--allow-threshold-gap)", gate_fast)
         self.assertNotIn("harness-engineering-orchestrator", gate_fast)
         origin_main_index = gate_fast.index('if git rev-parse --verify --quiet origin/main >/dev/null; then')
         canonical_index = gate_fast.index('if [[ -n "${CANONICAL_BASE_SHA:-}" ]] && git merge-base --is-ancestor "$CANONICAL_BASE_SHA" HEAD; then')

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -133,7 +134,11 @@ class ReconciliationServiceTest {
     company.setTimezone("Asia/Kolkata");
     ReflectionFieldAccess.setField(company, "id", 1L);
     new CompanyTime(companyClock);
-    lenient().when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 3, 18));
+    Instant now = Instant.parse("2026-03-18T06:30:00Z");
+    lenient().when(companyClock.now(nullable(Company.class))).thenReturn(now);
+    lenient()
+        .when(companyClock.today(nullable(Company.class)))
+        .thenReturn(LocalDate.of(2026, 3, 18));
     lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
   }
 

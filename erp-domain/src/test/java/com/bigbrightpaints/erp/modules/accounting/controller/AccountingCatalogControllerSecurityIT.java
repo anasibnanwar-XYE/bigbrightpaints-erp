@@ -483,9 +483,11 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/sales/orders",
             HttpMethod.POST,
-            new HttpEntity<>(salesOrderPayload(sku), headers),
+            new HttpEntity<>(salesOrderPayload(sku), headersWithIdempotency("catalog-sales")),
             Map.class);
-    assertThat(salesOrderResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(salesOrderResponse.getStatusCode())
+        .as("sales order response body: %s", salesOrderResponse.getBody())
+        .isEqualTo(HttpStatus.OK);
     assertThat(data(salesOrderResponse)).containsKeys("id", "orderNumber", "status");
 
     RawMaterial rawMaterial =
@@ -499,7 +501,9 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
             new HttpEntity<>(
                 productionLogPayload(browsedBrandId, productId, rawMaterial.getId()), headers),
             Map.class);
-    assertThat(productionLogResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(productionLogResponse.getStatusCode())
+        .as("production log response body: %s", productionLogResponse.getBody())
+        .isEqualTo(HttpStatus.OK);
     Map<String, Object> productionData = data(productionLogResponse);
     assertThat(productionData).containsKeys("id", "productionCode");
     String productionCode = String.valueOf(productionData.get("productionCode"));
@@ -570,6 +574,13 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     return authHeaders;
   }
 
+  private HttpHeaders headersWithIdempotency(String prefix) {
+    HttpHeaders requestHeaders = new HttpHeaders();
+    requestHeaders.putAll(headers);
+    requestHeaders.set("Idempotency-Key", prefix + "-" + shortId());
+    return requestHeaders;
+  }
+
   private ResponseEntity<Map> importCatalog(
       HttpHeaders requestHeaders, String csvPayload, String fileName) {
     MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
@@ -600,6 +611,7 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
   private Map<String, Object> canonicalFinishedGoodPayload(Long brandId, String baseProductName) {
     Map<String, Object> metadata = new LinkedHashMap<>();
     metadata.put("wipAccountId", wipAccount.getId());
+    metadata.put("semiFinishedAccountId", inventoryAccount.getId());
     metadata.put("laborAppliedAccountId", laborAppliedAccount.getId());
     metadata.put("overheadAppliedAccountId", overheadAppliedAccount.getId());
 
@@ -622,6 +634,7 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
   private Map<String, Object> singleProductPayload(Long brandId, String customSkuCode) {
     Map<String, Object> metadata = new LinkedHashMap<>();
     metadata.put("wipAccountId", wipAccount.getId());
+    metadata.put("semiFinishedAccountId", inventoryAccount.getId());
     metadata.put("productType", "decorative");
 
     Map<String, Object> payload = new LinkedHashMap<>();

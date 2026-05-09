@@ -255,7 +255,7 @@ ALTER SEQUENCE public.journal_lines_id_seq OWNED BY public.journal_lines.id;
 CREATE TABLE public.journal_reference_mappings (
     id bigint NOT NULL,
     company_id bigint NOT NULL,
-    reference_key character varying(64) NOT NULL,
+    legacy_reference character varying(64) NOT NULL,
     canonical_reference character varying(64) NOT NULL,
     entity_type character varying(64),
     entity_id bigint,
@@ -587,8 +587,8 @@ CREATE UNIQUE INDEX uk_partner_settlement_idem_invoice ON public.partner_settlem
 -- INDEX: uk_partner_settlement_idem_purchase
 CREATE UNIQUE INDEX uk_partner_settlement_idem_purchase ON public.partner_settlement_allocations USING btree (company_id, idempotency_key, purchase_id) WHERE ((idempotency_key IS NOT NULL) AND (purchase_id IS NOT NULL));
 
--- INDEX: uq_journal_reference_mapping_reference_key
-CREATE UNIQUE INDEX uq_journal_reference_mapping_reference_key ON public.journal_reference_mappings USING btree (company_id, reference_key);
+-- INDEX: uq_journal_reference_mapping_legacy
+CREATE UNIQUE INDEX uq_journal_reference_mapping_legacy ON public.journal_reference_mappings USING btree (company_id, legacy_reference);
 
 -- FK CONSTRAINT: accounting_events accounting_events_company_id_fkey
 ALTER TABLE ONLY public.accounting_events

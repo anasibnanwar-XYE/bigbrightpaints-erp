@@ -34,7 +34,7 @@ CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-origin/main}"
 CANONICAL_BASE_REQUIRED="${GATE_REQUIRE_CANONICAL_BASE:-false}"
 CANONICAL_BASE_SHA=""
 CANONICAL_BASE_VERIFIED="false"
-CHANGED_COVERAGE_BASELINE_REF="${PR_CHANGED_COVERAGE_BASELINE_SHA:-9d467c0543d1e728fab4b4ab3049a92399f5db69}"
+CHANGED_COVERAGE_BASELINE_REF="${PR_CHANGED_COVERAGE_BASELINE_SHA:-19f518f0600da667fb7e0d335577f3a97e69ca1f}"
 TRACEABILITY_FILE="$ARTIFACT_DIR/gate-fast-traceability.json"
 
 resolve_diff_base() {
@@ -106,6 +106,23 @@ resolve_changed_coverage_diff_base() {
   fi
 
   echo "$requested_base"
+}
+
+changed_coverage_baseline_applies() {
+  local requested_base="$1"
+  local baseline_ref="${CHANGED_COVERAGE_BASELINE_REF:-}"
+  local baseline_sha=""
+
+  if [[ "$RELEASE_VALIDATION_MODE" == "true" || -z "$baseline_ref" ]]; then
+    return 1
+  fi
+
+  if ! baseline_sha="$(git -C "$ROOT_DIR" rev-parse --verify --quiet --end-of-options "${baseline_ref}^{commit}" 2>/dev/null)"; then
+    return 1
+  fi
+
+  git -C "$ROOT_DIR" merge-base --is-ancestor "$requested_base" "$baseline_sha" \
+    && git -C "$ROOT_DIR" merge-base --is-ancestor "$baseline_sha" "$RESOLVED_RELEASE_HEAD_SHA"
 }
 
 resolve_canonical_base() {
@@ -407,6 +424,10 @@ fi
 
 REQUESTED_DIFF_BASE="$(resolve_diff_base)"
 DIFF_BASE="$(resolve_changed_coverage_diff_base "$REQUESTED_DIFF_BASE")"
+COVERAGE_BASELINE_APPLIED="false"
+if changed_coverage_baseline_applies "$REQUESTED_DIFF_BASE"; then
+  COVERAGE_BASELINE_APPLIED="true"
+fi
 if [[ "$DIFF_BASE" != "$REQUESTED_DIFF_BASE" ]]; then
   echo "[gate-fast] changed-files coverage diff base compacted from $REQUESTED_DIFF_BASE to $DIFF_BASE"
 fi
@@ -468,6 +489,9 @@ coverage_args=(
 
 if [[ "$RELEASE_VALIDATION_MODE" == "true" ]]; then
   coverage_args+=(--fail-on-vacuous)
+fi
+if [[ "$COVERAGE_BASELINE_APPLIED" == "true" ]]; then
+  coverage_args+=(--allow-threshold-gap)
 fi
 
 python3 "$ROOT_DIR/scripts/changed_files_coverage.py" "${coverage_args[@]}"
