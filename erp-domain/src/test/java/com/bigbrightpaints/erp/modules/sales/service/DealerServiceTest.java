@@ -920,8 +920,8 @@ class DealerServiceTest {
     Dealer existing = new Dealer();
     existing.setCompany(company);
     ReflectionTestUtils.setField(existing, "id", 77L);
-    existing.setCode("LEGACY-DEALER");
-    existing.setName("Legacy Name");
+    existing.setCode("EXISTING-DEALER");
+    existing.setName("Existing Name");
     existing.setStatus("INACTIVE");
 
     when(dealerRepository.findByCompanyAndEmailIgnoreCase(eq(company), eq("dealer@example.com")))
@@ -933,7 +933,7 @@ class DealerServiceTest {
     verify(dealerRepository, atLeastOnce()).save(dealerCaptor.capture());
     Dealer saved = dealerCaptor.getAllValues().get(dealerCaptor.getAllValues().size() - 1);
     assertThat(saved.getId()).isEqualTo(77L);
-    assertThat(saved.getCode()).isEqualTo("LEGACY-DEALER");
+    assertThat(saved.getCode()).isEqualTo("EXISTING-DEALER");
     assertThat(saved.getStatus()).isEqualTo("ACTIVE");
   }
 

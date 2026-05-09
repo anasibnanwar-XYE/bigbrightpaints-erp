@@ -55,21 +55,23 @@ class SalesControllerIdempotencyHeaderTest {
   }
 
   @Test
-  void createOrder_rejectsHeaderBodyMismatch() {
+  void createOrder_usesPrimaryHeaderIdempotencyKeyWhenBodyDiffers() {
     SalesController controller = createController();
+    when(salesOrderCrudService.createOrder(any())).thenReturn(null);
 
-    assertThatThrownBy(
-            () -> controller.createOrder("hdr-001", null, requestWithIdempotencyKey("body-001")))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Idempotency key mismatch");
+    controller.createOrder("hdr-001", null, requestWithIdempotencyKey("body-001"));
+
+    ArgumentCaptor<SalesOrderRequest> captor = ArgumentCaptor.forClass(SalesOrderRequest.class);
+    verify(salesOrderCrudService).createOrder(captor.capture());
+    assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-001");
   }
 
   @Test
-  void createOrder_rejectsRetiredLegacyHeader() {
+  void createOrder_rejectsRetiredHeader() {
     SalesController controller = createController();
 
     assertThatThrownBy(
-            () -> controller.createOrder(null, "legacy-001", requestWithoutIdempotencyKey()))
+            () -> controller.createOrder(null, "retired-001", requestWithoutIdempotencyKey()))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("X-Idempotency-Key is not supported for sales orders");
     verifyNoInteractions(salesOrderCrudService);
@@ -143,6 +145,7 @@ class SalesControllerIdempotencyHeaderTest {
         new PromotionRequest(
             "Summer Offer",
             "seasonal discount",
+            null,
             "PERCENTAGE",
             new BigDecimal("10.00"),
             java.time.LocalDate.of(2026, 4, 1),
@@ -154,6 +157,7 @@ class SalesControllerIdempotencyHeaderTest {
             java.util.UUID.randomUUID(),
             "Summer Offer",
             "seasonal discount",
+            null,
             "PERCENTAGE",
             new BigDecimal("10.00"),
             java.time.LocalDate.of(2026, 4, 1),
@@ -198,7 +202,6 @@ class SalesControllerIdempotencyHeaderTest {
         salesOrderCrudService,
         salesOrderLifecycleService,
         salesDispatchReconciliationService,
-        salesDashboardService,
-        dealerService);
+        salesDashboardService);
   }
 }

@@ -36,14 +36,6 @@ public final class SalesOrderReference {
     return withPrefix("COGS-", orderNumber);
   }
 
-  public static String legacySalesJournalPrefix(SalesOrder order) {
-    return legacySalesJournalPrefix(normalizeOrderNumber(order));
-  }
-
-  public static String legacySalesJournalPrefix(String orderNumber) {
-    return withPrefix("SALE-", orderNumber);
-  }
-
   public static String normalizeOrderNumber(SalesOrder order) {
     if (order == null) {
       return "UNKNOWN";

@@ -164,14 +164,22 @@ public class SalesControllerIT extends AbstractIntegrationTest {
   }
 
   private Map<?, ?> createSalesOrder(HttpHeaders headers, Long dealerId) {
+    HttpHeaders orderHeaders = salesOrderHeaders(headers);
     ResponseEntity<Map> orderResponse =
         rest.exchange(
             ErpApiRoutes.SALES_ORDERS,
             HttpMethod.POST,
-            new HttpEntity<>(salesOrderPayload(dealerId), headers),
+            new HttpEntity<>(salesOrderPayload(dealerId), orderHeaders),
             Map.class);
     assertThat(orderResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     return (Map<?, ?>) orderResponse.getBody().get("data");
+  }
+
+  private HttpHeaders salesOrderHeaders(HttpHeaders headers) {
+    HttpHeaders orderHeaders = new HttpHeaders();
+    orderHeaders.putAll(headers);
+    orderHeaders.set("Idempotency-Key", "sales-order-" + System.nanoTime());
+    return orderHeaders;
   }
 
   private Map<String, Object> salesOrderPayload(Long dealerId) {
@@ -402,11 +410,12 @@ public class SalesControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void createSalesOrder_rejectsRetiredLegacyIdempotencyHeaderWithoutCreatingOrder() {
+  void createSalesOrder_rejectsRetiredIdempotencyHeaderWithoutCreatingOrder() {
     HttpHeaders headers = authenticatedHeaders(loginToken());
-    Long dealerId = createDealer(headers, "Legacy Header Dealer");
+    Long dealerId = createDealer(headers, "Retired Header Dealer");
     long ordersBefore = salesOrderRepository.count();
-    headers.set("X-Idempotency-Key", "legacy-sales-order-" + System.nanoTime());
+    headers.set("Idempotency-Key", "sales-order-" + System.nanoTime());
+    headers.set("X-Idempotency-Key", "retired-sales-order-" + System.nanoTime());
 
     ResponseEntity<Map> response =
         rest.exchange(
@@ -495,83 +504,79 @@ public class SalesControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void sales_order_search_repository_supports_alias_filters_escaping_and_unpaged_queries() {
+  void sales_order_search_repository_supports_status_filters_escaping_and_unpaged_queries() {
     Long primaryDealerId =
-        createPersistedDealer("ALIAS-A" + System.nanoTime(), new BigDecimal("50000"));
+        createPersistedDealer("CANON-A" + System.nanoTime(), new BigDecimal("50000"));
     Long secondaryDealerId =
-        createPersistedDealer("ALIAS-B" + System.nanoTime(), new BigDecimal("50000"));
+        createPersistedDealer("CANON-B" + System.nanoTime(), new BigDecimal("50000"));
 
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
     Dealer primaryDealer = dealerRepository.findById(primaryDealerId).orElseThrow();
     Dealer secondaryDealer = dealerRepository.findById(secondaryDealerId).orElseThrow();
 
-    SalesOrder draftAliasOrder =
+    SalesOrder draftOrder =
         createPersistedOrder(
             company,
             primaryDealer,
-            "SO-DRAFT-ALIAS",
-            "BOOKED",
+            "SO-DRAFT-CANON",
+            "DRAFT",
             Instant.parse("2026-02-01T00:00:00Z"));
-    SalesOrder dispatchedAliasOrder =
+    SalesOrder dispatchedOrder =
         createPersistedOrder(
             company,
             primaryDealer,
-            "SO-DISPATCHED-ALIAS",
-            "SHIPPED",
+            "SO-DISPATCHED-CANON",
+            "DISPATCHED",
             Instant.parse("2026-02-02T00:00:00Z"));
-    SalesOrder settledAliasOrder =
+    SalesOrder settledOrder =
         createPersistedOrder(
             company,
             secondaryDealer,
-            "SO-SETTLED-ALIAS",
-            "COMPLETED",
+            "SO-SETTLED-CANON",
+            "SETTLED",
             Instant.parse("2026-02-03T00:00:00Z"));
-    SalesOrder pendingOrder =
+    SalesOrder heldOrder =
         createPersistedOrder(
-            company,
-            secondaryDealer,
-            "SO-PENDING",
-            "PENDING",
-            Instant.parse("2026-02-04T00:00:00Z"));
+            company, secondaryDealer, "SO-HELD", "ON_HOLD", Instant.parse("2026-02-04T00:00:00Z"));
 
     Page<Long> draftResults =
         salesOrderRepository.searchIdsByCompany(
             company,
             "DRAFT",
             primaryDealer,
-            "SO-DRAFT-ALIAS",
-            draftAliasOrder.getCreatedAt().minusSeconds(5),
-            draftAliasOrder.getCreatedAt().plusSeconds(5),
+            "SO-DRAFT-CANON",
+            draftOrder.getCreatedAt().minusSeconds(5),
+            draftOrder.getCreatedAt().plusSeconds(5),
             PageRequest.of(0, 10));
-    assertThat(draftResults.getContent()).containsExactly(draftAliasOrder.getId());
+    assertThat(draftResults.getContent()).containsExactly(draftOrder.getId());
 
     Page<Long> dispatchedResults =
         salesOrderRepository.searchIdsByCompany(
             company,
             "DISPATCHED",
             primaryDealer,
-            "SO-DISPATCHED-ALIAS",
+            "SO-DISPATCHED-CANON",
             null,
-            dispatchedAliasOrder.getCreatedAt().plusSeconds(5),
+            dispatchedOrder.getCreatedAt().plusSeconds(5),
             PageRequest.of(0, 10));
-    assertThat(dispatchedResults.getContent()).containsExactly(dispatchedAliasOrder.getId());
+    assertThat(dispatchedResults.getContent()).containsExactly(dispatchedOrder.getId());
 
     Page<Long> settledResults =
         salesOrderRepository.searchIdsByCompany(
             company,
             "SETTLED",
             secondaryDealer,
-            "SO-SETTLED-ALIAS",
-            settledAliasOrder.getCreatedAt().minusSeconds(5),
+            "SO-SETTLED-CANON",
+            settledOrder.getCreatedAt().minusSeconds(5),
             null,
             PageRequest.of(0, 10));
-    assertThat(settledResults.getContent()).containsExactly(settledAliasOrder.getId());
+    assertThat(settledResults.getContent()).containsExactly(settledOrder.getId());
 
-    Page<Long> pendingResults =
+    Page<Long> heldResults =
         salesOrderRepository.searchIdsByCompany(
-            company, "PENDING", secondaryDealer, "SO-PENDING", null, null, Pageable.unpaged());
-    assertThat(pendingResults.getContent()).containsExactly(pendingOrder.getId());
-    assertThat(pendingResults.getTotalElements()).isEqualTo(1);
+            company, "ON_HOLD", secondaryDealer, "SO-HELD", null, null, Pageable.unpaged());
+    assertThat(heldResults.getContent()).containsExactly(heldOrder.getId());
+    assertThat(heldResults.getTotalElements()).isEqualTo(1);
 
     Page<Long> allResults =
         salesOrderRepository.searchIdsByCompany(
@@ -579,15 +584,12 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             null,
             null,
             null,
-            draftAliasOrder.getCreatedAt().minusSeconds(5),
-            pendingOrder.getCreatedAt().plusSeconds(5),
+            draftOrder.getCreatedAt().minusSeconds(5),
+            heldOrder.getCreatedAt().plusSeconds(5),
             PageRequest.of(0, 10));
     assertThat(allResults.getContent())
         .contains(
-            pendingOrder.getId(),
-            settledAliasOrder.getId(),
-            dispatchedAliasOrder.getId(),
-            draftAliasOrder.getId());
+            heldOrder.getId(), settledOrder.getId(), dispatchedOrder.getId(), draftOrder.getId());
 
     String percentSuffix = "PCT" + System.nanoTime();
     String literalPercentOrderNumber = "SO%" + percentSuffix;
@@ -597,14 +599,14 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             company,
             primaryDealer,
             literalPercentOrderNumber,
-            "BOOKED",
+            "DRAFT",
             Instant.parse("2026-02-05T00:00:00Z"));
     SalesOrder percentDistractorOrder =
         createPersistedOrder(
             company,
             primaryDealer,
             percentDistractorOrderNumber,
-            "BOOKED",
+            "DRAFT",
             Instant.parse("2026-02-05T00:00:01Z"));
     Page<Long> literalPercentResults =
         salesOrderRepository.searchIdsByCompany(
@@ -621,14 +623,14 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             company,
             secondaryDealer,
             literalUnderscoreOrderNumber,
-            "BOOKED",
+            "DRAFT",
             Instant.parse("2026-02-05T00:00:02Z"));
     SalesOrder underscoreDistractorOrder =
         createPersistedOrder(
             company,
             secondaryDealer,
             underscoreDistractorOrderNumber,
-            "BOOKED",
+            "DRAFT",
             Instant.parse("2026-02-05T00:00:03Z"));
     Page<Long> literalUnderscoreResults =
         salesOrderRepository.searchIdsByCompany(
@@ -650,14 +652,14 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             company,
             primaryDealer,
             backslashOrderNumber,
-            "BOOKED",
+            "DRAFT",
             Instant.parse("2026-02-05T00:00:04Z"));
     SalesOrder backslashDistractorOrder =
         createPersistedOrder(
             company,
             primaryDealer,
             "SOX" + backslashSuffix,
-            "BOOKED",
+            "DRAFT",
             Instant.parse("2026-02-05T00:00:05Z"));
     Page<Long> backslashResults =
         salesOrderRepository.searchIdsByCompany(
@@ -692,7 +694,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(
                 salesOrderPayloadWithFinishedGoodId(dealerId, finishedGoodId, "CUSTOM_120"),
-                headers),
+                salesOrderHeaders(headers)),
             Map.class);
     assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<?, ?> createdData = (Map<?, ?>) createResponse.getBody().get("data");
@@ -739,8 +741,13 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     List<Map<String, Object>> timeline =
         (List<Map<String, Object>>) timelineResponse.getBody().get("data");
     assertThat(timeline).isNotEmpty();
-    assertThat(timeline).extracting(entry -> entry.get("status")).contains("DRAFT", "CONFIRMED");
-    assertThat(timeline).allSatisfy(entry -> assertThat(entry).containsKeys("actor", "timestamp"));
+    assertThat(timeline).extracting(entry -> entry.get("toStatus")).contains("DRAFT", "CONFIRMED");
+    assertThat(timeline)
+        .allSatisfy(
+            entry ->
+                assertThat(entry)
+                    .containsKeys("changedBy", "changedAt")
+                    .doesNotContainKeys("status", "actor", "timestamp"));
 
     ResponseEntity<Map> searchResponse =
         rest.exchange(
@@ -785,7 +792,8 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             ErpApiRoutes.SALES_ORDERS,
             HttpMethod.POST,
             new HttpEntity<>(
-                salesOrderPayloadWithFinishedGoodId(dealerId, finishedGoodId, "NET_45"), headers),
+                salesOrderPayloadWithFinishedGoodId(dealerId, finishedGoodId, "NET_45"),
+                salesOrderHeaders(headers)),
             Map.class);
     assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Long orderId =
@@ -822,7 +830,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         rest.exchange(
             ErpApiRoutes.SALES_ORDERS,
             HttpMethod.POST,
-            new HttpEntity<>(salesOrderPayload(dealerId), headers),
+            new HttpEntity<>(salesOrderPayload(dealerId), salesOrderHeaders(headers)),
             Map.class);
     assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<?, ?> createdData = (Map<?, ?>) createResponse.getBody().get("data");
@@ -866,7 +874,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         rest.exchange(
             ErpApiRoutes.SALES_ORDERS,
             HttpMethod.POST,
-            new HttpEntity<>(salesOrderPayload(dealerId), headers),
+            new HttpEntity<>(salesOrderPayload(dealerId), salesOrderHeaders(headers)),
             Map.class);
     assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<?, ?> createdData = (Map<?, ?>) createResponse.getBody().get("data");
@@ -953,7 +961,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         rest.exchange(
             ErpApiRoutes.SALES_ORDERS,
             HttpMethod.POST,
-            new HttpEntity<>(salesOrderPayload(dealerId), headers),
+            new HttpEntity<>(salesOrderPayload(dealerId), salesOrderHeaders(headers)),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
@@ -1042,7 +1050,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         createPersistedOrder(
             company,
             dealer,
-            "SO-PENDING-" + System.nanoTime(),
+            "SO-HELD-" + System.nanoTime(),
             "CONFIRMED",
             Instant.parse("2026-03-01T10:00:00Z"));
     pendingExposureOrder.setTotalAmount(new BigDecimal("200.00"));
@@ -1053,7 +1061,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         rest.exchange(
             ErpApiRoutes.SALES_ORDERS,
             HttpMethod.POST,
-            new HttpEntity<>(salesOrderPayload(dealerId), salesHeaders),
+            new HttpEntity<>(salesOrderPayload(dealerId), salesOrderHeaders(salesHeaders)),
             Map.class);
     assertThat(blockedOrderWithoutOverride.getStatusCode())
         .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
@@ -1092,7 +1100,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         rest.exchange(
             ErpApiRoutes.SALES_ORDERS,
             HttpMethod.POST,
-            new HttpEntity<>(salesOrderPayload(dealerId), salesHeaders),
+            new HttpEntity<>(salesOrderPayload(dealerId), salesOrderHeaders(salesHeaders)),
             Map.class);
     assertThat(createOrderResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(createOrderResponse.getBody()).isNotNull();

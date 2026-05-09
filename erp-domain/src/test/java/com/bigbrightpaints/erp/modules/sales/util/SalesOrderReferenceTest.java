@@ -39,11 +39,6 @@ class SalesOrderReferenceTest {
   }
 
   @Test
-  void legacySalesJournalPrefix_prefixAndNormalize() {
-    assertThat(SalesOrderReference.legacySalesJournalPrefix("so-3")).isEqualTo("SALE-SO-3");
-  }
-
-  @Test
   void invoiceReference_longOrder_isBoundedAndDeterministic() {
     String longOrder = "SO-" + "A".repeat(120);
     String first = SalesOrderReference.invoiceReference(longOrder);

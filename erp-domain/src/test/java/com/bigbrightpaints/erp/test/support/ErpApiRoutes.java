@@ -4,7 +4,6 @@ public final class ErpApiRoutes {
 
   public static final String DEALER_DIRECTORY = "/api/v1/dealers";
   public static final String DEALER_DIRECTORY_SEARCH = "/api/v1/dealers/search";
-  public static final String SALES_DEALER_DIRECTORY = "/api/v1/sales/dealers";
   public static final String SALES_ORDERS = "/api/v1/sales/orders";
   public static final String SALES_ORDER_SEARCH = "/api/v1/sales/orders/search";
   public static final String SALES_DASHBOARD = "/api/v1/sales/dashboard";

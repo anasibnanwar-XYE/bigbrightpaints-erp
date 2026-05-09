@@ -163,6 +163,13 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
     return scoped;
   }
 
+  private HttpHeaders headersWithIdempotency(String keyPrefix) {
+    HttpHeaders scoped = new HttpHeaders();
+    scoped.putAll(headers);
+    scoped.set("Idempotency-Key", keyPrefix + "-" + System.nanoTime());
+    return scoped;
+  }
+
   private void ensureTestAccounts() {
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
     Account receivable =
@@ -261,7 +268,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/sales/orders",
             HttpMethod.POST,
-            new HttpEntity<>(orderReq, headers),
+            new HttpEntity<>(orderReq, headersWithIdempotency("sales-auto-order")),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -270,9 +277,6 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
     // Order should be auto-approved or pending based on business rules
     assertThat(orderData.get("status"))
         .isIn(
-            "BOOKED",
-            "APPROVED",
-            "PENDING",
             "DRAFT",
             "PENDING_PRODUCTION",
             "CONFIRMED",
@@ -323,7 +327,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/sales/orders",
             HttpMethod.POST,
-            new HttpEntity<>(orderReq, headers),
+            new HttpEntity<>(orderReq, headersWithIdempotency("sales-credit-limit-order")),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
@@ -380,7 +384,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/sales/orders",
             HttpMethod.POST,
-            new HttpEntity<>(orderReq, headers),
+            new HttpEntity<>(orderReq, headersWithIdempotency("sales-fulfillment-order")),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -434,7 +438,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/sales/orders",
             HttpMethod.POST,
-            new HttpEntity<>(orderReq, headers),
+            new HttpEntity<>(orderReq, headersWithIdempotency("sales-promotion-order")),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -483,7 +487,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/sales/orders",
             HttpMethod.POST,
-            new HttpEntity<>(orderReq, headers),
+            new HttpEntity<>(orderReq, headersWithIdempotency("sales-gst-order")),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -812,11 +816,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         .extracting(entry -> entry.getId())
         .isEqualTo(arJournalId);
     String canonicalCogsReference = "COGS-PS-" + slipId;
-    String legacyCogsReference = "COGS-" + slip.getSlipNumber();
     var cogsEntry = journalReferenceResolver.findExistingEntry(company, canonicalCogsReference);
-    if (cogsEntry.isEmpty()) {
-      cogsEntry = journalReferenceResolver.findExistingEntry(company, legacyCogsReference);
-    }
     assertThat(cogsEntry)
         .isPresent()
         .get()
@@ -1101,7 +1101,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/sales/orders",
             HttpMethod.POST,
-            new HttpEntity<>(orderReq, headers),
+            new HttpEntity<>(orderReq, headersWithIdempotency("sales-dispatch-gst-order")),
             Map.class);
     Map<?, ?> orderData = requireData(orderResp, "create GST dispatch order");
     Long orderId = ((Number) orderData.get("id")).longValue();
@@ -1180,7 +1180,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/sales/orders",
             HttpMethod.POST,
-            new HttpEntity<>(orderReq, headers),
+            new HttpEntity<>(orderReq, headersWithIdempotency("sales-mixed-gst-order")),
             Map.class);
     Map<?, ?> orderData = requireData(orderResp, "create mixed GST order");
     Long orderId = ((Number) orderData.get("id")).longValue();
@@ -1455,7 +1455,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/sales/orders",
             HttpMethod.POST,
-            new HttpEntity<>(orderReq, headers),
+            new HttpEntity<>(orderReq, headersWithIdempotency("sales-helper-order")),
             Map.class);
 
     Map<?, ?> data = requireData(response, "create order via helper");

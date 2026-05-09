@@ -101,7 +101,7 @@ public class SalesCoreEngine {
   private static final BigDecimal MAX_GST_RATE = new BigDecimal("28.00");
   private static final BigDecimal DISPATCH_TOTAL_TOLERANCE = new BigDecimal("0.01");
   private static final String SALES_ORDER_CREATE_PATH = "/api/v1/sales/orders";
-  private static final String RETIRED_LEGACY_IDEMPOTENCY_HEADER = "X-Idempotency-Key";
+  private static final String RETIRED_IDEMPOTENCY_HEADER = "X-Idempotency-Key";
 
   private static final String ORDER_STATUS_DRAFT = "DRAFT";
   private static final String ORDER_STATUS_CONFIRMED = "CONFIRMED";
@@ -167,16 +167,11 @@ public class SalesCoreEngine {
           ORDER_STATUS_RESERVED,
           ORDER_STATUS_PENDING_PRODUCTION,
           ORDER_STATUS_PENDING_INVENTORY,
-          ORDER_STATUS_READY_TO_SHIP,
-          "BOOKED",
-          "SHIPPED",
-          "FULFILLED",
-          "COMPLETED");
+          ORDER_STATUS_READY_TO_SHIP);
   private static final Set<String> VALID_CREDIT_REQUEST_STATUSES =
       Set.of("PENDING", "APPROVED", "REJECTED");
   private static final String DEFAULT_ORDER_PAYMENT_MODE =
       SalesProformaBoundaryService.DEFAULT_PAYMENT_MODE;
-  private static final String LEGACY_HYBRID_PAYMENT_MODE = "SPLIT";
   private static final String DISPATCH_REASON_CODE_CREDIT_LIMIT = "CREDIT_LIMIT_EXCEPTION";
   private static final String DISPATCH_REASON_CODE_PRICE_OVERRIDE = "PRICE_OVERRIDE";
   private static final String DISPATCH_REASON_CODE_DISCOUNT_OVERRIDE = "DISCOUNT_OVERRIDE";
@@ -193,8 +188,7 @@ public class SalesCoreEngine {
           ORDER_STATUS_PENDING_PRODUCTION,
           ORDER_STATUS_PENDING_INVENTORY,
           ORDER_STATUS_READY_TO_SHIP,
-          ORDER_STATUS_ON_HOLD,
-          "BOOKED");
+          ORDER_STATUS_ON_HOLD);
   private static final Set<String> COMMERCIAL_LIFECYCLE_REASON_CODES =
       Set.of("ORDER_COMMERCIAL_RECORDED", "ORDER_PENDING_PRODUCTION");
 
@@ -596,58 +590,17 @@ public class SalesCoreEngine {
   }
 
   public SalesOrderDto createOrder(SalesOrderRequest request) {
-    failClosedOnRetiredLegacyIdempotencyHeader();
+    failClosedOnRetiredIdempotencyHeader();
     Company company = companyContextService.requireCurrentCompany();
     String requestPaymentMode = request.paymentMode();
     String idempotencyKey = request.resolveIdempotencyKey();
-    String legacyDefaultPaymentIdempotencyKey =
-        resolveLegacyDefaultPaymentIdempotencyKey(request, idempotencyKey);
-    String legacySplitReplayIdempotencyKey =
-        resolveLegacySplitReplayIdempotencyKey(request, idempotencyKey);
     String requestSignature = buildSalesOrderSignature(request);
-    String legacyDefaultPaymentRequestSignature =
-        buildSalesOrderSignatureIncludingDefaultPaymentMode(request);
-    String legacySplitReplayRequestSignature =
-        resolveLegacySplitReplayRequestSignature(request, requestSignature);
-    if (legacyDefaultPaymentIdempotencyKey != null) {
-      Optional<SalesOrderDto> legacyDefaultMatch =
-          resolveOrderByIdempotencyKey(
-              company,
-              legacyDefaultPaymentIdempotencyKey,
-              requestSignature,
-              legacyDefaultPaymentRequestSignature,
-              legacySplitReplayRequestSignature,
-              requestPaymentMode);
-      if (legacyDefaultMatch.isPresent()) {
-        return legacyDefaultMatch.get();
-      }
-    }
-    if (legacySplitReplayIdempotencyKey != null) {
-      Optional<SalesOrderDto> legacySplitMatch =
-          resolveOrderByIdempotencyKey(
-              company,
-              legacySplitReplayIdempotencyKey,
-              requestSignature,
-              legacyDefaultPaymentRequestSignature,
-              legacySplitReplayRequestSignature,
-              requestPaymentMode);
-      if (legacySplitMatch.isPresent()) {
-        return legacySplitMatch.get();
-      }
-    }
     try {
       SalesOrderDto created =
           transactionTemplate.execute(
               status ->
                   createOrderInternal(
-                      company,
-                      request,
-                      idempotencyKey,
-                      requestSignature,
-                      legacySplitReplayRequestSignature,
-                      legacyDefaultPaymentIdempotencyKey,
-                      legacyDefaultPaymentRequestSignature,
-                      requestPaymentMode));
+                      company, request, idempotencyKey, requestSignature, requestPaymentMode));
       if (created == null) {
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
             "Failed to create sales order for " + idempotencyKey);
@@ -658,13 +611,7 @@ public class SalesCoreEngine {
           transactionTemplate.execute(
               status ->
                   resolveIdempotentOrderInternal(
-                      company,
-                      idempotencyKey,
-                      requestSignature,
-                      legacyDefaultPaymentRequestSignature,
-                      legacySplitReplayRequestSignature,
-                      requestPaymentMode,
-                      ex));
+                      company, idempotencyKey, requestSignature, requestPaymentMode, ex));
       if (resolved == null) {
         throw ex;
       }
@@ -677,20 +624,12 @@ public class SalesCoreEngine {
       SalesOrderRequest request,
       String idempotencyKey,
       String requestSignature,
-      String legacySplitReplayRequestSignature,
-      String legacyDefaultPaymentIdempotencyKey,
-      String legacyDefaultPaymentRequestSignature,
       String requestPaymentMode) {
     Optional<SalesOrder> existing =
         salesOrderRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
     if (existing.isPresent()) {
       return resolveExistingOrder(
-          existing.get(),
-          idempotencyKey,
-          requestSignature,
-          buildSalesOrderSignatureIncludingDefaultPaymentMode(request),
-          legacySplitReplayRequestSignature,
-          requestPaymentMode);
+          existing.get(), idempotencyKey, requestSignature, requestPaymentMode);
     }
     GstTreatment gstTreatment = resolveGstTreatment(request.gstTreatment());
     BigDecimal orderLevelRate = resolveOrderLevelRate(company, gstTreatment, request.gstRate());
@@ -721,13 +660,7 @@ public class SalesCoreEngine {
         enforceCreditLimit(company, order.getDealer(), amounts.total(), paymentMode, null);
       } catch (CreditLimitExceededException | IllegalStateException ex) {
         Optional<SalesOrderDto> replay =
-            resolveCreateOrderReplayAfterCreditFailure(
-                company,
-                idempotencyKey,
-                legacyDefaultPaymentIdempotencyKey,
-                requestSignature,
-                legacyDefaultPaymentRequestSignature,
-                requestPaymentMode);
+            resolveOrderByIdempotencyKey(company, idempotencyKey, requestSignature);
         if (replay.isPresent()) {
           return replay.get();
         }
@@ -766,42 +699,10 @@ public class SalesCoreEngine {
     return toDto(saved);
   }
 
-  private Optional<SalesOrderDto> resolveCreateOrderReplayAfterCreditFailure(
-      Company company,
-      String idempotencyKey,
-      String legacyDefaultPaymentIdempotencyKey,
-      String requestSignature,
-      String legacyDefaultPaymentRequestSignature,
-      String requestPaymentMode) {
-    Optional<SalesOrderDto> canonicalReplay =
-        resolveOrderByIdempotencyKey(
-            company,
-            idempotencyKey,
-            requestSignature,
-            legacyDefaultPaymentRequestSignature,
-            null,
-            requestPaymentMode);
-    if (canonicalReplay.isPresent()) {
-      return canonicalReplay;
-    }
-    if (!StringUtils.hasText(legacyDefaultPaymentIdempotencyKey)) {
-      return Optional.empty();
-    }
-    return resolveOrderByIdempotencyKey(
-        company,
-        legacyDefaultPaymentIdempotencyKey,
-        requestSignature,
-        legacyDefaultPaymentRequestSignature,
-        null,
-        requestPaymentMode);
-  }
-
   private SalesOrderDto resolveIdempotentOrderInternal(
       Company company,
       String idempotencyKey,
       String requestSignature,
-      String legacyDefaultPaymentRequestSignature,
-      String legacySplitReplayRequestSignature,
       String requestPaymentMode,
       DataIntegrityViolationException rootCause) {
     Optional<SalesOrder> existing =
@@ -810,118 +711,40 @@ public class SalesCoreEngine {
       throw rootCause;
     }
     return resolveExistingOrder(
-        existing.get(),
-        idempotencyKey,
-        requestSignature,
-        legacyDefaultPaymentRequestSignature,
-        legacySplitReplayRequestSignature,
-        requestPaymentMode);
+        existing.get(), idempotencyKey, requestSignature, requestPaymentMode);
   }
 
   private Optional<SalesOrderDto> resolveOrderByIdempotencyKey(
-      Company company,
-      String idempotencyKey,
-      String requestSignature,
-      String legacyDefaultPaymentRequestSignature,
-      String legacySplitReplayRequestSignature,
-      String requestPaymentMode) {
+      Company company, String idempotencyKey, String requestSignature) {
     return salesOrderRepository
         .findByCompanyAndIdempotencyKey(company, idempotencyKey)
-        .map(
-            order ->
-                resolveExistingOrder(
-                    order,
-                    idempotencyKey,
-                    requestSignature,
-                    legacyDefaultPaymentRequestSignature,
-                    legacySplitReplayRequestSignature,
-                    requestPaymentMode));
+        .map(order -> resolveExistingOrder(order, idempotencyKey, requestSignature));
   }
 
   private SalesOrderDto resolveExistingOrder(
-      SalesOrder order,
-      String idempotencyKey,
-      String requestSignature,
-      String legacyDefaultPaymentRequestSignature,
-      String requestPaymentMode) {
-    return resolveExistingOrder(
-        order,
-        idempotencyKey,
-        requestSignature,
-        legacyDefaultPaymentRequestSignature,
-        null,
-        requestPaymentMode);
+      SalesOrder order, String idempotencyKey, String requestSignature) {
+    return resolveExistingOrder(order, idempotencyKey, requestSignature, null);
   }
 
   private SalesOrderDto resolveExistingOrder(
-      SalesOrder order,
-      String idempotencyKey,
-      String requestSignature,
-      String legacyDefaultPaymentRequestSignature,
-      String legacySplitReplayRequestSignature,
-      String requestPaymentMode) {
-    List<String> acceptedRequestSignatures =
-        acceptedRequestSignatures(
-            requestSignature,
-            legacyDefaultPaymentRequestSignature,
-            legacySplitReplayRequestSignature);
-    boolean paymentModeBackfilled = false;
-    if (!StringUtils.hasText(order.getPaymentMode()) && StringUtils.hasText(requestPaymentMode)) {
-      order.setPaymentMode(normalizeOrderPaymentMode(requestPaymentMode));
-      paymentModeBackfilled = true;
-    }
+      SalesOrder order, String idempotencyKey, String requestSignature, String requestPaymentMode) {
     String storedSignature = order.getIdempotencyHash();
     if (!StringUtils.hasText(storedSignature)) {
       String derivedSignature = buildSalesOrderSignature(order, requestPaymentMode);
-      String legacyDefaultPaymentDerivedSignature =
-          buildSalesOrderSignatureIncludingDefaultPaymentMode(order, requestPaymentMode);
-      String legacySplitReplayDerivedSignature =
-          buildSalesOrderSignature(order, requestPaymentMode, false, true);
-      if (!matchesSignature(derivedSignature, acceptedRequestSignatures)
-          && !matchesSignature(legacyDefaultPaymentDerivedSignature, acceptedRequestSignatures)
-          && !matchesSignature(legacySplitReplayDerivedSignature, acceptedRequestSignatures)) {
+      if (!requestSignature.equals(derivedSignature)) {
         throw idempotencyReservationService.payloadMismatch(idempotencyKey);
       }
       order.setIdempotencyHash(requestSignature);
       salesOrderRepository.save(order);
       return toDto(order);
     }
-    if (!matchesSignature(storedSignature, acceptedRequestSignatures)) {
+    if (!storedSignature.equals(requestSignature)) {
       throw idempotencyReservationService.payloadMismatch(idempotencyKey);
-    }
-    if (!storedSignature.equals(requestSignature) || paymentModeBackfilled) {
-      order.setIdempotencyHash(requestSignature);
-      salesOrderRepository.save(order);
     }
     return toDto(order);
   }
 
-  private boolean matchesSignature(String candidate, List<String> acceptedRequestSignatures) {
-    return StringUtils.hasText(candidate) && acceptedRequestSignatures.contains(candidate);
-  }
-
-  private List<String> acceptedRequestSignatures(String... signatures) {
-    List<String> accepted = new ArrayList<>();
-    for (String signature : signatures) {
-      if (StringUtils.hasText(signature) && !accepted.contains(signature)) {
-        accepted.add(signature);
-      }
-    }
-    return accepted;
-  }
-
   private String buildSalesOrderSignature(SalesOrderRequest request) {
-    return buildSalesOrderSignature(request, false, false);
-  }
-
-  private String buildSalesOrderSignatureIncludingDefaultPaymentMode(SalesOrderRequest request) {
-    return buildSalesOrderSignature(request, true, false);
-  }
-
-  private String buildSalesOrderSignature(
-      SalesOrderRequest request,
-      boolean includeDefaultPaymentModeToken,
-      boolean preserveLegacySplitAlias) {
     IdempotencySignatureBuilder signature =
         IdempotencySignatureBuilder.create()
             .add(request.dealerId() == null ? "null" : request.dealerId())
@@ -931,10 +754,7 @@ public class SalesCoreEngine {
             .add(Boolean.TRUE.equals(request.gstInclusive()))
             .add(amountToken(request.gstRate()))
             .add(normalizeText(request.notes()));
-    appendPaymentModeSignatureToken(
-        signature,
-        signaturePaymentModeToken(request.paymentMode(), preserveLegacySplitAlias),
-        includeDefaultPaymentModeToken);
+    appendPaymentModeSignatureToken(signature, signaturePaymentModeToken(request.paymentMode()));
     if (StringUtils.hasText(request.paymentTerms())) {
       signature.add(normalizeText(request.paymentTerms()));
     }
@@ -954,38 +774,10 @@ public class SalesCoreEngine {
   }
 
   private String buildSalesOrderSignature(SalesOrder order) {
-    return buildSalesOrderSignature(order, null, false);
-  }
-
-  private String buildSalesOrderSignatureIncludingDefaultPaymentMode(SalesOrder order) {
-    return buildSalesOrderSignature(order, null, true);
-  }
-
-  private String buildSalesOrderSignature(
-      SalesOrder order, boolean includeDefaultPaymentModeToken) {
-    return buildSalesOrderSignature(order, null, includeDefaultPaymentModeToken);
+    return buildSalesOrderSignature(order, null);
   }
 
   private String buildSalesOrderSignature(SalesOrder order, String requestPaymentMode) {
-    return buildSalesOrderSignature(order, requestPaymentMode, false);
-  }
-
-  private String buildSalesOrderSignatureIncludingDefaultPaymentMode(
-      SalesOrder order, String requestPaymentMode) {
-    return buildSalesOrderSignature(order, requestPaymentMode, true);
-  }
-
-  private String buildSalesOrderSignature(
-      SalesOrder order, String requestPaymentMode, boolean includeDefaultPaymentModeToken) {
-    return buildSalesOrderSignature(
-        order, requestPaymentMode, includeDefaultPaymentModeToken, false);
-  }
-
-  private String buildSalesOrderSignature(
-      SalesOrder order,
-      String requestPaymentMode,
-      boolean includeDefaultPaymentModeToken,
-      boolean preserveLegacySplitAlias) {
     String effectivePaymentMode =
         StringUtils.hasText(requestPaymentMode) ? requestPaymentMode : order.getPaymentMode();
     IdempotencySignatureBuilder signature =
@@ -997,10 +789,7 @@ public class SalesCoreEngine {
             .add(order.isGstInclusive())
             .add(amountToken(order.getGstRate()))
             .add(normalizeText(order.getNotes()));
-    appendPaymentModeSignatureToken(
-        signature,
-        signaturePaymentModeToken(effectivePaymentMode, preserveLegacySplitAlias),
-        includeDefaultPaymentModeToken);
+    appendPaymentModeSignatureToken(signature, signaturePaymentModeToken(effectivePaymentMode));
     if (StringUtils.hasText(order.getPaymentTerms())) {
       signature.add(normalizeText(order.getPaymentTerms()));
     }
@@ -1209,8 +998,7 @@ public class SalesCoreEngine {
             ORDER_STATUS_PENDING_PRODUCTION,
             ORDER_STATUS_PENDING_INVENTORY,
             ORDER_STATUS_PROCESSING,
-            ORDER_STATUS_READY_TO_SHIP,
-            "BOOKED")
+            ORDER_STATUS_READY_TO_SHIP)
         .contains(currentStatus)) {
       throw new ApplicationException(
           ErrorCode.BUSINESS_INVALID_STATE,
@@ -1252,7 +1040,7 @@ public class SalesCoreEngine {
     if (ORDER_STATUS_CANCELLED.equals(currentStatus)) {
       return toDto(order);
     }
-    if (!Set.of(ORDER_STATUS_DRAFT, ORDER_STATUS_CONFIRMED, "BOOKED").contains(currentStatus)) {
+    if (!Set.of(ORDER_STATUS_DRAFT, ORDER_STATUS_CONFIRMED).contains(currentStatus)) {
       throw new ApplicationException(
               ErrorCode.BUSINESS_INVALID_STATE,
               "Cancellation is allowed only from DRAFT or CONFIRMED state")
@@ -1276,8 +1064,7 @@ public class SalesCoreEngine {
             ORDER_STATUS_CONFIRMED,
             ORDER_STATUS_PENDING_PRODUCTION,
             ORDER_STATUS_PENDING_INVENTORY,
-            ORDER_STATUS_READY_TO_SHIP,
-            "BOOKED")
+            ORDER_STATUS_READY_TO_SHIP)
         .contains(currentStatus)) {
       finishedGoodsService.releaseReservationsForOrder(order.getId());
       cancelFactoryTasksForOrder(order);
@@ -1538,8 +1325,8 @@ public class SalesCoreEngine {
     boolean hasArJournal = slip.getJournalEntryId() != null;
     boolean hasCogsJournal =
         slip.getCogsJournalEntryId() != null
-            || (StringUtils.hasText(slip.getSlipNumber())
-                && accountingFacade.hasCogsJournalFor(slip.getSlipNumber()));
+            || accountingFacade.hasCogsJournalFor(
+                resolveCogsReferenceId(slip, slip.getSlipNumber()));
     return hasInvoice && hasArJournal && hasCogsJournal;
   }
 
@@ -1591,11 +1378,6 @@ public class SalesCoreEngine {
             String slipNumber = singleActiveSlip.getSlipNumber();
             String cogsReferenceId = resolveCogsReferenceId(singleActiveSlip, slipNumber);
             cogsJournalEntryId = findCogsJournalId(company, cogsReferenceId);
-            if (cogsJournalEntryId == null
-                && StringUtils.hasText(slipNumber)
-                && !slipNumber.trim().equalsIgnoreCase(cogsReferenceId)) {
-              cogsJournalEntryId = findCogsJournalId(company, slipNumber.trim());
-            }
           }
           if (cogsJournalEntryId == null) {
             cogsJournalEntryId = resolveCogsMarkerForReconciliation(order, singleActiveSlip, null);
@@ -1638,11 +1420,7 @@ public class SalesCoreEngine {
     }
     String slipNumber = slip.getSlipNumber();
     String cogsReferenceId = resolveCogsReferenceId(slip, slipNumber);
-    boolean hasCogsJournal =
-        accountingFacade.hasCogsJournalFor(cogsReferenceId)
-            || (StringUtils.hasText(slipNumber)
-                && !slipNumber.trim().equalsIgnoreCase(cogsReferenceId)
-                && accountingFacade.hasCogsJournalFor(slipNumber.trim()));
+    boolean hasCogsJournal = accountingFacade.hasCogsJournalFor(cogsReferenceId);
     if (hasCogsJournal) {
       return order != null ? order.getCogsJournalEntryId() : null;
     }
@@ -1654,12 +1432,6 @@ public class SalesCoreEngine {
       return GstTreatment.NONE;
     }
     String normalized = value.trim().toUpperCase();
-    if ("EXCLUSIVE".equals(normalized)) {
-      return GstTreatment.NONE;
-    }
-    if ("INCLUSIVE".equals(normalized)) {
-      return GstTreatment.ORDER_TOTAL;
-    }
     try {
       return GstTreatment.valueOf(normalized);
     } catch (IllegalArgumentException ex) {
@@ -2127,70 +1899,28 @@ public class SalesCoreEngine {
         order.getCompany(), order, COMMERCIAL_LIFECYCLE_REASON_CODES);
   }
 
-  private String signaturePaymentModeToken(String rawMode, boolean preserveLegacySplitAlias) {
+  private String signaturePaymentModeToken(String rawMode) {
     String normalized = IdempotencyUtils.normalizeUpperToken(rawMode);
     if (normalized.isBlank()) {
       return DEFAULT_ORDER_PAYMENT_MODE;
     }
-    if (preserveLegacySplitAlias && LEGACY_HYBRID_PAYMENT_MODE.equals(normalized)) {
-      return LEGACY_HYBRID_PAYMENT_MODE;
-    }
     return normalizeOrderPaymentMode(rawMode);
   }
 
-  private String resolveLegacyDefaultPaymentIdempotencyKey(
-      SalesOrderRequest request, String canonicalIdempotencyKey) {
-    if (StringUtils.hasText(request.idempotencyKey())) {
-      return null;
-    }
-    String normalizedPaymentMode = normalizeOrderPaymentMode(request.paymentMode());
-    if (!DEFAULT_ORDER_PAYMENT_MODE.equals(normalizedPaymentMode)) {
-      return null;
-    }
-    String legacyDefaultPaymentIdempotencyKey =
-        request.resolveIdempotencyKeyIncludingDefaultPaymentMode();
-    if (legacyDefaultPaymentIdempotencyKey.equals(canonicalIdempotencyKey)) {
-      return null;
-    }
-    return legacyDefaultPaymentIdempotencyKey;
-  }
-
-  private void failClosedOnRetiredLegacyIdempotencyHeader() {
+  private void failClosedOnRetiredIdempotencyHeader() {
     if (!(RequestContextHolder.getRequestAttributes()
         instanceof ServletRequestAttributes servletRequestAttributes)) {
       return;
     }
     HttpServletRequest request = servletRequestAttributes.getRequest();
     if (request == null
-        || !StringUtils.hasText(request.getHeader(RETIRED_LEGACY_IDEMPOTENCY_HEADER))
+        || !StringUtils.hasText(request.getHeader(RETIRED_IDEMPOTENCY_HEADER))
         || !"POST".equalsIgnoreCase(request.getMethod())
         || !SALES_ORDER_CREATE_PATH.equals(request.getRequestURI())) {
       return;
     }
-    throw IdempotencyHeaderUtils.unsupportedLegacyHeader(
-        RETIRED_LEGACY_IDEMPOTENCY_HEADER, "sales orders", SALES_ORDER_CREATE_PATH);
-  }
-
-  private String resolveLegacySplitReplayIdempotencyKey(
-      SalesOrderRequest request, String canonicalIdempotencyKey) {
-    String legacySplitReplayIdempotencyKey = request.resolveLegacySplitReplayIdempotencyKey();
-    if (!StringUtils.hasText(legacySplitReplayIdempotencyKey)
-        || legacySplitReplayIdempotencyKey.equals(canonicalIdempotencyKey)) {
-      return null;
-    }
-    return legacySplitReplayIdempotencyKey;
-  }
-
-  private String resolveLegacySplitReplayRequestSignature(
-      SalesOrderRequest request, String requestSignature) {
-    if (!request.usesLegacySplitReplayPaymentMode()) {
-      return null;
-    }
-    String legacySplitReplayRequestSignature = buildSalesOrderSignature(request, false, true);
-    if (legacySplitReplayRequestSignature.equals(requestSignature)) {
-      return null;
-    }
-    return legacySplitReplayRequestSignature;
+    throw IdempotencyHeaderUtils.unsupportedRetiredHeader(
+        RETIRED_IDEMPOTENCY_HEADER, "sales orders", SALES_ORDER_CREATE_PATH);
   }
 
   private boolean requiresCreditLimitCheck(String paymentMode) {
@@ -2198,11 +1928,8 @@ public class SalesCoreEngine {
   }
 
   private void appendPaymentModeSignatureToken(
-      IdempotencySignatureBuilder signature,
-      String normalizedPaymentMode,
-      boolean includeDefaultPaymentModeToken) {
-    if (includeDefaultPaymentModeToken
-        || !DEFAULT_ORDER_PAYMENT_MODE.equals(normalizedPaymentMode)) {
+      IdempotencySignatureBuilder signature, String normalizedPaymentMode) {
+    if (!DEFAULT_ORDER_PAYMENT_MODE.equals(normalizedPaymentMode)) {
       signature.add(normalizedPaymentMode);
     }
   }
@@ -2730,20 +2457,11 @@ public class SalesCoreEngine {
       Long existingCogsJournalId = slip.getCogsJournalEntryId();
       if (existingCogsJournalId == null) {
         existingCogsJournalId = findCogsJournalId(company, cogsReferenceId);
-        if (existingCogsJournalId == null
-            && StringUtils.hasText(slipNumber)
-            && !slipNumber.trim().equalsIgnoreCase(cogsReferenceId)) {
-          existingCogsJournalId = findCogsJournalId(company, slipNumber.trim());
-        }
       }
       boolean hasInvoice = existingInvoiceId != null;
       boolean hasArJournal = existingJeId != null;
       boolean hasCogsJournal =
-          existingCogsJournalId != null
-              || accountingFacade.hasCogsJournalFor(cogsReferenceId)
-              || (StringUtils.hasText(slipNumber)
-                  && !slipNumber.trim().equalsIgnoreCase(cogsReferenceId)
-                  && accountingFacade.hasCogsJournalFor(slipNumber.trim()));
+          existingCogsJournalId != null || accountingFacade.hasCogsJournalFor(cogsReferenceId);
       if (hasInvoice && hasArJournal && hasCogsJournal) {
         if (existingInvoice != null) {
           dealerLedgerService.syncInvoiceLedger(existingInvoice, null);
@@ -3948,10 +3666,6 @@ public class SalesCoreEngine {
     }
     String normalized = status.trim().toUpperCase(Locale.ROOT);
     return switch (normalized) {
-      case "BOOKED", "PENDING" -> ORDER_STATUS_DRAFT;
-      case "APPROVED" -> ORDER_STATUS_CONFIRMED;
-      case "SHIPPED", "FULFILLED" -> ORDER_STATUS_DISPATCHED;
-      case "COMPLETED" -> ORDER_STATUS_SETTLED;
       default -> normalized;
     };
   }

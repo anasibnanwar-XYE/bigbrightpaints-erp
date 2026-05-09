@@ -50,6 +50,5 @@ For the full architecture reference, see:
 
 ## Known Limitations
 
-- Dispatch is a two-layer seam: sales coordinates but inventory executes stock changes.
+- Dispatch ownership is split: sales coordinates commercial state while inventory executes stock changes.
 - Credit limit requests have a requester-identity field that is nullable for historical rows.
-- Some legacy dealer endpoints may exist as compatibility aliases.

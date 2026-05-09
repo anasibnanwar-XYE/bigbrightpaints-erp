@@ -142,7 +142,7 @@ public class CreditLimitOverrideService {
     CreditLimitOverrideRequest overrideRequest = requireRequest(id);
     String normalizedReviewer = normalizeActor(reviewedBy, "reviewedBy");
     assertMakerCheckerBoundary(overrideRequest, normalizedReviewer);
-    String normalizedReason = resolveDecisionReason(overrideRequest, request, "approve");
+    String normalizedReason = resolveDecisionReason(request, "approve");
     if (!STATUS_PENDING.equals(normalizeStatus(overrideRequest.getStatus()))) {
       throw new ApplicationException(
           ErrorCode.BUSINESS_INVALID_STATE, "Only pending override requests can be approved");
@@ -174,7 +174,7 @@ public class CreditLimitOverrideService {
     CreditLimitOverrideRequest overrideRequest = requireRequest(id);
     String normalizedReviewer = normalizeActor(reviewedBy, "reviewedBy");
     assertMakerCheckerBoundary(overrideRequest, normalizedReviewer);
-    String normalizedReason = resolveDecisionReason(overrideRequest, request, "reject");
+    String normalizedReason = resolveDecisionReason(request, "reject");
     if (!STATUS_PENDING.equals(normalizeStatus(overrideRequest.getStatus()))) {
       throw new ApplicationException(
           ErrorCode.BUSINESS_INVALID_STATE, "Only pending override requests can be rejected");
@@ -384,31 +384,16 @@ public class CreditLimitOverrideService {
 
   private BigDecimal resolveRequestedAmount(CreditLimitOverrideRequestCreateRequest request) {
     BigDecimal requestedAmount = request.requestedAmount();
-    BigDecimal legacyDispatchAmount = request.dispatchAmount();
     if (requestedAmount != null && requestedAmount.compareTo(BigDecimal.ZERO) <= 0) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, "requestedAmount must be greater than zero");
     }
-    if (legacyDispatchAmount != null && legacyDispatchAmount.compareTo(BigDecimal.ZERO) <= 0) {
+    if (requestedAmount == null) {
       throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_INPUT, "dispatchAmount must be greater than zero");
-    }
-    if (requestedAmount == null && legacyDispatchAmount == null) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-              "requestedAmount is required (dispatchAmount is a legacy alias)")
+              ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "requestedAmount is required")
           .withDetail("field", "requestedAmount");
     }
-    if (requestedAmount != null
-        && legacyDispatchAmount != null
-        && requestedAmount.compareTo(legacyDispatchAmount) != 0) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT,
-              "requestedAmount and dispatchAmount must match when both are provided")
-          .withDetail("requestedAmount", requestedAmount)
-          .withDetail("dispatchAmount", legacyDispatchAmount);
-    }
-    return requestedAmount != null ? requestedAmount : legacyDispatchAmount;
+    return requestedAmount;
   }
 
   private String requireReason(String reason, String operation) {
@@ -450,7 +435,7 @@ public class CreditLimitOverrideService {
     }
     String reasonCode = extractReasonCode(overrideRequest.getReason());
     if (!StringUtils.hasText(reasonCode)) {
-      return true;
+      return false;
     }
     return REASON_CODE_APPROVED.equals(reasonCode);
   }
@@ -482,22 +467,15 @@ public class CreditLimitOverrideService {
   }
 
   private String resolveDecisionReason(
-      CreditLimitOverrideRequest overrideRequest,
-      CreditLimitOverrideDecisionRequest request,
-      String operation) {
+      CreditLimitOverrideDecisionRequest request, String operation) {
     String incomingReason =
         request == null || request.reason() == null ? null : request.reason().trim();
     if (StringUtils.hasText(incomingReason)) {
       return incomingReason;
     }
-    String existingReason = stripReasonCodePrefix(overrideRequest.getReason());
-    if (StringUtils.hasText(existingReason)) {
-      return existingReason;
-    }
-    if ("reject".equalsIgnoreCase(operation)) {
-      return "Rejected via legacy decision payload";
-    }
-    return "Approved via legacy decision payload";
+    throw new ApplicationException(
+        ErrorCode.VALIDATION_INVALID_INPUT,
+        "Decision reason is required to " + operation + " override");
   }
 
   private String stripReasonCodePrefix(String reason) {
@@ -546,7 +524,7 @@ public class CreditLimitOverrideService {
       metadata.put("salesOrderId", overrideRequest.getSalesOrder().getId().toString());
     }
     if (overrideRequest.getDispatchAmount() != null) {
-      metadata.put("dispatchAmount", overrideRequest.getDispatchAmount().toPlainString());
+      metadata.put("requestedAmount", overrideRequest.getDispatchAmount().toPlainString());
     }
     if (overrideRequest.getCurrentExposure() != null) {
       metadata.put("currentExposure", overrideRequest.getCurrentExposure().toPlainString());
@@ -600,7 +578,6 @@ public class CreditLimitOverrideService {
         dealer != null ? dealer.getName() : null,
         request.getPackagingSlip() != null ? request.getPackagingSlip().getId() : null,
         request.getSalesOrder() != null ? request.getSalesOrder().getId() : null,
-        request.getDispatchAmount(),
         request.getDispatchAmount(),
         request.getCurrentExposure(),
         request.getCreditLimit(),

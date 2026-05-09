@@ -12,27 +12,6 @@ import org.junit.jupiter.api.Test;
 class DispatchConfirmRequestTest {
 
   @Test
-  void legacyConstructor_defaultsLogisticsFieldsToNull() {
-    DispatchConfirmRequest request =
-        new DispatchConfirmRequest(
-            10L,
-            100L,
-            List.of(
-                new DispatchConfirmRequest.DispatchLine(
-                    1L, 2L, BigDecimal.ONE, null, null, null, null, null)),
-            "notes",
-            "admin",
-            Boolean.FALSE,
-            null,
-            50L);
-
-    assertThat(request.transporterName()).isNull();
-    assertThat(request.driverName()).isNull();
-    assertThat(request.vehicleNumber()).isNull();
-    assertThat(request.challanReference()).isNull();
-  }
-
-  @Test
   void canonicalConstructor_keepsExplicitLogisticsFields() {
     DispatchConfirmRequest request =
         new DispatchConfirmRequest(

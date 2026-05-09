@@ -230,26 +230,17 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("Sales dealer directory includes credit amounts on list surfaces")
+  @DisplayName("Dealer directory includes credit amounts")
   void salesDealerDirectoryIncludesCreditAmounts() {
     HttpHeaders headers = authHeaders(SALES_EMAIL, PASSWORD);
 
     ResponseEntity<Map> dealersResponse =
         rest.exchange(
             ErpApiRoutes.DEALER_DIRECTORY, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
-    ResponseEntity<Map> salesAliasResponse =
-        rest.exchange(
-            ErpApiRoutes.SALES_DEALER_DIRECTORY,
-            HttpMethod.GET,
-            new HttpEntity<>(headers),
-            Map.class);
 
     assertThat(dealersResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(salesAliasResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertDealerDirectoryPayloadIncludesCreditAmounts(
         (List<Map<String, Object>>) dealersResponse.getBody().get("data"));
-    assertDealerDirectoryPayloadIncludesCreditAmounts(
-        (List<Map<String, Object>>) salesAliasResponse.getBody().get("data"));
   }
 
   @Test
@@ -355,20 +346,7 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
         (List<Map<String, Object>>) pagedDirectResponse.getBody().get("data");
     assertThat(pagedDirectRows).hasSize(1);
 
-    ResponseEntity<Map> pagedAliasResponse =
-        rest.exchange(
-            ErpApiRoutes.SALES_DEALER_DIRECTORY + "?status=ALL&page=0&size=1",
-            HttpMethod.GET,
-            new HttpEntity<>(headers),
-            Map.class);
-    assertThat(pagedAliasResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    @SuppressWarnings("unchecked")
-    List<Map<String, Object>> pagedAliasRows =
-        (List<Map<String, Object>>) pagedAliasResponse.getBody().get("data");
-    assertThat(pagedAliasRows)
-        .hasSize(1)
-        .extracting(row -> row.get("code"))
-        .containsExactlyElementsOf(pagedDirectRows.stream().map(row -> row.get("code")).toList());
+    assertThat(pagedDirectRows).hasSize(1);
   }
 
   private HttpHeaders authHeaders(String email, String password) {

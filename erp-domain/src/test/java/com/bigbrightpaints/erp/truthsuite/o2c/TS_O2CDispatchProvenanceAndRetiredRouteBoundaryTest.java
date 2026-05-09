@@ -26,7 +26,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.TestPropertySource;
 
-import com.bigbrightpaints.erp.codered.support.CoderedDbAssertions;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -60,6 +59,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import com.bigbrightpaints.erp.risk.support.RiskDbAssertions;
 import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
@@ -157,11 +157,11 @@ class TS_O2CDispatchProvenanceAndRetiredRouteBoundaryTest extends AbstractIntegr
                 .reduce(BigDecimal.ZERO, BigDecimal::add))
         .isEqualByComparingTo(totalShippedQuantity(slip));
 
-    CoderedDbAssertions.assertOneInvoicePerSlip(
+    RiskDbAssertions.assertOneInvoicePerSlip(
         packagingSlipRepository, invoiceRepository, fixture.company(), slip.getId());
-    CoderedDbAssertions.assertBalancedJournal(journalEntryRepository, arJournalId);
-    CoderedDbAssertions.assertBalancedJournal(journalEntryRepository, slip.getCogsJournalEntryId());
-    CoderedDbAssertions.assertDealerLedgerEntriesLinkedToJournal(
+    RiskDbAssertions.assertBalancedJournal(journalEntryRepository, arJournalId);
+    RiskDbAssertions.assertBalancedJournal(journalEntryRepository, slip.getCogsJournalEntryId());
+    RiskDbAssertions.assertDealerLedgerEntriesLinkedToJournal(
         jdbcTemplate, fixture.company().getId(), arJournalId);
 
     InvoiceDto invoiceDto = getInvoiceWithinCompanyContext(fixture.company().getCode(), invoiceId);

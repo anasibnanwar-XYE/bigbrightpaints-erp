@@ -280,7 +280,7 @@ class SalesServiceTest {
   void updateStatusRejectsUnknownStatus() {
     SalesOrder order = new SalesOrder();
     order.setCompany(company);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     setField(order, "id", 921L);
 
     when(salesLookupService.requireSalesOrder(company, 921L)).thenReturn(order);
@@ -290,14 +290,14 @@ class SalesServiceTest {
 
     assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
     assertTrue(ex.getMessage().contains("Unknown order status"));
-    assertEquals("BOOKED", order.getStatus());
+    assertEquals("DRAFT", order.getStatus());
   }
 
   @Test
   void updateStatusRejectsBlankStatus() {
     SalesOrder order = new SalesOrder();
     order.setCompany(company);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     setField(order, "id", 920L);
 
     when(salesLookupService.requireSalesOrder(company, 920L)).thenReturn(order);
@@ -313,7 +313,7 @@ class SalesServiceTest {
   void updateStatusRejectsWorkflowOnlyStatus() {
     SalesOrder order = new SalesOrder();
     order.setCompany(company);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     setField(order, "id", 922L);
 
     when(salesLookupService.requireSalesOrder(company, 922L)).thenReturn(order);
@@ -324,14 +324,14 @@ class SalesServiceTest {
 
     assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
     assertTrue(ex.getMessage().contains("workflow endpoints"));
-    assertEquals("BOOKED", order.getStatus());
+    assertEquals("DRAFT", order.getStatus());
   }
 
   @Test
   void updateStatusAllowsManualStatus() {
     SalesOrder order = new SalesOrder();
     order.setCompany(company);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     setField(order, "id", 923L);
 
     when(salesLookupService.requireSalesOrder(company, 923L)).thenReturn(order);
@@ -348,7 +348,7 @@ class SalesServiceTest {
   void updateOrchestratorWorkflowStatusRejectsInvalidStatus() {
     SalesOrder order = new SalesOrder();
     order.setCompany(company);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     setField(order, "id", 924L);
 
     when(salesLookupService.requireSalesOrder(company, 924L)).thenReturn(order);
@@ -360,14 +360,14 @@ class SalesServiceTest {
 
     assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
     assertTrue(ex.getMessage().contains("cannot be set by orchestrator"));
-    assertEquals("BOOKED", order.getStatus());
+    assertEquals("DRAFT", order.getStatus());
   }
 
   @Test
   void updateOrchestratorWorkflowStatusRejectsBlankStatus() {
     SalesOrder order = new SalesOrder();
     order.setCompany(company);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     setField(order, "id", 926L);
 
     when(salesLookupService.requireSalesOrder(company, 926L)).thenReturn(order);
@@ -385,7 +385,7 @@ class SalesServiceTest {
   void updateOrchestratorWorkflowStatusAcceptsAllowedStatus() {
     SalesOrder order = new SalesOrder();
     order.setCompany(company);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     setField(order, "id", 925L);
 
     when(salesLookupService.requireSalesOrder(company, 925L)).thenReturn(order);
@@ -453,7 +453,7 @@ class SalesServiceTest {
   void attachTraceIdSetsFirstTraceAndDoesNotOverwriteDifferingTrace() {
     SalesOrder order = new SalesOrder();
     order.setCompany(company);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     setField(order, "id", 933L);
 
     when(salesLookupService.requireSalesOrder(company, 933L)).thenReturn(order);
@@ -525,7 +525,7 @@ class SalesServiceTest {
   void listOrdersPagedUsesCompanyPathWhenStatusBlankAndDealerMissing() {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 941L);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     order.setOrderNumber("SO-941");
 
     when(salesOrderRepository.findIdsByCompanyOrderByCreatedAtDescIdDesc(
@@ -604,7 +604,7 @@ class SalesServiceTest {
 
     SalesOrder order = new SalesOrder();
     order.setDealer(dealer);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     order.setOrderNumber("SO-943");
     setField(order, "id", 943L);
 
@@ -815,7 +815,7 @@ class SalesServiceTest {
             "NONE",
             null,
             null,
-            null);
+            "create-order-needs-revenue-account");
 
     ApplicationException ex =
         assertThrows(ApplicationException.class, () -> salesService.createOrder(request));
@@ -843,7 +843,7 @@ class SalesServiceTest {
             "PER_ITEM",
             null,
             null,
-            null);
+            "create-order-requires-tax-account");
 
     ApplicationException ex =
         assertThrows(ApplicationException.class, () -> salesService.createOrder(request));
@@ -869,7 +869,8 @@ class SalesServiceTest {
     when(salesLookupService.requireSalesOrder(company, 10L)).thenReturn(cancelled);
 
     DispatchConfirmRequest request =
-        new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
+        new DispatchConfirmRequest(
+            null, 10L, List.of(), null, null, false, null, null, null, null, null, null);
 
     assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
   }
@@ -895,7 +896,8 @@ class SalesServiceTest {
         .thenReturn(List.of(slipA, slipB));
 
     DispatchConfirmRequest request =
-        new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
+        new DispatchConfirmRequest(
+            null, 10L, List.of(), null, null, false, null, null, null, null, null, null);
 
     assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
   }
@@ -922,7 +924,18 @@ class SalesServiceTest {
             () ->
                 salesService.confirmDispatch(
                     new DispatchConfirmRequest(
-                        null, 10L, List.of(), null, "admin", Boolean.FALSE, null, null)));
+                        null,
+                        10L,
+                        List.of(),
+                        null,
+                        "admin",
+                        Boolean.FALSE,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null)));
 
     assertEquals(ErrorCode.VALIDATION_INVALID_REFERENCE, ex.getErrorCode());
     assertTrue(ex.getMessage().contains("Packing slip not found for order 10"));
@@ -946,7 +959,18 @@ class SalesServiceTest {
             () ->
                 salesService.confirmDispatch(
                     new DispatchConfirmRequest(
-                        null, 10L, List.of(), null, "admin", Boolean.FALSE, null, null)));
+                        null,
+                        10L,
+                        List.of(),
+                        null,
+                        "admin",
+                        Boolean.FALSE,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null)));
 
     assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
     assertEquals("DISPATCHED", ex.getDetails().get("currentStatus"));
@@ -971,7 +995,18 @@ class SalesServiceTest {
             () ->
                 salesService.confirmDispatch(
                     new DispatchConfirmRequest(
-                        null, 11L, List.of(), null, "admin", Boolean.FALSE, null, null)));
+                        null,
+                        11L,
+                        List.of(),
+                        null,
+                        "admin",
+                        Boolean.FALSE,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null)));
 
     assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
     assertEquals("DRAFT", ex.getDetails().get("currentStatus"));
@@ -1050,6 +1085,10 @@ class SalesServiceTest {
             null,
             "admin",
             Boolean.FALSE,
+            null,
+            null,
+            null,
+            null,
             null,
             null);
 
@@ -1144,7 +1183,11 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             "Approved credit exception",
-            801L);
+            801L,
+            null,
+            null,
+            null,
+            null);
     DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
     assertEquals(55L, response.packingSlipId());
@@ -1275,6 +1318,10 @@ class SalesServiceTest {
             "admin",
             Boolean.FALSE,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     ApplicationException ex =
@@ -1290,7 +1337,8 @@ class SalesServiceTest {
     PendingDispatchFixture fixture = pendingDispatchFixture("SKU-MISSING", 65L, 201L);
 
     DispatchConfirmRequest request =
-        new DispatchConfirmRequest(65L, null, List.of(), null, "admin", Boolean.FALSE, null, null);
+        new DispatchConfirmRequest(
+            65L, null, List.of(), null, "admin", Boolean.FALSE, null, null, null, null, null, null);
 
     ApplicationException ex =
         assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
@@ -1315,6 +1363,10 @@ class SalesServiceTest {
             "admin",
             Boolean.FALSE,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     ApplicationException ex =
@@ -1338,6 +1390,10 @@ class SalesServiceTest {
             null,
             "admin",
             Boolean.FALSE,
+            null,
+            null,
+            null,
+            null,
             null,
             null);
 
@@ -1364,6 +1420,10 @@ class SalesServiceTest {
             null,
             "admin",
             Boolean.FALSE,
+            null,
+            null,
+            null,
+            null,
             null,
             null);
 
@@ -1447,7 +1507,13 @@ class SalesServiceTest {
             null,
             null,
             null,
-            List.of());
+            List.of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
 
     when(salesLookupService.requireSalesOrder(company, 10L)).thenReturn(order);
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
@@ -1473,7 +1539,8 @@ class SalesServiceTest {
 
     DispatchConfirmResponse response =
         salesService.confirmDispatch(
-            new DispatchConfirmRequest(null, 10L, null, null, "admin", Boolean.FALSE, null, null));
+            new DispatchConfirmRequest(
+                null, 10L, null, null, "admin", Boolean.FALSE, null, null, null, null, null, null));
 
     assertEquals(70L, response.packingSlipId());
     assertEquals(10L, response.salesOrderId());
@@ -1576,6 +1643,10 @@ class SalesServiceTest {
                         "admin",
                         Boolean.FALSE,
                         "Discount exception requires approval",
+                        null,
+                        null,
+                        null,
+                        null,
                         null)));
 
     assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
@@ -1670,7 +1741,11 @@ class SalesServiceTest {
                         "admin",
                         Boolean.FALSE,
                         "Discount exception requires approval",
-                        900L)));
+                        900L,
+                        null,
+                        null,
+                        null,
+                        null)));
 
     assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
     assertTrue(ex.getMessage().contains("approved maker-checker override request"));
@@ -1752,7 +1827,11 @@ class SalesServiceTest {
                         "admin",
                         Boolean.TRUE,
                         null,
-                        901L)));
+                        901L,
+                        null,
+                        null,
+                        null,
+                        null)));
 
     assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
     assertTrue(ex.getMessage().contains("adminOverrideCreditLimit"));
@@ -1867,7 +1946,11 @@ class SalesServiceTest {
             "admin",
             Boolean.FALSE,
             "Discount override for test",
-            802L);
+            802L,
+            null,
+            null,
+            null,
+            null);
     salesService.confirmDispatch(request);
 
     ArgumentCaptor<Map<Long, BigDecimal>> revenueCaptor = ArgumentCaptor.forClass(Map.class);
@@ -1965,6 +2048,10 @@ class SalesServiceTest {
                         null,
                         "admin",
                         Boolean.FALSE,
+                        null,
+                        null,
+                        null,
+                        null,
                         null,
                         null)));
 
@@ -2097,6 +2184,10 @@ class SalesServiceTest {
                 "admin",
                 Boolean.FALSE,
                 null,
+                null,
+                null,
+                null,
+                null,
                 null));
 
     assertEquals(501L, response.arJournalEntryId());
@@ -2201,6 +2292,10 @@ class SalesServiceTest {
             "admin",
             Boolean.FALSE,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     assertThrows(CreditLimitExceededException.class, () -> salesService.confirmDispatch(request));
@@ -2234,6 +2329,10 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
@@ -2244,7 +2343,7 @@ class SalesServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 10L);
     order.setCompany(company);
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
 
     PackagingSlip slip = new PackagingSlip();
     setField(slip, "id", 55L);
@@ -2267,6 +2366,10 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             "Attempted replay override",
+            null,
+            null,
+            null,
+            null,
             null);
 
     assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
@@ -2280,7 +2383,7 @@ class SalesServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 10L);
     order.setCompany(company);
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
     order.setSalesJournalEntryId(222L);
 
     PackagingSlip slip = new PackagingSlip();
@@ -2312,6 +2415,10 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             "Attempted replay override",
+            null,
+            null,
+            null,
+            null,
             null);
 
     ApplicationException ex =
@@ -2327,7 +2434,7 @@ class SalesServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 10L);
     order.setCompany(company);
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
     order.setSalesJournalEntryId(222L);
 
     PackagingSlip slip = new PackagingSlip();
@@ -2359,6 +2466,10 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     ApplicationException ex =
@@ -2374,7 +2485,7 @@ class SalesServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 10L);
     order.setCompany(company);
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
 
     PackagingSlip slip = new PackagingSlip();
     setField(slip, "id", 55L);
@@ -2399,6 +2510,10 @@ class SalesServiceTest {
             null,
             "admin",
             Boolean.TRUE,
+            null,
+            null,
+            null,
+            null,
             null,
             null);
 
@@ -2511,7 +2626,11 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             "Replay with approved prior override",
-            803L);
+            803L,
+            null,
+            null,
+            null,
+            null);
 
     DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
@@ -2554,7 +2673,7 @@ class SalesServiceTest {
     order.setCompany(company);
     order.setDealer(dealer);
     order.setOrderNumber("SO-10");
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
 
     SalesOrderItem item = new SalesOrderItem();
     setField(item, "id", 1L);
@@ -2628,7 +2747,11 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             "Replay with approved prior override",
-            804L);
+            804L,
+            null,
+            null,
+            null,
+            null);
 
     ApplicationException ex =
         assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
@@ -2659,7 +2782,7 @@ class SalesServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 10L);
     order.setCompany(company);
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
     order.setTraceId("TRACE-FASTPATH-805");
 
     PackagingSlip slip = new PackagingSlip();
@@ -2698,7 +2821,11 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             "Replay override in fast path",
-            805L);
+            805L,
+            null,
+            null,
+            null,
+            null);
 
     DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
@@ -2743,7 +2870,7 @@ class SalesServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 10L);
     order.setCompany(company);
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
 
     PackagingSlip slip = new PackagingSlip();
     setField(slip, "id", 55L);
@@ -2782,7 +2909,11 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             "Replay override with pre-existing COGS reference",
-            806L);
+            806L,
+            null,
+            null,
+            null,
+            null);
 
     DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
@@ -2816,7 +2947,7 @@ class SalesServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 10L);
     order.setCompany(company);
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
     order.setSalesJournalEntryId(901L);
     order.setCogsJournalEntryId(902L);
     order.setFulfillmentInvoiceId(903L);
@@ -2866,7 +2997,11 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             "Replay override with multi-slip order",
-            807L);
+            807L,
+            null,
+            null,
+            null,
+            null);
 
     DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
@@ -2894,7 +3029,7 @@ class SalesServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 10L);
     order.setCompany(company);
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
 
     PackagingSlip slip = new PackagingSlip();
     setField(slip, "id", 55L);
@@ -2941,7 +3076,11 @@ class SalesServiceTest {
             "admin",
             Boolean.TRUE,
             "Replay override with cancelled secondary slip",
-            808L);
+            808L,
+            null,
+            null,
+            null,
+            null);
 
     DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
@@ -3223,7 +3362,7 @@ class SalesServiceTest {
     order.setCompany(company);
     order.setDealer(dealer);
     order.setOrderNumber("SO-10");
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
     order.setSalesJournalEntryId(222L);
 
     SalesOrderItem item = new SalesOrderItem();
@@ -3303,7 +3442,18 @@ class SalesServiceTest {
     DispatchConfirmResponse response =
         salesService.confirmDispatch(
             new DispatchConfirmRequest(
-                55L, null, List.of(), null, "admin", Boolean.FALSE, null, null));
+                55L,
+                null,
+                List.of(),
+                null,
+                "admin",
+                Boolean.FALSE,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null));
 
     assertEquals(222L, response.arJournalEntryId());
     verify(accountingFacade, never())
@@ -3413,6 +3563,10 @@ class SalesServiceTest {
             "admin",
             Boolean.FALSE,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
     salesService.confirmDispatch(request);
 
@@ -3520,6 +3674,10 @@ class SalesServiceTest {
             "admin",
             Boolean.FALSE,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
     salesService.confirmDispatch(request);
 
@@ -3562,7 +3720,7 @@ class SalesServiceTest {
             "NONE",
             null,
             null,
-            null);
+            "create-order-credit-limit");
 
     assertThrows(CreditLimitExceededException.class, () -> salesService.createOrder(request));
   }
@@ -3596,7 +3754,7 @@ class SalesServiceTest {
             "NONE",
             null,
             null,
-            null);
+            "create-order-pending-exposure");
 
     CreditLimitExceededException ex =
         assertThrows(CreditLimitExceededException.class, () -> salesService.createOrder(request));
@@ -3709,7 +3867,7 @@ class SalesServiceTest {
             "NONE",
             null,
             null,
-            null,
+            "create-order-cash-credit-limit",
             " cash ");
 
     assertThrows(CreditLimitExceededException.class, () -> salesService.createOrder(request));
@@ -3729,7 +3887,7 @@ class SalesServiceTest {
     setField(existing, "id", 4300L);
     existing.setCompany(company);
     existing.setDealer(dealer);
-    existing.setStatus("BOOKED");
+    existing.setStatus("DRAFT");
     existing.setCurrency("INR");
     existing.setGstTreatment("NONE");
     existing.setGstInclusive(false);
@@ -3779,7 +3937,7 @@ class SalesServiceTest {
     setField(existing, "id", 4303L);
     existing.setCompany(company);
     existing.setDealer(dealer);
-    existing.setStatus("BOOKED");
+    existing.setStatus("DRAFT");
     existing.setPaymentMode("CASH");
     existing.setCurrency("INR");
     existing.setGstTreatment("NONE");
@@ -3946,7 +4104,7 @@ class SalesServiceTest {
             "NONE",
             null,
             null,
-            null,
+            "create-order-hybrid-credit-limit",
             "HYBRID");
 
     assertThrows(CreditLimitExceededException.class, () -> salesService.createOrder(request));
@@ -3967,7 +4125,7 @@ class SalesServiceTest {
             "NONE",
             null,
             null,
-            null,
+            "create-order-unsupported-payment-mode",
             "WIRE_TRANSFER");
 
     ApplicationException ex =
@@ -4043,267 +4201,6 @@ class SalesServiceTest {
   }
 
   @Test
-  void createOrderIdempotentRetry_acceptsStoredSignatureWithDefaultPaymentModeSegment() {
-    setupProduct("SKU3-IDEMP", BigDecimal.valueOf(100), BigDecimal.ZERO);
-    FinishedGood finishedGood = buildFinishedGood("SKU3-IDEMP");
-    finishedGood.setRevenueAccountId(5L);
-    when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3-IDEMP"))
-        .thenReturn(Optional.of(finishedGood));
-    when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-IDEMP-1");
-    when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    SalesOrder existing = new SalesOrder();
-    setField(existing, "id", 901L);
-    existing.setCompany(company);
-    existing.setOrderNumber("SO-IDEMP-1");
-    existing.setStatus("RESERVED");
-    existing.setCurrency("INR");
-    existing.setGstTreatment("NONE");
-    existing.setGstInclusive(false);
-    existing.setGstRate(BigDecimal.ZERO);
-    existing.setSubtotalAmount(BigDecimal.valueOf(100));
-    existing.setGstTotal(BigDecimal.ZERO);
-    existing.setGstRoundingAdjustment(BigDecimal.ZERO);
-    existing.setTotalAmount(BigDecimal.valueOf(100));
-    existing.setIdempotencyHash(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||CREDIT|SKU3-IDEMP:1:100:0"));
-    SalesOrderItem existingItem = new SalesOrderItem();
-    setField(existingItem, "id", 911L);
-    existingItem.setSalesOrder(existing);
-    existingItem.setProductCode("SKU3-IDEMP");
-    existingItem.setDescription("Desc");
-    existingItem.setQuantity(BigDecimal.ONE);
-    existingItem.setUnitPrice(BigDecimal.valueOf(100));
-    existingItem.setLineSubtotal(BigDecimal.valueOf(100));
-    existingItem.setGstRate(BigDecimal.ZERO);
-    existingItem.setGstAmount(BigDecimal.ZERO);
-    existingItem.setLineTotal(BigDecimal.valueOf(100));
-    existing.getItems().add(existingItem);
-
-    when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, "SO-IDEMP-KEY"))
-        .thenReturn(Optional.of(existing));
-
-    SalesOrderRequest request =
-        new SalesOrderRequest(
-            null,
-            BigDecimal.valueOf(100),
-            "INR",
-            null,
-            List.of(
-                new SalesOrderItemRequest(
-                    "SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null)),
-            "NONE",
-            null,
-            null,
-            "SO-IDEMP-KEY",
-            "CREDIT");
-
-    SalesOrderDto dto = salesService.createOrder(request);
-
-    assertEquals(existing.getId(), dto.id());
-    assertEquals("SO-IDEMP-1", dto.orderNumber());
-    verify(salesOrderRepository).save(existing);
-    assertEquals(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||SKU3-IDEMP:1:100:0"),
-        existing.getIdempotencyHash());
-  }
-
-  @Test
-  void createOrderIdempotentRetry_acceptsStoredLegacySplitSignature() {
-    setupProduct("SKU3-IDEMP", BigDecimal.valueOf(100), BigDecimal.ZERO);
-    FinishedGood finishedGood = buildFinishedGood("SKU3-IDEMP");
-    finishedGood.setRevenueAccountId(5L);
-    when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3-IDEMP"))
-        .thenReturn(Optional.of(finishedGood));
-    when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-IDEMP-SPLIT");
-    when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    SalesOrder existing = new SalesOrder();
-    setField(existing, "id", 903L);
-    existing.setCompany(company);
-    existing.setOrderNumber("SO-IDEMP-SPLIT");
-    existing.setStatus("RESERVED");
-    existing.setCurrency("INR");
-    existing.setGstTreatment("NONE");
-    existing.setGstInclusive(false);
-    existing.setGstRate(BigDecimal.ZERO);
-    existing.setSubtotalAmount(BigDecimal.valueOf(100));
-    existing.setGstTotal(BigDecimal.ZERO);
-    existing.setGstRoundingAdjustment(BigDecimal.ZERO);
-    existing.setTotalAmount(BigDecimal.valueOf(100));
-    existing.setPaymentMode("HYBRID");
-    existing.setIdempotencyHash(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||SPLIT|SKU3-IDEMP:1:100:0"));
-    SalesOrderItem existingItem = new SalesOrderItem();
-    setField(existingItem, "id", 913L);
-    existingItem.setSalesOrder(existing);
-    existingItem.setProductCode("SKU3-IDEMP");
-    existingItem.setDescription("Desc");
-    existingItem.setQuantity(BigDecimal.ONE);
-    existingItem.setUnitPrice(BigDecimal.valueOf(100));
-    existingItem.setLineSubtotal(BigDecimal.valueOf(100));
-    existingItem.setGstRate(BigDecimal.ZERO);
-    existingItem.setGstAmount(BigDecimal.ZERO);
-    existingItem.setLineTotal(BigDecimal.valueOf(100));
-    existing.getItems().add(existingItem);
-
-    when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, "SO-IDEMP-SPLIT-KEY"))
-        .thenReturn(Optional.of(existing));
-
-    SalesOrderRequest request =
-        new SalesOrderRequest(
-            null,
-            BigDecimal.valueOf(100),
-            "INR",
-            null,
-            List.of(
-                new SalesOrderItemRequest(
-                    "SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null)),
-            "NONE",
-            null,
-            null,
-            "SO-IDEMP-SPLIT-KEY",
-            "SPLIT");
-
-    SalesOrderDto dto = salesService.createOrder(request);
-
-    assertEquals(existing.getId(), dto.id());
-    verify(salesOrderRepository).save(existing);
-    assertEquals(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||HYBRID|SKU3-IDEMP:1:100:0"),
-        existing.getIdempotencyHash());
-  }
-
-  @Test
-  void createOrderAutoIdempotencyRetry_acceptsLegacyDefaultCreditKeyShape() {
-    SalesOrderItemRequest requestItem =
-        new SalesOrderItemRequest(
-            "SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null);
-    SalesOrderRequest request =
-        new SalesOrderRequest(
-            null,
-            BigDecimal.valueOf(100),
-            "INR",
-            null,
-            List.of(requestItem),
-            "NONE",
-            null,
-            null,
-            null,
-            "CREDIT");
-    String canonicalKey = request.resolveIdempotencyKey();
-    String legacyDefaultKey = request.resolveIdempotencyKeyIncludingDefaultPaymentMode();
-    assertTrue(!canonicalKey.equals(legacyDefaultKey));
-
-    SalesOrder existing = new SalesOrder();
-    setField(existing, "id", 902L);
-    existing.setCompany(company);
-    existing.setOrderNumber("SO-IDEMP-AUTO");
-    existing.setStatus("RESERVED");
-    existing.setCurrency("INR");
-    existing.setGstTreatment("NONE");
-    existing.setGstInclusive(false);
-    existing.setGstRate(BigDecimal.ZERO);
-    existing.setSubtotalAmount(BigDecimal.valueOf(100));
-    existing.setGstTotal(BigDecimal.ZERO);
-    existing.setGstRoundingAdjustment(BigDecimal.ZERO);
-    existing.setTotalAmount(BigDecimal.valueOf(100));
-    existing.setIdempotencyHash(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||CREDIT|SKU3-IDEMP:1:100:0"));
-    SalesOrderItem existingItem = new SalesOrderItem();
-    setField(existingItem, "id", 912L);
-    existingItem.setSalesOrder(existing);
-    existingItem.setProductCode("SKU3-IDEMP");
-    existingItem.setDescription("Desc");
-    existingItem.setQuantity(BigDecimal.ONE);
-    existingItem.setUnitPrice(BigDecimal.valueOf(100));
-    existingItem.setLineSubtotal(BigDecimal.valueOf(100));
-    existingItem.setGstRate(BigDecimal.ZERO);
-    existingItem.setGstAmount(BigDecimal.ZERO);
-    existingItem.setLineTotal(BigDecimal.valueOf(100));
-    existing.getItems().add(existingItem);
-
-    when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, legacyDefaultKey))
-        .thenReturn(Optional.of(existing));
-    when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    SalesOrderDto dto = salesService.createOrder(request);
-
-    assertEquals(existing.getId(), dto.id());
-    verify(salesOrderRepository, never()).findByCompanyAndIdempotencyKey(company, canonicalKey);
-    assertEquals(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||SKU3-IDEMP:1:100:0"),
-        existing.getIdempotencyHash());
-  }
-
-  @Test
-  void createOrderAutoIdempotencyRetry_acceptsLegacySplitKeyShape() {
-    SalesOrderItemRequest requestItem =
-        new SalesOrderItemRequest(
-            "SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null);
-    SalesOrderRequest request =
-        new SalesOrderRequest(
-            null,
-            BigDecimal.valueOf(100),
-            "INR",
-            null,
-            List.of(requestItem),
-            "NONE",
-            null,
-            null,
-            null,
-            "SPLIT");
-    String canonicalKey = request.resolveIdempotencyKey();
-    String legacySplitKey = request.resolveLegacySplitReplayIdempotencyKey();
-    assertTrue(!canonicalKey.equals(legacySplitKey));
-
-    SalesOrder existing = new SalesOrder();
-    setField(existing, "id", 904L);
-    existing.setCompany(company);
-    existing.setOrderNumber("SO-IDEMP-AUTO-SPLIT");
-    existing.setStatus("RESERVED");
-    existing.setCurrency("INR");
-    existing.setGstTreatment("NONE");
-    existing.setGstInclusive(false);
-    existing.setGstRate(BigDecimal.ZERO);
-    existing.setSubtotalAmount(BigDecimal.valueOf(100));
-    existing.setGstTotal(BigDecimal.ZERO);
-    existing.setGstRoundingAdjustment(BigDecimal.ZERO);
-    existing.setTotalAmount(BigDecimal.valueOf(100));
-    existing.setPaymentMode("HYBRID");
-    existing.setIdempotencyHash(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||SPLIT|SKU3-IDEMP:1:100:0"));
-    SalesOrderItem existingItem = new SalesOrderItem();
-    setField(existingItem, "id", 914L);
-    existingItem.setSalesOrder(existing);
-    existingItem.setProductCode("SKU3-IDEMP");
-    existingItem.setDescription("Desc");
-    existingItem.setQuantity(BigDecimal.ONE);
-    existingItem.setUnitPrice(BigDecimal.valueOf(100));
-    existingItem.setLineSubtotal(BigDecimal.valueOf(100));
-    existingItem.setGstRate(BigDecimal.ZERO);
-    existingItem.setGstAmount(BigDecimal.ZERO);
-    existingItem.setLineTotal(BigDecimal.valueOf(100));
-    existing.getItems().add(existingItem);
-
-    when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, legacySplitKey))
-        .thenReturn(Optional.of(existing));
-    when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    SalesOrderDto dto = salesService.createOrder(request);
-
-    assertEquals(existing.getId(), dto.id());
-    verify(salesOrderRepository, never()).findByCompanyAndIdempotencyKey(company, canonicalKey);
-    assertEquals(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||HYBRID|SKU3-IDEMP:1:100:0"),
-        existing.getIdempotencyHash());
-  }
-
-  @Test
   void createOrderUsesCompanyDefaultGstForOrderTotal() {
     company.setDefaultGstRate(BigDecimal.valueOf(15));
     setupProduct("SKU4", BigDecimal.valueOf(100), BigDecimal.ZERO);
@@ -4333,7 +4230,7 @@ class SalesServiceTest {
             "ORDER_TOTAL",
             null,
             null,
-            null);
+            "create-order-order-total-gst");
 
     salesService.createOrder(request);
 
@@ -4373,7 +4270,7 @@ class SalesServiceTest {
             "PER_ITEM",
             null,
             null,
-            null);
+            "create-order-default-per-item-gst");
 
     salesService.createOrder(request);
 
@@ -4430,7 +4327,7 @@ class SalesServiceTest {
             "PER_ITEM",
             null,
             false,
-            null);
+            "create-order-mixed-per-item-gst");
 
     salesService.createOrder(request);
 
@@ -4443,40 +4340,6 @@ class SalesServiceTest {
     assertEquals(BigDecimal.ZERO.setScale(2), saved.getGstRoundingAdjustment());
     assertEquals(new BigDecimal("36.00"), saved.getItems().get(0).getGstAmount());
     assertEquals(new BigDecimal("2.50"), saved.getItems().get(1).getGstAmount());
-  }
-
-  @Test
-  void promotionRequestLegacyConstructorDefaultsImageUrlToNull() {
-    PromotionRequest request =
-        new PromotionRequest(
-            "Campaign",
-            "Description",
-            "PERCENTAGE",
-            new BigDecimal("10.00"),
-            java.time.LocalDate.of(2026, 5, 1),
-            java.time.LocalDate.of(2026, 5, 31),
-            "ACTIVE");
-
-    assertEquals("Campaign", request.name());
-    assertNull(request.imageUrl());
-  }
-
-  @Test
-  void promotionDtoLegacyConstructorDefaultsImageUrlToNull() {
-    PromotionDto dto =
-        new PromotionDto(
-            901L,
-            UUID.randomUUID(),
-            "Campaign",
-            "Description",
-            "PERCENTAGE",
-            new BigDecimal("10.00"),
-            java.time.LocalDate.of(2026, 5, 1),
-            java.time.LocalDate.of(2026, 5, 31),
-            "ACTIVE");
-
-    assertEquals("Campaign", dto.name());
-    assertNull(dto.imageUrl());
   }
 
   @Test
@@ -4536,7 +4399,7 @@ class SalesServiceTest {
     existing.setCompany(company);
     existing.setName("Old Campaign");
     existing.setDescription("Old description");
-    existing.setImageUrl("https://cdn.example.com/promotions/legacy.png");
+    existing.setImageUrl("https://cdn.example.com/promotions/current.png");
     existing.setDiscountType("PERCENTAGE");
     existing.setDiscountValue(new BigDecimal("5.00"));
     existing.setStartDate(java.time.LocalDate.of(2026, 1, 1));
@@ -4626,7 +4489,7 @@ class SalesServiceTest {
             "PER_ITEM",
             null,
             false,
-            null);
+            "create-order-exempt-per-item-gst");
 
     salesService.createOrder(request);
 
@@ -4984,7 +4847,7 @@ class SalesServiceTest {
     order.setCompany(company);
     order.setDealer(dealer);
     order.setOrderNumber("SO-SEARCH-1");
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     setField(order, "id", 778L);
 
     SalesOrderSearchFilters filters =
@@ -5090,7 +4953,7 @@ class SalesServiceTest {
             "NONE",
             null,
             null,
-            null);
+            "create-order-credit-limit-exceeded");
 
     assertThrows(CreditLimitExceededException.class, () -> salesService.createOrder(request));
   }

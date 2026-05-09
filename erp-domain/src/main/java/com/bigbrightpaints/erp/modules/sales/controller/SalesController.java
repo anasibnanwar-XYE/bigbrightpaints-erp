@@ -12,7 +12,6 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
 import com.bigbrightpaints.erp.modules.sales.dto.*;
-import com.bigbrightpaints.erp.modules.sales.service.DealerService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDashboardService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
@@ -39,43 +38,18 @@ public class SalesController {
   private final SalesOrderLifecycleService salesOrderLifecycleService;
   private final SalesDispatchReconciliationService salesDispatchReconciliationService;
   private final SalesDashboardService salesDashboardService;
-  private final DealerService dealerService;
 
   public SalesController(
       SalesService salesService,
       SalesOrderCrudService salesOrderCrudService,
       SalesOrderLifecycleService salesOrderLifecycleService,
       SalesDispatchReconciliationService salesDispatchReconciliationService,
-      SalesDashboardService salesDashboardService,
-      DealerService dealerService) {
+      SalesDashboardService salesDashboardService) {
     this.salesService = salesService;
     this.salesOrderCrudService = salesOrderCrudService;
     this.salesOrderLifecycleService = salesOrderLifecycleService;
     this.salesDispatchReconciliationService = salesDispatchReconciliationService;
     this.salesDashboardService = salesDashboardService;
-    this.dealerService = dealerService;
-  }
-
-  /* Dealers alias - frontend calls /sales/dealers, backend has /dealers */
-  @GetMapping("/sales/dealers")
-  @PreAuthorize(PortalRoleActionMatrix.ADMIN_SALES_ACCOUNTING)
-  public ResponseEntity<ApiResponse<List<DealerResponse>>> listDealers(
-      @RequestParam(required = false) String status,
-      @RequestParam(required = false) Integer page,
-      @RequestParam(required = false) Integer size) {
-    return ResponseEntity.ok(
-        ApiResponse.success("Dealer directory", dealerService.listDealers(status, page, size)));
-  }
-
-  @GetMapping("/sales/dealers/search")
-  @PreAuthorize(PortalRoleActionMatrix.ADMIN_SALES_ACCOUNTING)
-  public ResponseEntity<ApiResponse<List<DealerLookupResponse>>> searchDealers(
-      @RequestParam(defaultValue = "") String query,
-      @RequestParam(required = false) String status,
-      @RequestParam(required = false) String region,
-      @RequestParam(required = false) String creditStatus) {
-    return ResponseEntity.ok(
-        ApiResponse.success(dealerService.search(query, status, region, creditStatus)));
   }
 
   /* Sales Orders */
@@ -127,7 +101,7 @@ public class SalesController {
   @ApiResponses({
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "200",
-        description = "Order created (legacy contract-compatible response)"),
+        description = "Order created"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "201",
         description =
@@ -141,12 +115,12 @@ public class SalesController {
                 schema = @Schema(ref = "#/components/schemas/ApiResponseMapStringObject")))
   })
   public ResponseEntity<ApiResponse<SalesOrderDto>> createOrder(
-      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+      @RequestHeader(value = "Idempotency-Key", required = true) String idempotencyKey,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKey,
+          String retiredIdempotencyKey,
       @Valid @RequestBody SalesOrderRequest request) {
     SalesOrderRequest resolved =
-        applyOrderIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+        applyOrderIdempotencyKey(request, idempotencyKey, retiredIdempotencyKey);
     SalesOrderDto created = salesOrderCrudService.createOrder(resolved);
     if (usesDraftLifecycleContract(resolved)) {
       return ResponseEntity.status(201).body(ApiResponse.success("Order created", created));
@@ -210,20 +184,15 @@ public class SalesController {
   public record StatusRequest(String status) {}
 
   private SalesOrderRequest applyOrderIdempotencyKey(
-      SalesOrderRequest request, String idempotencyKeyHeader, String legacyIdempotencyKeyHeader) {
+      SalesOrderRequest request, String idempotencyKeyHeader, String retiredIdempotencyKeyHeader) {
     if (request == null) {
       return null;
     }
-    if (StringUtils.hasText(legacyIdempotencyKeyHeader)) {
-      throw IdempotencyHeaderUtils.unsupportedLegacyHeader(
+    if (StringUtils.hasText(retiredIdempotencyKeyHeader)) {
+      throw IdempotencyHeaderUtils.unsupportedRetiredHeader(
           "X-Idempotency-Key", "sales orders", CANONICAL_SALES_ORDER_PATH);
     }
-    String resolvedKey =
-        IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
-            request.idempotencyKey(), idempotencyKeyHeader);
-    if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(request.idempotencyKey())) {
-      return request;
-    }
+    String resolvedKey = IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKeyHeader);
     return new SalesOrderRequest(
         request.dealerId(),
         request.totalAmount(),

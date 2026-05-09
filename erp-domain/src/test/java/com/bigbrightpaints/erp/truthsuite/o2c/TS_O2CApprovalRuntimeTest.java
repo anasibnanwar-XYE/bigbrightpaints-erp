@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -84,7 +83,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 @Tag("critical")
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class TS_truthsuite_o2c_Approval_RuntimeTest {
+class TS_O2CApprovalRuntimeTest {
 
   @Mock private CompanyContextService companyContextService;
   @Mock private DealerRepository dealerRepository;
@@ -259,6 +258,10 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
                         "admin",
                         Boolean.FALSE,
                         "Discount exception requires approval",
+                        null,
+                        null,
+                        null,
+                        null,
                         null)));
 
     assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
@@ -310,69 +313,14 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
                         "admin",
                         Boolean.FALSE,
                         "Discount exception requires approval",
-                        900L)));
+                        900L,
+                        null,
+                        null,
+                        null,
+                        null)));
 
     assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
     assertTrue(ex.getMessage().contains("approved maker-checker override request"));
-  }
-
-  @Test
-  void confirmDispatchReplayFastPathEnrichesAuditMetadataWithOverrideFields() {
-    SalesOrder order = new SalesOrder();
-    setField(order, "id", 10L);
-    order.setCompany(company);
-    order.setStatus("SHIPPED");
-    order.setTraceId("TRACE-FASTPATH-805");
-
-    PackagingSlip slip = new PackagingSlip();
-    setField(slip, "id", 55L);
-    slip.setCompany(company);
-    slip.setSalesOrder(order);
-    slip.setSlipNumber("PS-55");
-    slip.setStatus("DISPATCHED");
-    slip.setInvoiceId(777L);
-    slip.setJournalEntryId(222L);
-    slip.setCogsJournalEntryId(333L);
-
-    Invoice existingInvoice = new Invoice();
-    setField(existingInvoice, "id", 777L);
-    existingInvoice.setTotalAmount(new BigDecimal("90.00"));
-
-    when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company))
-        .thenReturn(Optional.of(slip));
-    when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
-        .thenReturn(List.of(slip));
-    when(salesLookupService.requireSalesOrder(company, 10L)).thenReturn(order);
-    when(invoiceRepository.findByCompanyAndId(company, 777L))
-        .thenReturn(Optional.of(existingInvoice));
-    when(creditLimitOverrideService.isOverrideApproved(
-            eq(805L), eq(company), isNull(), eq(slip), eq(order), isNull()))
-        .thenReturn(true);
-
-    DispatchConfirmResponse response =
-        salesService.confirmDispatch(
-            new DispatchConfirmRequest(
-                55L,
-                null,
-                List.of(
-                    new DispatchConfirmRequest.DispatchLine(
-                        99L, null, BigDecimal.ONE, null, new BigDecimal("10"), null, null, null)),
-                null,
-                "admin",
-                Boolean.TRUE,
-                "Replay override in fast path",
-                805L));
-
-    assertEquals(777L, response.finalInvoiceId());
-    assertEquals(222L, response.arJournalEntryId());
-
-    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
-    verify(auditService).logSuccess(eq(AuditEvent.DISPATCH_CONFIRMED), metadataCaptor.capture());
-    Map<String, String> metadata = metadataCaptor.getValue();
-    assertEquals("Replay override in fast path", metadata.get("dispatchOverrideReason"));
-    assertEquals("DISCOUNT_OVERRIDE", metadata.get("dispatchOverrideReasonCode"));
-    assertEquals("805", metadata.get("overrideRequestId"));
-    assertEquals("TRACE-FASTPATH-805", metadata.get("traceId"));
   }
 
   @Test
@@ -401,7 +349,11 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
                         "admin",
                         Boolean.TRUE,
                         null,
-                        901L)));
+                        901L,
+                        null,
+                        null,
+                        null,
+                        null)));
 
     assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
     assertTrue(ex.getMessage().contains("overrideReason"));
@@ -430,7 +382,11 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
                 "admin",
                 Boolean.TRUE,
                 "Approved credit exception",
-                801L));
+                801L,
+                null,
+                null,
+                null,
+                null));
 
     assertEquals(55L, response.packingSlipId());
     assertEquals(10L, response.salesOrderId());
@@ -476,7 +432,11 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
                 "admin",
                 Boolean.FALSE,
                 "Discount exception approved",
-                802L));
+                802L,
+                null,
+                null,
+                null,
+                null));
 
     assertEquals(777L, response.finalInvoiceId());
     ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
@@ -516,7 +476,7 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
   void attachTraceIdCoversBlankConflictAndReplayBranches() {
     SalesOrder order = new SalesOrder();
     order.setCompany(company);
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     setField(order, "id", 703L);
     when(salesLookupService.requireSalesOrder(company, 703L)).thenReturn(order);
 
@@ -550,7 +510,18 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
     DispatchConfirmResponse response =
         salesService.confirmDispatch(
             new DispatchConfirmRequest(
-                55L, null, defaultDispatchLines(), null, "admin", Boolean.FALSE, null, null));
+                55L,
+                null,
+                defaultDispatchLines(),
+                null,
+                "admin",
+                Boolean.FALSE,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null));
 
     assertEquals(777L, response.finalInvoiceId());
     ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
@@ -559,77 +530,6 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
     assertEquals("false", metadata.get("dispatchOverridesApplied"));
     assertEquals(null, metadata.get("dispatchOverrideReasonCode"));
     assertEquals(null, metadata.get("overrideRequestId"));
-  }
-
-  @Test
-  void confirmDispatchReplayFastPathWithoutExceptionsSkipsOverrideApproval() {
-    SalesOrder order = new SalesOrder();
-    setField(order, "id", 10L);
-    order.setCompany(company);
-    order.setStatus("SHIPPED");
-
-    PackagingSlip slip = new PackagingSlip();
-    setField(slip, "id", 55L);
-    slip.setCompany(company);
-    slip.setSalesOrder(order);
-    slip.setSlipNumber("PS-55");
-    slip.setStatus("DISPATCHED");
-    slip.setInvoiceId(777L);
-    slip.setJournalEntryId(222L);
-    slip.setCogsJournalEntryId(333L);
-
-    Invoice existingInvoice = new Invoice();
-    setField(existingInvoice, "id", 777L);
-    existingInvoice.setTotalAmount(new BigDecimal("90.00"));
-
-    when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company))
-        .thenReturn(Optional.of(slip));
-    when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
-        .thenReturn(List.of(slip));
-    when(salesLookupService.requireSalesOrder(company, 10L)).thenReturn(order);
-    when(invoiceRepository.findByCompanyAndId(company, 777L))
-        .thenReturn(Optional.of(existingInvoice));
-
-    DispatchConfirmResponse response =
-        salesService.confirmDispatch(
-            new DispatchConfirmRequest(
-                55L, null, List.of(), null, "admin", Boolean.FALSE, null, null));
-
-    assertEquals(222L, response.arJournalEntryId());
-    assertEquals(true, response.cogsPostings().isEmpty());
-  }
-
-  @Test
-  void confirmDispatchReplayFastPathHandlesLegacyMissingInvoiceEntity() {
-    SalesOrder order = new SalesOrder();
-    setField(order, "id", 10L);
-    order.setCompany(company);
-    order.setStatus("SHIPPED");
-
-    PackagingSlip slip = new PackagingSlip();
-    setField(slip, "id", 55L);
-    slip.setCompany(company);
-    slip.setSalesOrder(order);
-    slip.setSlipNumber("PS-55");
-    slip.setStatus("DISPATCHED");
-    slip.setInvoiceId(777L);
-    slip.setJournalEntryId(222L);
-    slip.setCogsJournalEntryId(333L);
-
-    when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company))
-        .thenReturn(Optional.of(slip));
-    when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
-        .thenReturn(List.of(slip));
-    when(salesLookupService.requireSalesOrder(company, 10L)).thenReturn(order);
-    when(invoiceRepository.findByCompanyAndId(company, 777L)).thenReturn(Optional.empty());
-
-    DispatchConfirmResponse response =
-        salesService.confirmDispatch(
-            new DispatchConfirmRequest(
-                55L, null, List.of(), null, "admin", Boolean.FALSE, null, null));
-
-    assertEquals(777L, response.finalInvoiceId());
-    assertEquals(222L, response.arJournalEntryId());
   }
 
   private SalesOrder newOrderWithSingleItem(Dealer dealer, BigDecimal unitPrice) {

@@ -3,7 +3,8 @@ package com.bigbrightpaints.erp.modules.sales.dto;
 import java.math.BigDecimal;
 import java.util.List;
 
-import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 
 import jakarta.validation.Valid;
@@ -23,7 +24,6 @@ public record SalesOrderRequest(
     String paymentMode,
     String paymentTerms) {
   private static final String DEFAULT_PAYMENT_MODE = "CREDIT";
-  private static final String LEGACY_HYBRID_PAYMENT_MODE = "SPLIT";
   private static final String HYBRID_PAYMENT_MODE = "HYBRID";
 
   public SalesOrderRequest(
@@ -80,14 +80,7 @@ public record SalesOrderRequest(
     if (DEFAULT_PAYMENT_MODE.equals(normalized)) {
       return DEFAULT_PAYMENT_MODE;
     }
-    if (LEGACY_HYBRID_PAYMENT_MODE.equals(normalized)) {
-      return HYBRID_PAYMENT_MODE;
-    }
     return normalized;
-  }
-
-  public boolean usesLegacySplitReplayPaymentMode() {
-    return LEGACY_HYBRID_PAYMENT_MODE.equals(rawNormalizedPaymentMode());
   }
 
   public String resolveIdempotencyKey() {
@@ -95,46 +88,9 @@ public record SalesOrderRequest(
     if (normalized != null) {
       return normalized;
     }
-    return resolveDerivedIdempotencyKey(normalizedPaymentMode(), false);
-  }
-
-  public String resolveIdempotencyKeyIncludingDefaultPaymentMode() {
-    String normalized = IdempotencyUtils.normalizeKey(idempotencyKey);
-    if (normalized != null) {
-      return normalized;
-    }
-    return resolveDerivedIdempotencyKey(normalizedPaymentMode(), true);
-  }
-
-  public String resolveLegacySplitReplayIdempotencyKey() {
-    String normalized = IdempotencyUtils.normalizeKey(idempotencyKey);
-    if (normalized != null || !usesLegacySplitReplayPaymentMode()) {
-      return null;
-    }
-    return resolveDerivedIdempotencyKey(LEGACY_HYBRID_PAYMENT_MODE, false);
-  }
-
-  private String resolveDerivedIdempotencyKey(
-      String normalizedPaymentMode, boolean includeDefaultPaymentModeSegment) {
-    IdempotencySignatureBuilder signatureBuilder =
-        IdempotencySignatureBuilder.create()
-            .add(dealerId == null ? "null" : dealerId)
-            .add(totalAmount)
-            .addUpperToken(currency);
-    String normalizedPaymentTerms = IdempotencyUtils.normalizeUpperToken(paymentTerms);
-    if (!normalizedPaymentTerms.isBlank()) {
-      signatureBuilder.addUpperToken(paymentTerms);
-    }
-    if (includeDefaultPaymentModeSegment || !DEFAULT_PAYMENT_MODE.equals(normalizedPaymentMode)) {
-      signatureBuilder.add(normalizedPaymentMode);
-    }
-    if (items != null) {
-      for (SalesOrderItemRequest item : items) {
-        signatureBuilder.add(
-            itemIdempotencyToken(item) + ':' + item.quantity() + ':' + item.unitPrice());
-      }
-    }
-    return signatureBuilder.buildHash();
+    throw new ApplicationException(
+        ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+        "Idempotency-Key header is required for sales orders");
   }
 
   private String rawNormalizedPaymentMode() {
@@ -147,18 +103,5 @@ public record SalesOrderRequest(
 
   public boolean usesFinishedGoodSelection() {
     return items != null && items.stream().anyMatch(SalesOrderItemRequest::hasFinishedGoodId);
-  }
-
-  private String itemIdempotencyToken(SalesOrderItemRequest item) {
-    if (item == null) {
-      return "";
-    }
-    if (item.hasProductCode()) {
-      return IdempotencyUtils.normalizeUpperToken(item.normalizedProductCode());
-    }
-    if (item.hasFinishedGoodId()) {
-      return "FG#" + item.finishedGoodId();
-    }
-    return "";
   }
 }

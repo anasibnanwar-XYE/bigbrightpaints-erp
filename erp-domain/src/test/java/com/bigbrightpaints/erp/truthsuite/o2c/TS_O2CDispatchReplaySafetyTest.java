@@ -19,7 +19,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.TestPropertySource;
 
-import com.bigbrightpaints.erp.codered.support.CoderedDbAssertions;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -54,6 +53,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import com.bigbrightpaints.erp.risk.support.RiskDbAssertions;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 @Tag("critical")
@@ -118,7 +118,7 @@ class TS_O2CDispatchReplaySafetyTest extends AbstractIntegrationTest {
         .isEqualTo(dispatchNoteMatchesBeforeReplay)
         .isEqualTo(1);
 
-    CoderedDbAssertions.assertOneInvoicePerSlip(
+    RiskDbAssertions.assertOneInvoicePerSlip(
         packagingSlipRepository, invoiceRepository, fixture.company(), replayedSlip.getId());
   }
 
@@ -168,9 +168,9 @@ class TS_O2CDispatchReplaySafetyTest extends AbstractIntegrationTest {
     assertThat(journalEntryRepository.findByCompanyOrderByEntryDateDesc(fixture.company()))
         .hasSize(totalJournalRowsBeforeReplay);
 
-    CoderedDbAssertions.assertBalancedJournal(
+    RiskDbAssertions.assertBalancedJournal(
         journalEntryRepository, replayedSlip.getJournalEntryId());
-    CoderedDbAssertions.assertBalancedJournal(
+    RiskDbAssertions.assertBalancedJournal(
         journalEntryRepository, replayedSlip.getCogsJournalEntryId());
   }
 
@@ -206,7 +206,7 @@ class TS_O2CDispatchReplaySafetyTest extends AbstractIntegrationTest {
     assertThat(afterReplay.getReservedStock())
         .isEqualByComparingTo(afterFirstDispatch.getReservedStock());
 
-    CoderedDbAssertions.assertNoNegativeInventory(jdbcTemplate, fixture.company().getId());
+    RiskDbAssertions.assertNoNegativeInventory(jdbcTemplate, fixture.company().getId());
   }
 
   @Test
@@ -312,6 +312,10 @@ class TS_O2CDispatchReplaySafetyTest extends AbstractIntegrationTest {
             "truthsuite-user",
             false,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     DispatchConfirmationRequest inventoryRequest =
@@ -329,6 +333,10 @@ class TS_O2CDispatchReplaySafetyTest extends AbstractIntegrationTest {
                 .toList(),
             "truthsuite replay characterization",
             "truthsuite-user",
+            null,
+            null,
+            null,
+            null,
             null);
 
     return new DispatchFixture(
@@ -536,7 +544,7 @@ class TS_O2CDispatchReplaySafetyTest extends AbstractIntegrationTest {
                 List.of(
                     new SalesOrderItemRequest(
                         productCode, "Truthsuite Item", quantity, unitPrice, BigDecimal.ZERO)),
-                "EXCLUSIVE",
+                "NONE",
                 null,
                 null,
                 UUID.randomUUID().toString()));
