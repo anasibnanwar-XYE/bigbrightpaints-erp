@@ -320,10 +320,10 @@ Last reviewed: 2026-05-14
 
 ## Addendum — `journal-reference-key-forward-migration`
 
-- Scope: Flyway v2 checksum preservation for retired Tally import storage plus accounting journal reference mapping column canonicalization.
+- Scope: Flyway v2 checksum preservation for retired Tally import storage, accounting journal reference mapping column canonicalization, and packaging-slip COGS journal link backfill.
 - Risk trigger: touches Flyway v2 migration ownership under `erp-domain/src/main/resources/db/migration_v2/`.
 - Approval mode: orchestrator; human escalation required: no.
-- Escalation decision: no privilege widening, tenant-boundary change, or rollback-blocking schema change was introduced. Historical migrations remain immutable; the `legacy_reference` to `reference_key` rename and retired `tally_imports` table removal now live in forward migrations so already-applied v2 databases avoid checksum drift.
+- Escalation decision: no privilege widening, tenant-boundary change, or rollback-blocking schema change was introduced. Historical migrations remain immutable; the `legacy_reference` to `reference_key` rename, retired `tally_imports` table removal, and packaging-slip COGS journal link backfill now live in forward migrations so already-applied v2 databases avoid checksum drift and replay-safety gaps.
 - Rollback owner: Droid mission orchestrator.
 - Rollback method: revert this packet and rerun migration validation, accounting shard tests, high-risk guard, Spotless, compile/test-compile, and PR CI.
 - Expiry: 2026-05-16.
@@ -332,6 +332,7 @@ Last reviewed: 2026-05-14
   - `V37__tally_import_idempotency.sql` and `V184__accounting_truth_rls_hard_cut.sql` preserve applied migration contents instead of deleting or editing versioned scripts
   - `V204__journal_reference_mapping_reference_key.sql` performs the current-state rename and recreates canonical `reference_key` indexes
   - `V205__drop_tally_imports_hard_cut.sql` performs the hard-cut Tally import table removal as a forward migration
+  - `V206__backfill_packaging_slip_cogs_journal_links.sql` links historical `COGS-{slip_number}` journals to `packaging_slips.cogs_journal_entry_id` before runtime relies on the canonical COGS marker
   - current Java/JPA/repository code continues to target `reference_key`
 - Commands run:
   - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=ReconciliationServiceTest,BankReconciliationSessionServiceTest test`
@@ -347,9 +348,17 @@ Last reviewed: 2026-05-14
   - `MIGRATION_SET=v2 mvn -B -ntp spotless:apply && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
   - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
   - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 bash scripts/gate_fast.sh`
+  - `MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -Dtest=TS_PackagingSlipInvoiceLinkV2MigrationContractTest test`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AccountingCatalogControllerSecurityIT test`
+  - `bash scripts/guard_flyway_v2_migration_ownership.sh`
+  - `bash scripts/guard_flyway_v2_referential_contract.sh`
+  - `bash scripts/flyway_overlap_scan.sh`
 - Result summary:
   - Targeted accounting reconciliation, catalog, and purchasing tests passed with 39, 8, 23, and 70 tests respectively.
-  - Flyway validated 95 migrations and a fresh Testcontainers PostgreSQL schema applied through `V205__drop_tally_imports_hard_cut.sql`.
+  - Flyway validated 96 migrations and a fresh Testcontainers PostgreSQL schema applied through `V206__backfill_packaging_slip_cogs_journal_links.sql`.
+  - Packaging-slip migration contract test passed with 2 tests, 0 failures/errors/skips.
+  - Accounting catalog security IT passed with 8 tests, 0 failures/errors/skips after applying through v206.
+  - Flyway v2 ownership, referential, and overlap guards passed after staging the new migration.
   - High-risk, knowledgebase, OpenAPI drift, accounting portal scope, PR CI contract, Python compile, Spotless, and test-compile checks passed.
   - `gate_fast` passed with 904 tests, 0 failures/errors/skips; changed-files coverage recorded `threshold_gap_allowed=true` and `passes=true` for PR long-branch convergence parity.
 
