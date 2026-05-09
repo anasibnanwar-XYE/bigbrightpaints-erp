@@ -36,6 +36,7 @@ import org.springframework.amqp.AmqpAuthenticationException;
 import org.springframework.amqp.AmqpConnectException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.MessageConversionException;
+import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -78,7 +79,15 @@ class EventPublisherServiceTest {
 
   private EventPublisherService service() {
     return new EventPublisherService(
-        outboxEventRepository, rabbitTemplate, companyContextService, objectMapper, null);
+        outboxEventRepository,
+        rabbitTemplate,
+        companyContextService,
+        objectMapper,
+        new ResourcelessTransactionManager(),
+        120,
+        300,
+        "PT5M",
+        null);
   }
 
   @Test
@@ -631,7 +640,7 @@ class EventPublisherServiceTest {
   }
 
   @Test
-  void parseDuration_usesFallbackWhenRawValueIsBlank() {
+  void parseDuration_usesDefaultWhenRawValueIsBlank() {
     EventPublisherService service = service();
 
     Duration parsedDuration =
@@ -642,7 +651,7 @@ class EventPublisherServiceTest {
   }
 
   @Test
-  void parseDuration_usesFallbackWhenRawValueIsNull() {
+  void parseDuration_usesDefaultWhenRawValueIsNull() {
     EventPublisherService service = service();
 
     Duration parsedDuration =

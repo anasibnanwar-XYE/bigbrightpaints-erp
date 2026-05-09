@@ -1,20 +1,17 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
-import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunDto;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
 import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 
@@ -52,41 +49,6 @@ class PayrollIntegrationCoordinator {
   }
 
   @Transactional
-  PayrollRunDto generatePayroll(
-      LocalDate payrollDate,
-      BigDecimal totalAmount,
-      String companyId,
-      String traceId,
-      String idempotencyKey) {
-    requirePayrollEnabled();
-    ApplicationException ex =
-        new ApplicationException(
-                ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
-                "Orchestrator payroll run is deprecated; use /api/v1/payroll/runs")
-            .withDetail("canonicalPath", "/api/v1/payroll/runs");
-    String sanitizedTraceId = CorrelationIdentifierSanitizer.sanitizeOptionalTraceId(traceId);
-    String sanitizedIdempotencyKey =
-        CorrelationIdentifierSanitizer.sanitizeOptionalIdempotencyKey(idempotencyKey);
-    String normalizedCompanyId = supportService.normalizeCompanyId(companyId);
-    if (StringUtils.hasText(sanitizedTraceId)) {
-      ex.withDetail("traceId", sanitizedTraceId);
-    }
-    if (StringUtils.hasText(sanitizedIdempotencyKey)) {
-      ex.withDetail("idempotencyKey", sanitizedIdempotencyKey);
-    }
-    if (payrollDate != null) {
-      ex.withDetail("payrollDate", payrollDate);
-    }
-    if (totalAmount != null) {
-      ex.withDetail("totalAmount", totalAmount);
-    }
-    if (StringUtils.hasText(normalizedCompanyId)) {
-      ex.withDetail("companyId", normalizedCompanyId);
-    }
-    return failDeprecatedPayroll(ex);
-  }
-
-  @Transactional
   JournalEntryDto recordPayrollPayment(
       Long payrollRunId,
       BigDecimal amount,
@@ -110,12 +72,8 @@ class PayrollIntegrationCoordinator {
   private void requirePayrollEnabled() {
     if (featureFlags != null && !featureFlags.isPayrollEnabled()) {
       throw new ApplicationException(
-              ErrorCode.BUSINESS_INVALID_STATE, "Orchestrator payroll run is disabled (CODE-RED).")
+              ErrorCode.BUSINESS_INVALID_STATE, "Orchestrator payroll run is disabled (risk).")
           .withDetail("canonicalPath", "/api/v1/payroll/runs");
     }
-  }
-
-  private PayrollRunDto failDeprecatedPayroll(ApplicationException ex) {
-    throw ex;
   }
 }

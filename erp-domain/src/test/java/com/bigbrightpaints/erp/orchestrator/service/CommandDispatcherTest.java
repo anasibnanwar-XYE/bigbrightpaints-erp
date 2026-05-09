@@ -8,7 +8,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -19,31 +18,25 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
-import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunDto;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryShortage;
 import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
-import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
-import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
-import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
-import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 
 @ExtendWith(MockitoExtension.class)
 class CommandDispatcherTest {
 
-  @Mock private WorkflowService workflowService;
   @Mock private IntegrationCoordinator integrationCoordinator;
   @Mock private EventPublisherService eventPublisherService;
   @Mock private TraceService traceService;
-  @Mock private PolicyEnforcer policyEnforcer;
   @Mock private OrchestratorIdempotencyService idempotencyService;
   @Mock private TenantRealActionUsageService realActionUsageService;
 
@@ -55,11 +48,9 @@ class CommandDispatcherTest {
     featureFlags = new OrchestratorFeatureFlags(true, true);
     commandDispatcher =
         new CommandDispatcher(
-            workflowService,
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags,
             realActionUsageService);
@@ -86,7 +77,6 @@ class CommandDispatcherTest {
     String traceId = commandDispatcher.approveOrder(request, "idem-1", "req-1", "COMP", "user-1");
 
     assertThat(traceId).isEqualTo("trace-123");
-    verify(policyEnforcer).checkOrderApprovalPermissions("user-1", "COMP");
     verify(integrationCoordinator).reserveInventory("101", "COMP", "trace-123", "idem-1");
 
     ArgumentCaptor<DomainEvent> eventCaptor = ArgumentCaptor.forClass(DomainEvent.class);
@@ -119,6 +109,20 @@ class CommandDispatcherTest {
             ArgumentMatchers.eq("idem-1"));
 
     verify(idempotencyService).markSuccess(command);
+  }
+
+  @Test
+  void approveOrderRequiresUserAndCompanyContextBeforeStartingLease() {
+    ApproveOrderRequest request =
+        new ApproveOrderRequest("101", "approver@bbp.com", new BigDecimal("5000"));
+
+    assertThatThrownBy(
+            () -> commandDispatcher.approveOrder(request, "idem-ctx", "req-ctx", "COMP", " "))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Missing user or company context");
+
+    verifyNoInteractions(
+        idempotencyService, integrationCoordinator, eventPublisherService, traceService);
   }
 
   @Test
@@ -197,11 +201,9 @@ class CommandDispatcherTest {
   void jobQuotaCountsOnlyExecutedCommandAndNotIdempotentReplay() {
     CommandDispatcher quotaAwareDispatcher =
         new CommandDispatcher(
-            workflowService,
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags,
             realActionUsageService);
@@ -295,225 +297,7 @@ class CommandDispatcherTest {
         .doesNotContain("dispatchBatch");
 
     verifyNoInteractions(
-        integrationCoordinator,
-        eventPublisherService,
-        traceService,
-        idempotencyService,
-        policyEnforcer);
-  }
-
-  @Test
-  void runPayrollFailsClosedWhenPayrollDisabled() {
-    CommandDispatcher disabledDispatcher =
-        new CommandDispatcher(
-            workflowService,
-            integrationCoordinator,
-            eventPublisherService,
-            traceService,
-            policyEnforcer,
-            idempotencyService,
-            new OrchestratorFeatureFlags(false, true),
-            realActionUsageService);
-
-    OrchestratorCommand command =
-        new OrchestratorCommand(1L, "ORCH.PAYROLL.RUN", "idem-3", "hash", "trace-789");
-    PayrollRunRequest request =
-        new PayrollRunRequest(LocalDate.now(), "orch", 11L, 22L, new BigDecimal("1000"));
-    when(idempotencyService.start(
-            ArgumentMatchers.eq("ORCH.PAYROLL.RUN"),
-            ArgumentMatchers.eq("idem-3"),
-            ArgumentMatchers.eq(request),
-            ArgumentMatchers.any()))
-        .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-789", command, true));
-
-    assertThatThrownBy(
-            () -> disabledDispatcher.runPayroll(request, "idem-3", "req-3", "COMP", "user-1"))
-        .isInstanceOf(OrchestratorFeatureDisabledException.class);
-
-    verify(integrationCoordinator, never()).syncEmployees(ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .syncEmployees(
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .generatePayroll(
-            ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .generatePayroll(
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .recordPayrollPayment(
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .recordPayrollPayment(
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString());
-    verify(eventPublisherService)
-        .enqueue(
-            ArgumentMatchers.argThat(
-                event -> "OrchestratorCommandDenied".equals(event.eventType())));
-    verify(traceService)
-        .record(
-            ArgumentMatchers.eq("trace-789"),
-            ArgumentMatchers.eq("ORCH_COMMAND_DENIED"),
-            ArgumentMatchers.eq("COMP"),
-            ArgumentMatchers.<Map<String, Object>>argThat(
-                map -> "ORCH.PAYROLL.RUN".equals(map.get("commandName"))),
-            ArgumentMatchers.eq("req-3"),
-            ArgumentMatchers.eq("idem-3"));
-    verify(idempotencyService)
-        .markFailed(ArgumentMatchers.eq(command), ArgumentMatchers.any(RuntimeException.class));
-  }
-
-  @Test
-  void runPayrollInvalidPostingAmountMarksFailedAndThrows() {
-    OrchestratorCommand command =
-        new OrchestratorCommand(
-            1L, "ORCH.PAYROLL.RUN", "idem-invalid-payroll", "hash", "trace-invalid-payroll");
-    PayrollRunRequest request =
-        new PayrollRunRequest(LocalDate.now(), "orch", 11L, 22L, BigDecimal.ZERO);
-    when(idempotencyService.start(
-            ArgumentMatchers.eq("ORCH.PAYROLL.RUN"),
-            ArgumentMatchers.eq("idem-invalid-payroll"),
-            ArgumentMatchers.eq(request),
-            ArgumentMatchers.any()))
-        .thenReturn(
-            new OrchestratorIdempotencyService.CommandLease(
-                "trace-invalid-payroll", command, true));
-
-    assertThatThrownBy(
-            () ->
-                commandDispatcher.runPayroll(
-                    request, "idem-invalid-payroll", "req-invalid-payroll", "COMP", "user-1"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("greater than zero for payroll");
-
-    verify(integrationCoordinator, never()).syncEmployees(ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .syncEmployees(
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .generatePayroll(
-            ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .generatePayroll(
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .recordPayrollPayment(
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .recordPayrollPayment(
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.any(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString());
-    verify(idempotencyService)
-        .markFailed(
-            ArgumentMatchers.eq(command),
-            ArgumentMatchers.argThat(
-                (RuntimeException ex) ->
-                    ex instanceof ApplicationException
-                        && ex.getMessage() != null
-                        && ex.getMessage().contains("greater than zero for payroll")));
-    verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());
-  }
-
-  @Test
-  void runPayrollNullRequestMarksFailedAndThrows() {
-    OrchestratorCommand command =
-        new OrchestratorCommand(
-            1L, "ORCH.PAYROLL.RUN", "idem-null-payroll", "hash", "trace-null-payroll");
-    when(idempotencyService.start(
-            ArgumentMatchers.eq("ORCH.PAYROLL.RUN"),
-            ArgumentMatchers.eq("idem-null-payroll"),
-            ArgumentMatchers.isNull(),
-            ArgumentMatchers.any()))
-        .thenReturn(
-            new OrchestratorIdempotencyService.CommandLease("trace-null-payroll", command, true));
-
-    assertThatThrownBy(
-            () ->
-                commandDispatcher.runPayroll(
-                    null, "idem-null-payroll", "req-null-payroll", "COMP", "user-1"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("greater than zero for payroll");
-
-    verify(idempotencyService)
-        .markFailed(
-            ArgumentMatchers.eq(command),
-            ArgumentMatchers.argThat(
-                (RuntimeException ex) ->
-                    ex instanceof ApplicationException
-                        && ex.getMessage() != null
-                        && ex.getMessage().contains("greater than zero for payroll")));
-    verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());
-  }
-
-  @Test
-  void runPayrollPropagatesTraceAndIdempotencyToAccountingPosting() {
-    LocalDate payrollDate = LocalDate.of(2026, 1, 31);
-    BigDecimal postingAmount = new BigDecimal("1000");
-    PayrollRunRequest request = new PayrollRunRequest(payrollDate, "orch", 11L, 22L, postingAmount);
-    OrchestratorCommand command =
-        new OrchestratorCommand(1L, "ORCH.PAYROLL.RUN", "idem-payroll", "hash", "trace-payroll");
-    when(idempotencyService.start(
-            ArgumentMatchers.eq("ORCH.PAYROLL.RUN"),
-            ArgumentMatchers.eq("idem-payroll"),
-            ArgumentMatchers.eq(request),
-            ArgumentMatchers.any()))
-        .thenReturn(
-            new OrchestratorIdempotencyService.CommandLease("trace-payroll", command, true));
-    when(integrationCoordinator.generatePayroll(
-            payrollDate, postingAmount, "COMP", "trace-payroll", "idem-payroll"))
-        .thenReturn(
-            new PayrollRunDto(
-                55L,
-                null,
-                payrollDate,
-                "COMPLETED",
-                "orch",
-                null,
-                postingAmount,
-                null,
-                "idem-payroll"));
-
-    String traceId =
-        commandDispatcher.runPayroll(request, "idem-payroll", "req-payroll", "COMP", "user-1");
-
-    assertThat(traceId).isEqualTo("trace-payroll");
-    verify(policyEnforcer).checkPayrollPermissions("user-1", "COMP");
-    verify(integrationCoordinator).syncEmployees("COMP", "trace-payroll", "idem-payroll");
-    verify(integrationCoordinator)
-        .recordPayrollPayment(
-            55L, postingAmount, 11L, 22L, "COMP", "trace-payroll", "idem-payroll");
-    verify(idempotencyService).markSuccess(command);
+        integrationCoordinator, eventPublisherService, traceService, idempotencyService);
   }
 
   @Test

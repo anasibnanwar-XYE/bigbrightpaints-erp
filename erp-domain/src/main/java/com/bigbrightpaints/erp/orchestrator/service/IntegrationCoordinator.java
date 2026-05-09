@@ -1,7 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,7 +20,6 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
-import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunDto;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
@@ -37,7 +35,6 @@ public class IntegrationCoordinator {
   private final PayrollIntegrationCoordinator payrollIntegrationCoordinator;
   private final DashboardIntegrationCoordinator dashboardIntegrationCoordinator;
   private final IntegrationCoordinatorSupportService supportService;
-  private final SalesService legacySalesService;
 
   @Autowired
   public IntegrationCoordinator(
@@ -48,7 +45,6 @@ public class IntegrationCoordinator {
     this.payrollIntegrationCoordinator = payrollIntegrationCoordinator;
     this.dashboardIntegrationCoordinator = dashboardIntegrationCoordinator;
     this.supportService = null;
-    this.legacySalesService = null;
   }
 
   public IntegrationCoordinator(
@@ -65,7 +61,6 @@ public class IntegrationCoordinator {
       OrchestratorFeatureFlags featureFlags,
       PlatformTransactionManager txManager) {
     this.supportService = new IntegrationCoordinatorSupportService(companyRepository);
-    this.legacySalesService = salesService;
     OrderSupportCoordinator orderSupportCoordinator =
         new OrderSupportCoordinator(
             salesService,
@@ -184,23 +179,6 @@ public class IntegrationCoordinator {
   }
 
   @Transactional
-  public PayrollRunDto generatePayroll(
-      LocalDate payrollDate, BigDecimal totalAmount, String companyId) {
-    return generatePayroll(payrollDate, totalAmount, companyId, null, null);
-  }
-
-  @Transactional
-  public PayrollRunDto generatePayroll(
-      LocalDate payrollDate,
-      BigDecimal totalAmount,
-      String companyId,
-      String traceId,
-      String idempotencyKey) {
-    return payrollIntegrationCoordinator.generatePayroll(
-        payrollDate, totalAmount, companyId, traceId, idempotencyKey);
-  }
-
-  @Transactional
   public JournalEntryDto recordPayrollPayment(
       Long payrollRunId,
       BigDecimal amount,
@@ -276,17 +254,6 @@ public class IntegrationCoordinator {
       builder.append(" [idem=").append(safeIdempotencyKey).append("]");
     }
     return builder.toString();
-  }
-
-  private void attachOrderTrace(Long orderId, String traceId) {
-    if (legacySalesService == null || orderId == null) {
-      return;
-    }
-    String sanitizedTraceId = CorrelationIdentifierSanitizer.sanitizeOptionalTraceId(traceId);
-    if (!StringUtils.hasText(sanitizedTraceId)) {
-      return;
-    }
-    legacySalesService.attachTraceId(orderId, sanitizedTraceId);
   }
 
   private boolean isHrPayrollEnabled(Company company) {

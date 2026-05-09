@@ -20,9 +20,7 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -56,24 +54,6 @@ public class EventPublisherService {
   private static final String AMBIGUOUS_PUBLISH_ERROR_PREFIX = "AMBIGUOUS_PUBLISH:";
   private static final String FINALIZE_FAILURE_ERROR_PREFIX = "FINALIZE_FAILURE:";
   private static final String STALE_LEASE_UNCERTAIN_ERROR_PREFIX = "STALE_LEASE_UNCERTAIN:";
-  private static final PlatformTransactionManager NOOP_TRANSACTION_MANAGER =
-      new PlatformTransactionManager() {
-        @Override
-        public TransactionStatus getTransaction(@Nullable TransactionDefinition definition) {
-          return new SimpleTransactionStatus();
-        }
-
-        @Override
-        public void commit(TransactionStatus status) {
-          // no-op fallback for direct unit construction
-        }
-
-        @Override
-        public void rollback(TransactionStatus status) {
-          // no-op fallback for direct unit construction
-        }
-      };
-
   // Mutex to prevent concurrent publishing in single-instance mode
   private final AtomicBoolean publishingInProgress = new AtomicBoolean(false);
 
@@ -86,24 +66,6 @@ public class EventPublisherService {
   private final long publishingLeaseSeconds;
   private final long ambiguousRecheckDelaySeconds;
   private final Duration outboxLockAtMostFor;
-
-  public EventPublisherService(
-      OutboxEventRepository outboxEventRepository,
-      RabbitTemplate rabbitTemplate,
-      CompanyContextService companyContextService,
-      ObjectMapper objectMapper,
-      @Nullable MeterRegistry meterRegistry) {
-    this(
-        outboxEventRepository,
-        rabbitTemplate,
-        companyContextService,
-        objectMapper,
-        NOOP_TRANSACTION_MANAGER,
-        DEFAULT_PUBLISHING_LEASE_SECONDS,
-        DEFAULT_AMBIGUOUS_RECHECK_DELAY_SECONDS,
-        DEFAULT_OUTBOX_LOCK_AT_MOST_FOR,
-        meterRegistry);
-  }
 
   @Autowired
   public EventPublisherService(
@@ -176,7 +138,7 @@ public class EventPublisherService {
         try {
           UUID eventId = pendingEvent.getId();
           if (eventId == null) {
-            publishDetachedFallback(pendingEvent);
+            log.error("Skipping PENDING outbox row without id");
             continue;
           }
           publishClaimedEvent(eventId);
@@ -212,18 +174,6 @@ public class EventPublisherService {
       } catch (RuntimeException ex) {
         log.error("Failed to reclaim stale PUBLISHING event {}", eventId, ex);
       }
-    }
-  }
-
-  private void publishDetachedFallback(OutboxEvent event) {
-    try {
-      rabbitTemplate.convertAndSend(
-          "bbp.orchestrator.events", event.getEventType(), event.getPayload());
-      event.markPublished();
-    } catch (RuntimeException ex) {
-      log.error("Failed to publish detached outbox event fallback", ex);
-      long delaySeconds = computeBackoffDelay(event.getRetryCount());
-      event.scheduleRetry(resolveFailureMessage(ex), MAX_RETRY_ATTEMPTS, delaySeconds);
     }
   }
 
@@ -540,8 +490,8 @@ public class EventPublisherService {
     return fenceToken == null ? -1L : fenceToken;
   }
 
-  private Duration parseDuration(String rawDuration, String fallbackDuration) {
-    String source = (rawDuration == null || rawDuration.isBlank()) ? fallbackDuration : rawDuration;
+  private Duration parseDuration(String rawDuration, String defaultDuration) {
+    String source = (rawDuration == null || rawDuration.isBlank()) ? defaultDuration : rawDuration;
     try {
       return Duration.parse(source);
     } catch (RuntimeException ex) {
