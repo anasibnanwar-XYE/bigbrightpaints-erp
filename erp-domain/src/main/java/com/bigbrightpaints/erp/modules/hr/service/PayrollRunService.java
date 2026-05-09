@@ -72,17 +72,6 @@ public class PayrollRunService {
     if (existing.isPresent()) {
       PayrollRun run = existing.get();
       assertRunSignatureMatches(run, requestSignature, idempotencyKey);
-      ensureIdempotencyMetadata(run, idempotencyKey, requestSignature);
-      return PayrollService.toDto(run);
-    }
-
-    Optional<PayrollRun> legacy =
-        payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
-            company, request.runType(), request.periodStart(), request.periodEnd());
-    if (legacy.isPresent()) {
-      PayrollRun run = legacy.get();
-      assertRunSignatureMatches(run, requestSignature, idempotencyKey);
-      ensureIdempotencyMetadata(run, idempotencyKey, requestSignature);
       return PayrollService.toDto(run);
     }
 
@@ -107,16 +96,6 @@ public class PayrollRunService {
       if (concurrent.isPresent()) {
         PayrollRun existingRun = concurrent.get();
         assertRunSignatureMatches(existingRun, requestSignature, idempotencyKey);
-        ensureIdempotencyMetadata(existingRun, idempotencyKey, requestSignature);
-        return PayrollService.toDto(existingRun);
-      }
-      Optional<PayrollRun> legacyConcurrent =
-          payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
-              company, request.runType(), request.periodStart(), request.periodEnd());
-      if (legacyConcurrent.isPresent()) {
-        PayrollRun existingRun = legacyConcurrent.get();
-        assertRunSignatureMatches(existingRun, requestSignature, idempotencyKey);
-        ensureIdempotencyMetadata(existingRun, idempotencyKey, requestSignature);
         return PayrollService.toDto(existingRun);
       }
       throw ex;
@@ -186,34 +165,16 @@ public class PayrollRunService {
     }
     String storedSignature = run.getIdempotencyHash();
     if (!StringUtils.hasText(storedSignature)) {
-      String derivedSignature = buildRunSignature(run);
-      if (StringUtils.hasText(derivedSignature) && !derivedSignature.equals(expectedSignature)) {
-        throw new ApplicationException(
-                ErrorCode.CONCURRENCY_CONFLICT,
-                "Idempotency key already used with different payload")
-            .withDetail("idempotencyKey", idempotencyKey);
-      }
-      return;
+      throw new ApplicationException(
+              ErrorCode.CONCURRENCY_CONFLICT,
+              "Existing payroll run is missing idempotency signature")
+          .withDetail("payrollRunId", run.getId())
+          .withDetail("idempotencyKey", idempotencyKey);
     }
     if (!storedSignature.equals(expectedSignature)) {
       throw new ApplicationException(
               ErrorCode.CONCURRENCY_CONFLICT, "Idempotency key already used with different payload")
           .withDetail("idempotencyKey", idempotencyKey);
-    }
-  }
-
-  private void ensureIdempotencyMetadata(PayrollRun run, String idempotencyKey, String signature) {
-    boolean changed = false;
-    if (!StringUtils.hasText(run.getIdempotencyKey())) {
-      run.setIdempotencyKey(idempotencyKey);
-      changed = true;
-    }
-    if (!StringUtils.hasText(run.getIdempotencyHash()) && StringUtils.hasText(signature)) {
-      run.setIdempotencyHash(signature);
-      changed = true;
-    }
-    if (changed) {
-      payrollRunRepository.save(run);
     }
   }
 

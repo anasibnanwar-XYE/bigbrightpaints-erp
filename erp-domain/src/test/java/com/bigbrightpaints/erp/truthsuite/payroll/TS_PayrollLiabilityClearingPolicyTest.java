@@ -9,6 +9,8 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 @Tag("reconciliation")
 class TS_PayrollLiabilityClearingPolicyTest {
 
+  private static final String PAYROLL_POSTING_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollPostingService.java";
   private static final String PAYROLL_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java";
   private static final String JOURNAL_CONTROLLER =
@@ -21,8 +23,8 @@ class TS_PayrollLiabilityClearingPolicyTest {
   @Test
   void payrollPostingUsesCanonicalAccountingFacadeAndSalaryPayableAccount() {
     TruthSuiteFileAssert.assertContains(
-        PAYROLL_SERVICE,
-        "PayrollRun run = companyEntityLookup.lockPayrollRun(company, payrollRunId);",
+        PAYROLL_POSTING_SERVICE,
+        "PayrollRun run = hrLookupService.lockPayrollRun(company, payrollRunId);",
         "Account salaryPayableAccount = findAccountByCode(company, \"SALARY-PAYABLE\");",
         "JournalEntryDto journal = accountingFacade.postPayrollRun(runNumber, run.getId(),"
             + " postingDate, memo, lines);",
@@ -33,7 +35,7 @@ class TS_PayrollLiabilityClearingPolicyTest {
   @Test
   void payrollPostingDateClampsToCompanyTodayBoundary() {
     TruthSuiteFileAssert.assertContainsInOrder(
-        PAYROLL_SERVICE,
+        PAYROLL_POSTING_SERVICE,
         "LocalDate postingDate = run.getPeriodEnd();",
         "LocalDate today = companyClock.today(company);",
         "if (postingDate == null || postingDate.isAfter(today)) {",
@@ -46,7 +48,6 @@ class TS_PayrollLiabilityClearingPolicyTest {
   void payrollPostedAuditEventRequiresCanonicalMetadataKeys() {
     TruthSuiteFileAssert.assertContains(
         PAYROLL_SERVICE,
-        "Map<String, String> auditMetadata = requiredPayrollPostedAuditMetadata(",
         "metadata.put(\"payrollRunId\", requiredAuditMetadataValue(\"payrollRunId\","
             + " run.getId()));",
         "metadata.put(\"runNumber\", requiredAuditMetadataValue(\"runNumber\","
@@ -64,14 +65,18 @@ class TS_PayrollLiabilityClearingPolicyTest {
         "metadata.put(\"totalAdvances\", requiredAuditMetadataValue(\"totalAdvances\","
             + " totalAdvances));",
         "metadata.put(\"netPayable\", requiredAuditMetadataValue(\"netPayable\","
-            + " salaryPayableAmount));",
+            + " salaryPayableAmount));");
+    TruthSuiteFileAssert.assertContains(
+        PAYROLL_POSTING_SERVICE,
+        "Map<String, String> auditMetadata =",
+        "PayrollService.requiredPayrollPostedAuditMetadata(",
         "auditService.logSuccess(AuditEvent.PAYROLL_POSTED, auditMetadata);");
   }
 
   @Test
   void payrollPostingGuardTracksStatusAndJournalLinkageForReplaySafety() {
     TruthSuiteFileAssert.assertContains(
-        PAYROLL_SERVICE,
+        PAYROLL_POSTING_SERVICE,
         "boolean hasPostingJournalLink = hasPostingJournalLink(run);",
         "boolean statusPosted = run.getStatus() == PayrollRun.PayrollStatus.POSTED;",
         "if (statusPosted && !hasPostingJournalLink) {",
@@ -85,7 +90,7 @@ class TS_PayrollLiabilityClearingPolicyTest {
   @Test
   void markAsPaidRequiresPaymentJournalLink() {
     TruthSuiteFileAssert.assertContains(
-        PAYROLL_SERVICE,
+        PAYROLL_POSTING_SERVICE,
         "private static final String PAYROLL_PAYMENTS_CANONICAL_PATH ="
             + " \"/api/v1/accounting/payroll/payments\";",
         "if (run.getPaymentJournalEntryId() == null) {",
@@ -96,8 +101,8 @@ class TS_PayrollLiabilityClearingPolicyTest {
   @Test
   void markAsPaidUsesCanonicalPaymentJournalReference() {
     TruthSuiteFileAssert.assertContains(
-        PAYROLL_SERVICE,
-        "var paymentJournal = companyEntityLookup.requireJournalEntry(company,"
+        PAYROLL_POSTING_SERVICE,
+        "accountingLookupService.requireJournalEntry(company,"
             + " run.getPaymentJournalEntryId());",
         "String canonicalPaymentReference = paymentJournal.getReferenceNumber();",
         "line.setPaymentReference(canonicalPaymentReference);");

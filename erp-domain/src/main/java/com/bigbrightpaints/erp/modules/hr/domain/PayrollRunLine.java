@@ -135,7 +135,6 @@ public class PayrollRunLine {
 
   private String remarks;
 
-  // Backward compatibility columns (mapped to DB)
   @Column(name = "name")
   private String name;
 
@@ -439,7 +438,6 @@ public class PayrollRunLine {
     this.remarks = remarks;
   }
 
-  // Backward compatibility getters/setters
   public String getName() {
     if (name != null) return name;
     return employee != null ? employee.getFullName() : null;

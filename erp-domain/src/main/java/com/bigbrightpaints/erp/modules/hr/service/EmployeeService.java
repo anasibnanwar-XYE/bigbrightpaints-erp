@@ -219,15 +219,12 @@ public class EmployeeService {
       String bankBranch) {
     if (bankAccountNumber != null) {
       employee.setBankAccountNumberEncrypted(encryptOrNull(bankAccountNumber));
-      employee.setBankAccountNumber(null);
     }
     if (bankName != null) {
       employee.setBankNameEncrypted(encryptOrNull(bankName));
-      employee.setBankName(null);
     }
     if (ifscCode != null) {
       employee.setIfscCodeEncrypted(encryptOrNull(ifscCode));
-      employee.setIfscCode(null);
     }
     if (bankBranch != null) {
       employee.setBankBranchEncrypted(encryptOrNull(bankBranch));
@@ -248,7 +245,7 @@ public class EmployeeService {
     return cryptoService.encrypt(normalized);
   }
 
-  private String decryptIfPresent(String encrypted, String fallbackPlain) {
+  private String decryptIfPresent(String encrypted) {
     if (StringUtils.hasText(encrypted)) {
       if (cryptoService == null) {
         return encrypted;
@@ -258,7 +255,7 @@ public class EmployeeService {
       }
       return cryptoService.decrypt(encrypted);
     }
-    return StringUtils.hasText(fallbackPlain) ? fallbackPlain : null;
+    return null;
   }
 
   private void validatePan(String pan) {
@@ -376,10 +373,10 @@ public class EmployeeService {
         employee.getEsiNumber(),
         employee.getPanNumber(),
         enumName(employee.getTaxRegime()),
-        decryptIfPresent(employee.getBankAccountNumberEncrypted(), employee.getBankAccountNumber()),
-        decryptIfPresent(employee.getBankNameEncrypted(), employee.getBankName()),
-        decryptIfPresent(employee.getIfscCodeEncrypted(), employee.getIfscCode()),
-        decryptIfPresent(employee.getBankBranchEncrypted(), null),
+        decryptIfPresent(employee.getBankAccountNumberEncrypted()),
+        decryptIfPresent(employee.getBankNameEncrypted()),
+        decryptIfPresent(employee.getIfscCodeEncrypted()),
+        decryptIfPresent(employee.getBankBranchEncrypted()),
         employee.getWorkingDaysPerMonth(),
         employee.getWeeklyOffDays(),
         employee.getConfiguredStandardHoursPerDay(),

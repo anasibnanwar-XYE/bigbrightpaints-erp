@@ -230,12 +230,16 @@ public class PayrollPostingService {
     }
 
     String runNumber = run.getRunNumber();
-    if (!StringUtils.hasText(runNumber) && run.getId() != null) {
-      runNumber = "LEGACY-" + run.getId();
-      run.setRunNumber(runNumber);
+    if (!StringUtils.hasText(runNumber)) {
+      throw new ApplicationException(
+              ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+              "Payroll run number is required before posting to accounting")
+          .withDetail("payrollRunId", run.getId())
+          .withDetail("field", "runNumber");
     }
 
-    String memo = "Payroll - " + (runNumber != null ? runNumber : "RUN");
+    runNumber = runNumber.trim();
+    String memo = "Payroll - " + runNumber;
     JournalCreationRequest standardizedPayrollRequest =
         new JournalCreationRequest(
             totalGrossPay,
@@ -243,7 +247,7 @@ public class PayrollPostingService {
             salaryPayableAccount.getId(),
             memo,
             "PAYROLL",
-            "PAYROLL-" + (runNumber != null ? runNumber : "RUN"),
+            "PAYROLL-" + runNumber,
             null,
             lines.stream()
                 .map(

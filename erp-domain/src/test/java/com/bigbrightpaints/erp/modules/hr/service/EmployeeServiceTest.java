@@ -148,7 +148,6 @@ class EmployeeServiceTest {
     assertThat(savedEmployee.getBankNameEncrypted()).isEqualTo("enc:HDFC Bank");
     assertThat(savedEmployee.getIfscCodeEncrypted()).isEqualTo("enc:HDFC0001234");
     assertThat(savedEmployee.getBankBranchEncrypted()).isEqualTo("enc:MG Road");
-    assertThat(savedEmployee.getBankAccountNumber()).isNull();
     assertThat(savedEmployee.getMonthlySalary()).isEqualByComparingTo("30000");
   }
 
