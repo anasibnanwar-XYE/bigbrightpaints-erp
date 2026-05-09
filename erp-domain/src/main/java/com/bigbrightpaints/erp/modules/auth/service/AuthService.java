@@ -474,7 +474,7 @@ public class AuthService {
       tokenBlacklistService.blacklistToken(
           tokenId, expiration, userPublicId != null ? userPublicId.toString() : null, "logout");
     } catch (Exception ex) {
-      String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+      String actor = SecurityActorResolver.resolveAuditActor();
       log.warn(
           "Failed to blacklist access token during logout (actor={}, tokenHash={}, expiresAt={})",
           actor,

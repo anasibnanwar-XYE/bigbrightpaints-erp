@@ -98,7 +98,7 @@ public class AdminSettingsController {
       metadata.put("afterExportApprovalRequired", Boolean.toString(after.exportApprovalRequired()));
       metadata.put("afterPlatformAuthCode", AUDIT_REDACTED);
     }
-    String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    String actor = SecurityActorResolver.resolveAuditActor();
     if (actor != null && !actor.isBlank()) {
       metadata.put("actor", actor);
     }

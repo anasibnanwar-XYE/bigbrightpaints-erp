@@ -580,7 +580,7 @@ public class BankReconciliationSessionService {
   }
 
   private String resolveCurrentActor() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 
   private Account resolveBankAccount(Company company, Long accountId) {

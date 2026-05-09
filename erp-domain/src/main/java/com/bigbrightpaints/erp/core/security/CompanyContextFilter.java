@@ -453,7 +453,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (auditService == null || AccessDeniedAuditMarker.isCurrentRequestAlreadyAudited(request)) {
       return;
     }
-    String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    String actor = SecurityActorResolver.resolveAuditActor();
     String tenantScope = AccessDeniedAuditMarker.resolveTenantScope(request);
     Map<String, String> metadata = new LinkedHashMap<>();
     metadata.put("actor", actor);
@@ -478,7 +478,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (auditService == null || AccessDeniedAuditMarker.isCurrentRequestAlreadyAudited(request)) {
       return;
     }
-    String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    String actor = SecurityActorResolver.resolveAuditActor();
     String tenantScope = request == null ? null : request.getHeader("X-Company-Code");
     if (!StringUtils.hasText(tenantScope)) {
       tenantScope = AccessDeniedAuditMarker.resolveTenantScope(request);

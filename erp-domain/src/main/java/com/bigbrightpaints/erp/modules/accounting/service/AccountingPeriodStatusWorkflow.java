@@ -383,6 +383,6 @@ final class AccountingPeriodStatusWorkflow {
   }
 
   private String resolveCurrentUsername() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 }

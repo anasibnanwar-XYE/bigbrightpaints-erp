@@ -428,7 +428,7 @@ public class AccountingEventStore {
   }
 
   private String getCurrentUserId() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 
   private UUID resolveFlowCorrelationId(JournalEntry entry, String... additionalKeys) {

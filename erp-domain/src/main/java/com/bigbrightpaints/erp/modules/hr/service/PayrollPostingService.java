@@ -494,6 +494,6 @@ public class PayrollPostingService {
   }
 
   private String getCurrentUser() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 }

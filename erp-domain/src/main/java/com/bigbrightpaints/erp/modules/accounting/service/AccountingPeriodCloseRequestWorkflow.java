@@ -322,6 +322,6 @@ final class AccountingPeriodCloseRequestWorkflow {
   }
 
   private String resolveCurrentUsername() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 }

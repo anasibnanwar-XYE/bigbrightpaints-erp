@@ -493,7 +493,7 @@ public class RawMaterialService {
     adjustment.setReferenceNumber(referenceNumberService.rawMaterialAdjustmentReference(company));
     adjustment.setAdjustmentDate(adjustmentDate);
     adjustment.setReason(request.reason());
-    adjustment.setCreatedBy(SecurityActorResolver.resolveActorWithSystemProcessFallback());
+    adjustment.setCreatedBy(SecurityActorResolver.resolveAuditActor());
     adjustment.setIdempotencyKey(idempotencyKey);
     adjustment.setIdempotencyHash(signature);
 

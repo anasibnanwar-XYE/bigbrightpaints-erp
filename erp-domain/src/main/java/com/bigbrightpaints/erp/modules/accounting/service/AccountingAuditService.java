@@ -209,7 +209,7 @@ public class AccountingAuditService {
   }
 
   String resolveCurrentUsername() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 
   void publishAccountCacheInvalidated(Long companyId) {

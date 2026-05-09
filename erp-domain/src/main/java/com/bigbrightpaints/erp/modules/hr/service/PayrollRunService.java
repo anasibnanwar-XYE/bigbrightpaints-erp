@@ -229,6 +229,6 @@ public class PayrollRunService {
   }
 
   private String getCurrentUser() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 }
