@@ -44,7 +44,7 @@ mkdir -p \
   "$TMP_ROOT/scripts" \
   "$TMP_ROOT/bin" \
   "$TMP_ROOT/erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite" \
-  "$TMP_ROOT/docs/CODE-RED/confidence-suite"
+  "$TMP_ROOT/testing/confidence-suite"
 
 cp "$GATE_RELEASE_SRC" "$TMP_ROOT/scripts/gate_release.sh"
 cp "$VERIFY_LOCAL_SRC" "$TMP_ROOT/scripts/verify_local.sh"
@@ -60,7 +60,6 @@ chmod +x "$TMP_ROOT/scripts/guard_flyway_guard_contract.sh"
 
 # Fast-pass stubs for dependency scripts invoked by gate_release/verify_local.
 for stub in \
-  guard_legacy_migration_freeze.sh \
   schema_drift_scan.sh \
   flyway_overlap_scan.sh \
   guard_orchestrator_correlation_contract.sh \
@@ -107,7 +106,7 @@ done
 
 # Minimal files/dirs referenced by gate_release arguments.
 : > "$TMP_ROOT/scripts/test_quarantine.txt"
-cat > "$TMP_ROOT/docs/CODE-RED/confidence-suite/TEST_CATALOG.json" <<'JSON'
+cat > "$TMP_ROOT/testing/confidence-suite/test-catalog.json" <<'JSON'
 {}
 JSON
 

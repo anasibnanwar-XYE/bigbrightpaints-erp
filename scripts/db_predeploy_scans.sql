@@ -1,4 +1,4 @@
--- CODE-RED pre-deploy scans (READ-ONLY)
+-- risk pre-deploy scans (READ-ONLY)
 -- Run against the target database BEFORE deploying.
 -- Gate: violations must be investigated and resolved before deploy.
 

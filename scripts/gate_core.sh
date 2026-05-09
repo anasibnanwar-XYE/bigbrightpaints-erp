@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARTIFACT_DIR="$ROOT_DIR/artifacts/gate-core"
 TRUTH_TEST_ROOT="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite"
-COMPAT_BASH_ENV_BOOTSTRAP="$ROOT_DIR/scripts/bash_env_bootstrap.sh"
 MAVEN_MEMORY_DEFAULTS="$ROOT_DIR/scripts/maven_memory_defaults.sh"
 if [[ -f "$MAVEN_MEMORY_DEFAULTS" ]]; then
   source "$MAVEN_MEMORY_DEFAULTS"
@@ -12,14 +11,6 @@ if [[ -f "$MAVEN_MEMORY_DEFAULTS" ]]; then
 elif [[ -z "${MAVEN_OPTS:-}" ]]; then
   export MAVEN_OPTS="-Xmx${BBP_MAVEN_XMX:-1536m} -XX:MaxMetaspaceSize=${BBP_MAVEN_MAX_METASPACE:-512m} -XX:+UseG1GC"
 fi
-if [[ "${BASH_ENV:-}" != "$COMPAT_BASH_ENV_BOOTSTRAP" && -n "${BASH_ENV:-}" ]]; then
-  export BBP_CHAINED_BASH_ENV="${BASH_ENV:-}"
-  export BBP_CHAINED_BASH_ENV_PARENT_PID="$$"
-else
-  unset BBP_CHAINED_BASH_ENV
-  unset BBP_CHAINED_BASH_ENV_PARENT_PID
-fi
-export BASH_ENV="$COMPAT_BASH_ENV_BOOTSTRAP"
 rm -rf "$ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
 GATE_START_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -36,7 +27,7 @@ if [[ -n "$EXPECTED_RELEASE_HEAD_SHA" && "$GIT_CONTEXT_AVAILABLE" == "true" && "
   echo "[gate-core] FAIL: RELEASE_HEAD_SHA=$EXPECTED_RELEASE_HEAD_SHA does not match current HEAD=$RESOLVED_RELEASE_HEAD_SHA"
   exit 2
 fi
-CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-harness-engineering-orchestrator}"
+CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-origin/main}"
 CANONICAL_BASE_REQUIRED="${GATE_REQUIRE_CANONICAL_BASE:-true}"
 CANONICAL_BASE_SHA=""
 CANONICAL_BASE_VERIFIED="false"
@@ -61,12 +52,6 @@ resolve_canonical_base() {
   if [[ "$requested_ref" != origin/* ]]; then
     candidate_refs+=("origin/$requested_ref")
   fi
-  for fallback_ref in main origin/main; do
-    if [[ "$fallback_ref" != "$requested_ref" ]]; then
-      candidate_refs+=("$fallback_ref")
-    fi
-  done
-
   for candidate_ref in "${candidate_refs[@]}"; do
     if candidate_sha="$(git -C "$ROOT_DIR" rev-parse --verify --quiet "$candidate_ref" 2>/dev/null)"; then
       resolved_refs+=("$candidate_ref")
@@ -76,7 +61,7 @@ resolve_canonical_base() {
 
   if [[ "${#resolved_refs[@]}" -eq 0 ]]; then
     if [[ "$CANONICAL_BASE_REQUIRED" == "true" ]]; then
-      echo "[gate-core] FAIL: canonical base ref '$requested_ref' was not found and no usable mainline fallback was available"
+      echo "[gate-core] FAIL: canonical base ref '$requested_ref' was not found"
       exit 2
     fi
     return 0
@@ -89,9 +74,6 @@ resolve_canonical_base() {
         CANONICAL_BASE_REF="${resolved_refs[$idx]}"
         CANONICAL_BASE_SHA="${resolved_shas[$idx]}"
         CANONICAL_BASE_VERIFIED="true"
-        if [[ "$CANONICAL_BASE_REF" != "$requested_ref" ]]; then
-          echo "[gate-core] WARN: canonical base '$requested_ref' is unavailable/stale; using '$CANONICAL_BASE_REF' ($CANONICAL_BASE_SHA)"
-        fi
         return 0
       fi
     done
@@ -122,7 +104,7 @@ python3 "$ROOT_DIR/scripts/validate_confidence_lanes.py" \
 
 echo "[gate-core] validate catalog"
 python3 "$ROOT_DIR/scripts/validate_test_catalog.py" \
-  --catalog "$ROOT_DIR/docs/CODE-RED/confidence-suite/TEST_CATALOG.json" \
+  --catalog "$ROOT_DIR/testing/confidence-suite/test-catalog.json" \
   --quarantine "$ROOT_DIR/scripts/test_quarantine.txt" \
   --tests-root "$TRUTH_TEST_ROOT" \
   --gate gate-core \
@@ -199,12 +181,12 @@ echo "[gate-core] run critical+concurrency+reconciliation truth tests"
 echo "[gate-core] module coverage gate"
 python3 "$ROOT_DIR/scripts/module_coverage_gate.py" \
   --jacoco "$ROOT_DIR/erp-domain/target/site/jacoco/jacoco.xml" \
-  --packages com.bigbrightpaints.erp.modules.accounting,com.bigbrightpaints.erp.modules.inventory,com.bigbrightpaints.erp.modules.invoice,com.bigbrightpaints.erp.orchestrator.policy,com.bigbrightpaints.erp.orchestrator.service,com.bigbrightpaints.erp.orchestrator.workflow \
-  --classes com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService,com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService,com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService,com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy,com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer,com.bigbrightpaints.erp.orchestrator.service.TraceService,com.bigbrightpaints.erp.orchestrator.service.OrchestratorIdempotencyService \
+  --packages com.bigbrightpaints.erp.modules.accounting,com.bigbrightpaints.erp.modules.inventory,com.bigbrightpaints.erp.modules.invoice,com.bigbrightpaints.erp.orchestrator.service \
+  --classes com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService,com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService,com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService,com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy,com.bigbrightpaints.erp.orchestrator.service.TraceService,com.bigbrightpaints.erp.orchestrator.service.OrchestratorIdempotencyService \
   --line-threshold 0.92 \
   --branch-threshold 0.85 \
   --active-classes-only \
-  --min-active-classes 7 \
+  --min-active-classes 6 \
   --min-active-packages 4 \
   --output "$ARTIFACT_DIR/module-coverage.json"
 

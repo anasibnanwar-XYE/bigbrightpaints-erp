@@ -18,7 +18,6 @@ LOCAL_SEED_RUNTIME_EXCLUSIONS = (
 
 CI_INFRA_PATTERNS = (
     ".github/workflows/ci.yml",
-    ".factory/services.yaml",
     "erp-domain/pom.xml",
     "scripts/ci_risk_router.py",
     "scripts/changed_files_coverage.py",
@@ -240,9 +239,9 @@ def compute_flags(paths: list[str], coverage_paths: list[str] | None = None) -> 
         matches_prefix(path, IDEMPOTENCY_PATTERNS) for path in routing_paths
     )
     run_business_slice = run_ci_infra_validation or any(matches_prefix(path, WORKFLOW_PATTERNS) for path in routing_paths)
-    run_codered_access = any(matches_prefix(path, ACCESS_PATTERNS) for path in routing_paths)
-    run_codered_finance = any(matches_prefix(path, FINANCE_PATTERNS) for path in routing_paths)
-    run_codered_workflow = any(matches_prefix(path, WORKFLOW_PATTERNS) for path in routing_paths)
+    run_risk_access = any(matches_prefix(path, ACCESS_PATTERNS) for path in routing_paths)
+    run_risk_finance = any(matches_prefix(path, FINANCE_PATTERNS) for path in routing_paths)
+    run_risk_workflow = any(matches_prefix(path, WORKFLOW_PATTERNS) for path in routing_paths)
     run_persistence_smoke = run_ci_infra_validation or any(
         matches_prefix(path, PERSISTENCE_PATTERNS) or matches_keyword(path, PERSISTENCE_KEYWORDS) for path in routing_paths
     )
@@ -253,8 +252,8 @@ def compute_flags(paths: list[str], coverage_paths: list[str] | None = None) -> 
         "run_idempotency_outbox": "true" if run_idempotency_outbox else "false",
         "run_business_slice": "true" if run_business_slice else "false",
         "run_persistence_smoke": "true" if run_persistence_smoke else "false",
-        "run_codered_access": "true" if run_codered_access else "false",
-        "run_codered_finance": "true" if (run_codered_finance or run_codered_workflow) else "false",
+        "run_risk_access": "true" if run_risk_access else "false",
+        "run_risk_finance": "true" if (run_risk_finance or run_risk_workflow) else "false",
         "run_changed_coverage": "true" if changed_runtime_source_count > 0 else "false",
         "changed_files_count": str(len(coverage_scope_paths)),
         "changed_runtime_source_count": str(changed_runtime_source_count),

@@ -58,8 +58,8 @@ for required in \
   "Canonical Audit Surfaces" \
   "De-dup Policy" \
   "Accounting journal/reversal/settlement summary events are captured by AccountingEventStore" \
-  "Legacy summary success writes for these events in \`AuditService\` are fully decommissioned (not toggle-controlled)." \
-  "No profile may re-enable legacy summary success writes" \
+  "Retired summary success writes for these events in \`AuditService\` are fully decommissioned (not toggle-controlled)." \
+  "No profile may re-enable retired summary success writes" \
   "Change-Control Rule"; do
   require_literal "$required" "$DOC" \
     "ownership doc is missing required contract phrase: $required"

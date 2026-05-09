@@ -74,20 +74,20 @@ ROUTED_SHARDS = (
         "maven_args": ["-Dtest.groups="],
     },
     {
-        "job": "pr-codered-access",
-        "flag": "run_codered_access",
-        "profile": "codered",
-        "label": "codered-access",
-        "manifest": "ci/pr_manifests/pr_codered_access.txt",
-        "artifact": "pr-jacoco-codered-access",
+        "job": "pr-risk-access",
+        "flag": "run_risk_access",
+        "profile": "risk",
+        "label": "risk-access",
+        "manifest": "ci/pr_manifests/pr_risk_access.txt",
+        "artifact": "pr-jacoco-risk-access",
     },
     {
-        "job": "pr-codered-finance",
-        "flag": "run_codered_finance",
-        "profile": "codered",
-        "label": "codered-finance",
-        "manifest": "ci/pr_manifests/pr_codered_finance.txt",
-        "artifact": "pr-jacoco-codered-finance",
+        "job": "pr-risk-finance",
+        "flag": "run_risk_finance",
+        "profile": "risk",
+        "label": "risk-finance",
+        "manifest": "ci/pr_manifests/pr_risk_finance.txt",
+        "artifact": "pr-jacoco-risk-finance",
     },
 )
 
@@ -112,8 +112,8 @@ JOB_LABELS = {
     "pr-idempotency-outbox": ("product-tests", "Idempotency And Outbox Tests"),
     "pr-business-slice": ("product-tests", "Workflow Integration Tests"),
     "pr-persistence-smoke": ("product-tests", "Persistence Smoke"),
-    "pr-codered-access": ("security-tests", "CODE-RED Access Tests"),
-    "pr-codered-finance": ("finance-tests", "CODE-RED Finance Tests"),
+    "pr-risk-access": ("security-tests", "Risk Access Tests"),
+    "pr-risk-finance": ("finance-tests", "Risk Finance Tests"),
     "pr-changed-coverage": ("changed-code-coverage", "Changed-Code Coverage"),
 }
 
@@ -186,30 +186,6 @@ def create_changed_coverage_skip_summary(
         "changed_runtime_source_count": changed_runtime_source_count,
         "passes": True,
     }
-
-
-def changed_coverage_failure_is_compatible(summary: dict[str, object] | None) -> tuple[bool, str]:
-    if not summary:
-        return False, "missing-summary"
-    if bool(summary.get("passes")):
-        return False, "already-passing"
-    if bool(summary.get("skipped")):
-        return False, "explicitly-skipped"
-
-    missing_coverage = bool(summary.get("missing_coverage"))
-    vacuous = bool(summary.get("vacuous"))
-    skipped_files = summary.get("coverage_skipped_files") or []
-    unmapped_files = summary.get("files_with_unmapped_lines") or []
-
-    if missing_coverage:
-        return False, "missing-coverage"
-    if vacuous:
-        return False, "vacuous-coverage"
-    if skipped_files:
-        return False, "coverage-skipped-files"
-    if unmapped_files:
-        return False, "unmapped-changed-lines"
-    return True, "threshold-only-compatibility"
 
 
 def load_json(path: Path) -> dict[str, object] | None:
@@ -556,19 +532,6 @@ def main() -> int:
             )
             if changed_coverage_output.exists():
                 results["pr-changed-coverage"].changed_coverage_summary = relpath(changed_coverage_output)
-                coverage_summary = load_json(changed_coverage_output)
-                compatible_failure, compatibility_reason = changed_coverage_failure_is_compatible(coverage_summary)
-                if (
-                    results["pr-changed-coverage"].result == "failure"
-                    and coverage_baseline_applied
-                    and compatible_failure
-                ):
-                    print(
-                        "[pr-changed-coverage] WARN: thresholds were not met but coverage mapping is complete; "
-                        "recording compatibility-mode success for long-lived diff parity."
-                    )
-                    results["pr-changed-coverage"].result = "success"
-                    results["pr-changed-coverage"].reason = compatibility_reason
 
     merge_gate_statuses = {name: result.result for name, result in results.items()}
     blocking = evaluate_merge_gate(merge_gate_statuses)

@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GUARDRAIL_DOC="${ACCOUNTING_PORTAL_SCOPE_GUARDRAIL_DOC:-$ROOT_DIR/docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md}"
 PORTAL_DOC="${ACCOUNTING_PORTAL_PORTAL_DOC:-$ROOT_DIR/docs/frontend-portals/accounting/README.md}"
 FRONTEND_API_DOC="${ACCOUNTING_PORTAL_FRONTEND_API_DOC:-$ROOT_DIR/docs/frontend-api/README.md}"
-ENDPOINT_INVENTORY_DOC="${ACCOUNTING_PORTAL_ENDPOINT_INVENTORY_DOC:-$ROOT_DIR/docs/endpoint-inventory.md}"
+OPENAPI_ENDPOINT_CONTRACT_DOC="${ACCOUNTING_PORTAL_OPENAPI_ENDPOINT_CONTRACT_DOC:-$ROOT_DIR/docs/openapi-endpoint-contract.md}"
 REMEDIATION_COMMAND="bash scripts/guard_accounting_portal_scope_contract.sh"
 SCOPE_SENTENCE="HR, PURCHASING, INVENTORY, and REPORTS come under the Accounting portal"
 
@@ -41,28 +41,28 @@ require_regex_match() {
   grep -Eq -- "$pattern" "$file" || fail "$message"
 }
 
-for path in "$GUARDRAIL_DOC" "$PORTAL_DOC" "$FRONTEND_API_DOC" "$ENDPOINT_INVENTORY_DOC"; do
+for path in "$GUARDRAIL_DOC" "$PORTAL_DOC" "$FRONTEND_API_DOC" "$OPENAPI_ENDPOINT_CONTRACT_DOC"; do
   [[ -f "$path" ]] || fail "missing required scope contract file: $path"
 done
 
 require_literal "$SCOPE_SENTENCE" "$GUARDRAIL_DOC" \
   "missing accounting portal scope invariant in $GUARDRAIL_DOC"
-require_literal "$SCOPE_SENTENCE" "$ENDPOINT_INVENTORY_DOC" \
-  "missing accounting portal scope invariant in $ENDPOINT_INVENTORY_DOC"
+require_literal "$SCOPE_SENTENCE" "$OPENAPI_ENDPOINT_CONTRACT_DOC" \
+  "missing accounting portal scope invariant in $OPENAPI_ENDPOINT_CONTRACT_DOC"
 
 require_literal "Updated canonical portal and frontend API docs for every affected portal." "$GUARDRAIL_DOC" \
   "scope guardrail doc must require canonical portal/API doc updates for scope changes"
-require_literal 'Updated `docs/endpoint-inventory.md` module mapping and examples.' "$GUARDRAIL_DOC" \
-  "scope guardrail doc must require endpoint inventory updates for scope changes"
+require_literal 'Updated `docs/openapi-endpoint-contract.md` module mapping and examples.' "$GUARDRAIL_DOC" \
+  "scope guardrail doc must require openapi endpoint contract updates for scope changes"
 
-require_literal "docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md" "$ENDPOINT_INVENTORY_DOC" \
-  "endpoint inventory must reference the scope guardrail doc"
+require_literal "docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md" "$OPENAPI_ENDPOINT_CONTRACT_DOC" \
+  "openapi endpoint contract must reference the scope guardrail doc"
 for module in hr purchasing inventory portal reports; do
-  require_regex_match "\\| \`$module\` \\| [1-9][0-9]* \\|" "$ENDPOINT_INVENTORY_DOC" \
-    "endpoint inventory summary missing required module row with non-zero path count: $module"
+  require_regex_match "\\| \`$module\` \\| [1-9][0-9]* \\|" "$OPENAPI_ENDPOINT_CONTRACT_DOC" \
+    "openapi endpoint contract summary missing required module row with non-zero path count: $module"
 done
-require_regex_match "\\| \`finished-goods\` \\| [1-9][0-9]* \\|" "$ENDPOINT_INVENTORY_DOC" \
-  "endpoint inventory summary missing required module row with non-zero path count: finished-goods"
+require_regex_match "\\| \`finished-goods\` \\| [1-9][0-9]* \\|" "$OPENAPI_ENDPOINT_CONTRACT_DOC" \
+  "openapi endpoint contract summary missing required module row with non-zero path count: finished-goods"
 
 for endpoint in \
   "/api/v1/hr/employees" \
@@ -72,8 +72,8 @@ for endpoint in \
   "/api/v1/portal/finance/ledger" \
   "/api/v1/portal/finance/invoices" \
   "/api/v1/portal/finance/aging"; do
-  require_regex_match "^- \\x60[A-Z]+(, [A-Z]+)*\\x60 \\x60$endpoint\\x60\\r?$" "$ENDPOINT_INVENTORY_DOC" \
-    "required endpoint evidence missing in endpoint inventory bullets: $endpoint"
+  require_regex_match "^- \\x60[A-Z]+(, [A-Z]+)*\\x60 \\x60$endpoint\\x60\\r?$" "$OPENAPI_ENDPOINT_CONTRACT_DOC" \
+    "required endpoint evidence missing in openapi endpoint contract bullets: $endpoint"
 done
 
 require_literal "drive request-close, approve-close, and reject-close workflow" "$PORTAL_DOC" \

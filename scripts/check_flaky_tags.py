@@ -29,7 +29,7 @@ REQUIRED_METADATA_KEYS = (
     CLASSIFICATION_KEY,
     ACTION_KEY,
 )
-EXPIRY_METADATA_KEYS = ("expiry", "expires", "expiry_date")
+EXPIRY_METADATA_KEY = "expiry"
 MAX_QUARANTINE_DAYS = 14
 ALLOWED_CLASSIFICATIONS = {"product-bug", "bad-test", "infra-coupled"}
 ALLOWED_ACTIONS = {"quarantine"}
@@ -78,12 +78,9 @@ def parse_quarantine_line(raw: str, line_no: int) -> dict | None:
         if not metadata.get(key):
             reasons.append(f"missing required metadata '{key}'")
 
-    expiry_key = next((k for k in EXPIRY_METADATA_KEYS if k in metadata), None)
-    expiry_raw = metadata.get(expiry_key, "").strip() if expiry_key else ""
-    if not expiry_key or not expiry_raw:
-        reasons.append(
-            "missing required metadata 'expiry' (accepted keys: expiry|expires|expiry_date)"
-        )
+    expiry_raw = metadata.get(EXPIRY_METADATA_KEY, "").strip()
+    if not expiry_raw:
+        reasons.append("missing required metadata 'expiry'")
 
     classification = metadata.get(CLASSIFICATION_KEY, "").strip()
     if classification and classification not in ALLOWED_CLASSIFICATIONS:
@@ -105,7 +102,7 @@ def parse_quarantine_line(raw: str, line_no: int) -> dict | None:
         if date_error:
             reasons.append(date_error)
     if expiry_raw:
-        expires_on, date_error = parse_iso_date(expiry_raw, expiry_key or "expiry")
+        expires_on, date_error = parse_iso_date(expiry_raw, EXPIRY_METADATA_KEY)
         if date_error:
             reasons.append(date_error)
 
@@ -205,7 +202,7 @@ def main() -> int:
         "lane_tags": sorted(lane_tags),
         "quarantine_contract": {
             "required_metadata_keys": [*REQUIRED_METADATA_KEYS, "expiry"],
-            "accepted_expiry_keys": list(EXPIRY_METADATA_KEYS),
+            "expiry_key": EXPIRY_METADATA_KEY,
             "start_key": START_DATE_KEY,
             "classification_key": CLASSIFICATION_KEY,
             "classification_enum": sorted(ALLOWED_CLASSIFICATIONS),

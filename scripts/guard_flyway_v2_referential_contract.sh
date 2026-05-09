@@ -2,11 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPAT_FILE="$ROOT_DIR/scripts/bash_compat.sh"
-if [[ -f "$COMPAT_FILE" ]]; then
-  # shellcheck disable=SC1090
-  source "$COMPAT_FILE"
-fi
 MIGRATIONS_DIR="$ROOT_DIR/erp-domain/src/main/resources/db/migration_v2"
 
 fail() {
@@ -17,7 +12,10 @@ fail() {
 [[ -d "$MIGRATIONS_DIR" ]] || fail "missing migrations dir: $MIGRATIONS_DIR"
 command -v python3 >/dev/null 2>&1 || fail "python3 is required"
 
-mapfile -t migration_files < <(find "$MIGRATIONS_DIR" -maxdepth 1 -type f -name 'V*__*.sql' | sort)
+migration_files=()
+while IFS= read -r migration_file; do
+  migration_files+=("$migration_file")
+done < <(find "$MIGRATIONS_DIR" -maxdepth 1 -type f -name 'V*__*.sql' | sort)
 [[ ${#migration_files[@]} -gt 0 ]] || fail "no migration_v2 files found"
 
 python3 - "$MIGRATIONS_DIR" "${migration_files[@]}" <<'PY'

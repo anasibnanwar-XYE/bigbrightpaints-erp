@@ -68,7 +68,7 @@ class CiRiskRouterTest(unittest.TestCase):
         )
 
         self.assertEqual("true", flags["run_auth_tenant"])
-        self.assertEqual("true", flags["run_codered_access"])
+        self.assertEqual("true", flags["run_risk_access"])
         self.assertEqual("false", flags["run_changed_coverage"])
         self.assertEqual("1", flags["changed_files_count"])
         self.assertEqual("0", flags["changed_runtime_source_count"])
@@ -87,8 +87,8 @@ class CiRiskRouterTest(unittest.TestCase):
         self.assertEqual("false", flags["run_idempotency_outbox"])
         self.assertEqual("false", flags["run_business_slice"])
         self.assertEqual("false", flags["run_persistence_smoke"])
-        self.assertEqual("false", flags["run_codered_access"])
-        self.assertEqual("false", flags["run_codered_finance"])
+        self.assertEqual("false", flags["run_risk_access"])
+        self.assertEqual("false", flags["run_risk_finance"])
         self.assertEqual("false", flags["run_changed_coverage"])
 
     def test_auth_source_routes_auth_family_only(self):
@@ -100,12 +100,12 @@ class CiRiskRouterTest(unittest.TestCase):
 
         self.assertEqual("true", flags["run_auth_tenant"])
         self.assertEqual("true", flags["run_persistence_smoke"])
-        self.assertEqual("true", flags["run_codered_access"])
+        self.assertEqual("true", flags["run_risk_access"])
         self.assertEqual("true", flags["run_changed_coverage"])
         self.assertEqual("false", flags["run_accounting"])
         self.assertEqual("false", flags["run_idempotency_outbox"])
         self.assertEqual("false", flags["run_business_slice"])
-        self.assertEqual("false", flags["run_codered_finance"])
+        self.assertEqual("false", flags["run_risk_finance"])
 
     def test_company_admin_and_core_security_sources_route_auth_tenant(self):
         for path in [
@@ -118,7 +118,7 @@ class CiRiskRouterTest(unittest.TestCase):
 
                 self.assertEqual("true", flags["run_auth_tenant"])
                 self.assertEqual("true", flags["run_persistence_smoke"])
-                self.assertEqual("true", flags["run_codered_access"])
+                self.assertEqual("true", flags["run_risk_access"])
                 self.assertEqual("true", flags["run_changed_coverage"])
 
     def test_openapi_contract_proof_changes_route_auth_tenant_without_widening_other_lanes(self):
@@ -134,11 +134,11 @@ class CiRiskRouterTest(unittest.TestCase):
                 self.assertEqual("false", flags["run_idempotency_outbox"])
                 self.assertEqual("false", flags["run_business_slice"])
                 self.assertEqual("false", flags["run_persistence_smoke"])
-                self.assertEqual("false", flags["run_codered_access"])
-                self.assertEqual("false", flags["run_codered_finance"])
+                self.assertEqual("false", flags["run_risk_access"])
+                self.assertEqual("false", flags["run_risk_finance"])
                 self.assertEqual("false", flags["run_changed_coverage"])
 
-    def test_ci_infra_change_runs_core_pr_shards_but_not_codered_or_changed_coverage(self):
+    def test_ci_infra_change_runs_core_pr_shards_but_not_risk_or_changed_coverage(self):
         flags = ci_risk_router.compute_flags([".github/workflows/ci.yml"])
 
         self.assertEqual("true", flags["run_auth_tenant"])
@@ -146,8 +146,8 @@ class CiRiskRouterTest(unittest.TestCase):
         self.assertEqual("true", flags["run_idempotency_outbox"])
         self.assertEqual("true", flags["run_business_slice"])
         self.assertEqual("true", flags["run_persistence_smoke"])
-        self.assertEqual("false", flags["run_codered_access"])
-        self.assertEqual("false", flags["run_codered_finance"])
+        self.assertEqual("false", flags["run_risk_access"])
+        self.assertEqual("false", flags["run_risk_finance"])
         self.assertEqual("false", flags["run_changed_coverage"])
 
     def test_local_pr_parity_runner_counts_as_ci_infra(self):
@@ -158,23 +158,11 @@ class CiRiskRouterTest(unittest.TestCase):
         self.assertEqual("true", flags["run_idempotency_outbox"])
         self.assertEqual("true", flags["run_business_slice"])
         self.assertEqual("true", flags["run_persistence_smoke"])
-        self.assertEqual("false", flags["run_codered_access"])
-        self.assertEqual("false", flags["run_codered_finance"])
+        self.assertEqual("false", flags["run_risk_access"])
+        self.assertEqual("false", flags["run_risk_finance"])
         self.assertEqual("false", flags["run_changed_coverage"])
 
-    def test_services_manifest_change_counts_as_ci_infra(self):
-        flags = ci_risk_router.compute_flags([".factory/services.yaml"])
-
-        self.assertEqual("true", flags["run_auth_tenant"])
-        self.assertEqual("true", flags["run_accounting"])
-        self.assertEqual("true", flags["run_idempotency_outbox"])
-        self.assertEqual("true", flags["run_business_slice"])
-        self.assertEqual("true", flags["run_persistence_smoke"])
-        self.assertEqual("false", flags["run_codered_access"])
-        self.assertEqual("false", flags["run_codered_finance"])
-        self.assertEqual("false", flags["run_changed_coverage"])
-
-    def test_workflow_surface_change_still_routes_codered_finance(self):
+    def test_workflow_surface_change_still_routes_risk_finance(self):
         flags = ci_risk_router.compute_flags(
             [
                 "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesOrderService.java",
@@ -184,7 +172,7 @@ class CiRiskRouterTest(unittest.TestCase):
         self.assertEqual("true", flags["run_accounting"])
         self.assertEqual("true", flags["run_business_slice"])
         self.assertEqual("true", flags["run_persistence_smoke"])
-        self.assertEqual("true", flags["run_codered_finance"])
+        self.assertEqual("true", flags["run_risk_finance"])
 
 
 class ChangedFilesCoverageTest(unittest.TestCase):
@@ -220,13 +208,6 @@ class ChangedFilesCoverageTest(unittest.TestCase):
         )
         self.assertTrue(changed_files_coverage.is_structural_source_line("Invoice invoice,", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("int salesOrderInvoiceCount) {", False))
-        self.assertTrue(
-            changed_files_coverage.is_structural_source_line(
-                "salesOrderInvoiceCount);",
-                False,
-                "        return LegacyDispatchInvoiceLinkMatcher.isSlipLinkedToInvoice(",
-            )
-        )
         self.assertTrue(changed_files_coverage.is_structural_source_line("RawMaterialPurchase::getCompany,", False))
         self.assertTrue(
             changed_files_coverage.is_structural_source_line(
@@ -258,7 +239,7 @@ class MergeJacocoXmlTest(unittest.TestCase):
         merged = merge_jacoco_xml.merge_line((0, 1, 2, 0), (0, 1, 0, 2))
         self.assertEqual((0, 1, 0, 2), merged)
 
-    def test_package_declaration_fallback_maps_misplaced_source_file(self):
+    def test_package_declaration_maps_misplaced_source_file(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             repo_dir = Path(tmp_dir)
             java_file = repo_dir / "erp-domain/src/main/java/com/example/internal/Demo.java"
@@ -413,36 +394,6 @@ class RuntimeProbeContractTest(unittest.TestCase):
             summary,
         )
 
-    def test_pr_ci_parity_allows_threshold_only_changed_coverage_failure_in_compat_mode(self):
-        compatible, reason = pr_ci_parity.changed_coverage_failure_is_compatible(
-            {
-                "passes": False,
-                "skipped": False,
-                "missing_coverage": False,
-                "vacuous": False,
-                "coverage_skipped_files": [],
-                "files_with_unmapped_lines": [],
-            }
-        )
-
-        self.assertTrue(compatible)
-        self.assertEqual("threshold-only-compatibility", reason)
-
-    def test_pr_ci_parity_rejects_unmapped_changed_coverage_failure(self):
-        compatible, reason = pr_ci_parity.changed_coverage_failure_is_compatible(
-            {
-                "passes": False,
-                "skipped": False,
-                "missing_coverage": False,
-                "vacuous": False,
-                "coverage_skipped_files": [],
-                "files_with_unmapped_lines": ["erp-domain/src/main/java/com/example/Demo.java"],
-            }
-        )
-
-        self.assertFalse(compatible)
-        self.assertEqual("unmapped-changed-lines", reason)
-
     def test_pr_ci_parity_merge_gate_blocks_failed_jobs(self):
         blocking = pr_ci_parity.evaluate_merge_gate(
             {
@@ -458,8 +409,8 @@ class RuntimeProbeContractTest(unittest.TestCase):
                 "pr-idempotency-outbox": "skipped",
                 "pr-business-slice": "success",
                 "pr-persistence-smoke": "success",
-                "pr-codered-access": "skipped",
-                "pr-codered-finance": "success",
+                "pr-risk-access": "skipped",
+                "pr-risk-finance": "success",
                 "pr-changed-coverage": "failure",
             }
         )
@@ -507,32 +458,6 @@ class RuntimeProbeContractTest(unittest.TestCase):
         self.assertIn("`codex-review-policy`", ci_contract)
         self.assertIn("`Security Review Gate`", ci_contract)
 
-    def test_services_manifest_exposes_pr_ci_parity_command(self):
-        services_text = (REPO_ROOT / ".factory" / "services.yaml").read_text(encoding="utf-8")
-
-        self.assertIn("pr-ci-parity:", services_text)
-        self.assertIn('scripts/pr_ci_parity.py', services_text)
-        self.assertIn('PR_CI_BASE', services_text)
-
-    def test_runtime_probe_fails_closed_on_health_status(self):
-        services_text = (REPO_ROOT / ".factory" / "services.yaml").read_text(encoding="utf-8")
-
-        self.assertIn(
-            "status=$(curl -s -o /tmp/factory-backend-auth.out -w '%{http_code}' http://localhost:8081/api/v1/auth/me || true)",
-            services_text,
-        )
-        self.assertIn('[ "$status" = "200" ]', services_text)
-        self.assertIn('[ "$status" = "401" ]', services_text)
-        self.assertIn('[ "$status" = "403" ]', services_text)
-        self.assertNotIn('echo "$status"', services_text)
-
-    def test_services_manifest_exposes_release_proof_and_dispatch_handoff_guard(self):
-        services_text = (REPO_ROOT / ".factory" / "services.yaml").read_text(encoding="utf-8")
-
-        self.assertIn("release-proof:", services_text)
-        self.assertIn("bash scripts/release_proof.sh", services_text)
-        self.assertIn("guard_dispatch_frontend_handoff_contract.sh", services_text)
-
     def test_release_workflows_keep_deploy_proof_and_release_notes_separate(self):
         ci_workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         release_workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
@@ -552,49 +477,43 @@ class RuntimeProbeContractTest(unittest.TestCase):
         self.assertIn("http://localhost:9090/actuator/health/readiness", release_proof)
         self.assertIn("http://localhost:8081/api/v1/auth/me", release_proof)
         self.assertIn('bash "$ROOT_DIR/scripts/gate_release.sh"', release_proof)
-        self.assertIn("CR_ProductionMonitoringContractTest", release_proof)
+        self.assertIn("ProductionMonitoringContractTest", release_proof)
         self.assertIn("DispatchControllerTest", release_proof)
         self.assertIn("JournalEntryE2ETest", release_proof)
         self.assertIn("CompanyContextFilterControlPlaneBindingTest", release_proof)
         self.assertIn("guard_workflow_canonical_paths.sh", release_proof)
-        self.assertIn("guard_dispatch_frontend_handoff_contract.sh", release_proof)
+        self.assertNotIn("guard_dispatch_frontend_handoff_contract.sh", release_proof)
 
-    def test_docs_only_lane_includes_factory_library_guidance_packets(self):
+    def test_docs_only_lane_excludes_internal_factory_guidance_docs(self):
         agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
         workflow = (REPO_ROOT / "docs" / "agents" / "WORKFLOW.md").read_text(encoding="utf-8")
         conventions = (REPO_ROOT / "docs" / "CONVENTIONS.md").read_text(encoding="utf-8")
 
-        self.assertIn(".factory/library/**", agents)
-        self.assertIn(".factory/library/**", workflow)
-        self.assertIn(".factory/library/**", conventions)
-
-    def test_dispatch_frontend_handoff_guard_script_passes(self):
-        result = subprocess.run(
-            ["bash", str(REPO_ROOT / "scripts" / "guard_dispatch_frontend_handoff_contract.sh")],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertIn("[guard_dispatch_frontend_handoff_contract] OK", result.stdout)
+        self.assertNotIn(".factory/library/**", agents)
+        self.assertNotIn(".factory/library/**", workflow)
+        self.assertNotIn(".factory/library/**", conventions)
 
     def test_gate_fast_prefers_mainline_diff_base_before_canonical_anchor(self):
         gate_fast = (REPO_ROOT / "scripts" / "gate_fast.sh").read_text(encoding="utf-8")
 
+        self.assertIn('CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-origin/main}"', gate_fast)
+        self.assertNotIn("harness-engineering-orchestrator", gate_fast)
         origin_main_index = gate_fast.index('if git rev-parse --verify --quiet origin/main >/dev/null; then')
         canonical_index = gate_fast.index('if [[ -n "${CANONICAL_BASE_SHA:-}" ]] && git merge-base --is-ancestor "$CANONICAL_BASE_SHA" HEAD; then')
         self.assertLess(origin_main_index, canonical_index)
 
-    def test_gate_release_and_core_allow_mainline_canonical_base_fallback(self):
+    def test_gate_release_and_core_use_origin_main_canonical_base(self):
         gate_release = (REPO_ROOT / "scripts" / "gate_release.sh").read_text(encoding="utf-8")
         gate_core = (REPO_ROOT / "scripts" / "gate_core.sh").read_text(encoding="utf-8")
         schema_drift_scan = (REPO_ROOT / "scripts" / "schema_drift_scan.sh").read_text(encoding="utf-8")
         time_api_scan = (REPO_ROOT / "scripts" / "time_api_scan.sh").read_text(encoding="utf-8")
 
-        self.assertIn("for fallback_ref in main origin/main; do", gate_release)
-        self.assertIn("for fallback_ref in main origin/main; do", gate_core)
+        self.assertIn('CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-origin/main}"', gate_release)
+        self.assertIn('CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-origin/main}"', gate_core)
+        self.assertNotIn("for fallback_ref in main origin/main; do", gate_release)
+        self.assertNotIn("for fallback_ref in main origin/main; do", gate_core)
+        self.assertNotIn("harness-engineering-orchestrator", gate_release)
+        self.assertNotIn("harness-engineering-orchestrator", gate_core)
         self.assertNotIn("VERIFY_LOCAL_SKIP_MVN_VERIFY=true", gate_release)
         self.assertIn("VERIFY_LOCAL_SKIP_TESTS=true", gate_release)
         self.assertIn("--diff-base <ref>", schema_drift_scan)

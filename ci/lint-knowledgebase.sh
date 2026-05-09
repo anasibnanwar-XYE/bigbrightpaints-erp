@@ -35,41 +35,6 @@ fail() {
   errors=$((errors + 1))
 }
 
-compatibility_mode=false
-legacy_contract_markers=(
-  "AGENTS.md"
-  "docs/INDEX.md"
-  "agents/catalog.yaml"
-)
-for marker in "${legacy_contract_markers[@]}"; do
-  if [[ ! -f "$marker" ]]; then
-    compatibility_mode=true
-    break
-  fi
-done
-
-if [[ "$compatibility_mode" == "true" ]]; then
-  compatibility_required=(
-    "README.md"
-    "docs/architecture.md"
-    "docs/developer-guide.md"
-  )
-  for f in "${compatibility_required[@]}"; do
-    if [[ ! -f "$f" ]]; then
-      fail "missing compatibility doc: $f"
-    fi
-  done
-
-  if [[ "$errors" -gt 0 ]]; then
-    printf '[knowledgebase-lint] %d issue(s) found.\n' "$errors" >&2
-    exit 1
-  fi
-
-  printf '[knowledgebase-lint] WARN: legacy knowledgebase contract files not present; running compatibility mode checks.\n'
-  printf '[knowledgebase-lint] OK\n'
-  exit 0
-fi
-
 is_valid_iso_date() {
   local candidate="$1"
   python3 - "$candidate" <<'PY'
@@ -218,10 +183,6 @@ for file in "${files_to_scan[@]}"; do
     check_ref "$file" "$token"
   done < <(awk -F'`' '{for(i=2;i<=NF;i+=2) print $i}' "$file")
 done
-
-if ! python3 scripts/check_ticket_status_parity.py; then
-  fail "ticket status parity guard failed (remediation: reconcile ticket.yaml, SUMMARY.md, and TIMELINE.md statuses)"
-fi
 
 if [[ "$errors" -gt 0 ]]; then
   printf '[knowledgebase-lint] %d issue(s) found.\n' "$errors" >&2

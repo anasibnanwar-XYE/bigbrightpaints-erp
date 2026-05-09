@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PAYROLL_POSTING_SERVICE="$ROOT_DIR/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollPostingService.java"
-PAYROLL_TEST="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/codered/CR_PayrollIdempotencyConcurrencyTest.java"
+PAYROLL_TEST="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/risk/PayrollIdempotencyConcurrencyTest.java"
 
 fail() {
   echo "[guard_payroll_account_bootstrap_contract] FAIL: $1" >&2
@@ -40,7 +40,7 @@ require_literal "$PAYROLL_POSTING_SERVICE" "expectedAccountType" "deterministic 
 require_literal "$PAYROLL_POSTING_SERVICE" "requiredPayrollAccounts" "required-account inventory detail"
 require_literal "$PAYROLL_POSTING_SERVICE" "migrationSet" "v2 migration-set detail"
 require_literal "$PAYROLL_POSTING_SERVICE" "\"v2\"" "v2 migration marker"
-require_literal "$PAYROLL_POSTING_SERVICE" "manualProvisioningRequired" "manual provisioning detail for non-legacy bootstrap accounts"
+require_literal "$PAYROLL_POSTING_SERVICE" "manualProvisioningRequired" "manual provisioning detail for current bootstrap accounts"
 require_literal "$PAYROLL_POSTING_SERVICE" "/api/v1/accounting/accounts" "chart of accounts canonical path"
 require_absent_literal "$PAYROLL_POSTING_SERVICE" "V79__payroll_gl_accounts.sql" "v1 migration reference"
 

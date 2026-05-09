@@ -1,0 +1,6 @@
+com.bigbrightpaints.erp.risk.PurchasingToApAccountingTest
+com.bigbrightpaints.erp.risk.PurchasingGrnPeriodCloseTest
+com.bigbrightpaints.erp.risk.PeriodCloseAtomicityTest
+com.bigbrightpaints.erp.risk.PeriodCloseDriftScansTest
+com.bigbrightpaints.erp.risk.ManualJournalSafetyTest
+com.bigbrightpaints.erp.risk.SalesDispatchInvoiceAccountingIT

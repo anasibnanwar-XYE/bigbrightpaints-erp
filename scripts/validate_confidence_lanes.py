@@ -96,7 +96,7 @@ def main() -> int:
     if not isinstance(authoritative_surfaces, dict):
         errors.append("authoritative_surfaces must be an object")
     else:
-        for key in ("packet", "library", "quarantine"):
+        for key in ("document", "library", "quarantine"):
             if not non_empty_string(authoritative_surfaces.get(key)):
                 errors.append(f"authoritative_surfaces.{key} must be a non-empty string")
 

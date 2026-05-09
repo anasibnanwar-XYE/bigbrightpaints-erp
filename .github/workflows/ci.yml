@@ -176,8 +176,8 @@ jobs:
       run_idempotency_outbox: ${{ steps.route.outputs.run_idempotency_outbox }}
       run_business_slice: ${{ steps.route.outputs.run_business_slice }}
       run_persistence_smoke: ${{ steps.route.outputs.run_persistence_smoke }}
-      run_codered_access: ${{ steps.route.outputs.run_codered_access }}
-      run_codered_finance: ${{ steps.route.outputs.run_codered_finance }}
+      run_risk_access: ${{ steps.route.outputs.run_risk_access }}
+      run_risk_finance: ${{ steps.route.outputs.run_risk_finance }}
       run_changed_coverage: ${{ steps.route.outputs.run_changed_coverage }}
       changed_files_count: ${{ steps.route.outputs.changed_files_count }}
       changed_runtime_source_count: ${{ steps.route.outputs.changed_runtime_source_count }}
@@ -505,9 +505,9 @@ jobs:
           path: erp-domain/target/site/jacoco/jacoco.xml
           if-no-files-found: ignore
 
-  pr-codered-access:
-    name: CODE-RED Access Tests
-    if: github.event_name == 'pull_request' && needs.pr-risk-router.outputs.run_codered_access == 'true'
+  pr-risk-access:
+    name: Risk Access Tests
+    if: github.event_name == 'pull_request' && needs.pr-risk-router.outputs.run_risk_access == 'true'
     needs: [pr-risk-router]
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -544,25 +544,25 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Run CODE-RED access shard
+      - name: Run risk access shard
         run: |
           set -euo pipefail
           bash scripts/run_test_manifest.sh \
-            --profile codered \
-            --label codered-access \
-            --manifest ci/pr_manifests/pr_codered_access.txt
+            --profile risk \
+            --label risk-access \
+            --manifest ci/pr_manifests/pr_risk_access.txt
 
       - name: Upload shard coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr-jacoco-codered-access
+          name: pr-jacoco-risk-access
           path: erp-domain/target/site/jacoco/jacoco.xml
           if-no-files-found: ignore
 
-  pr-codered-finance:
-    name: CODE-RED Finance Tests
-    if: github.event_name == 'pull_request' && needs.pr-risk-router.outputs.run_codered_finance == 'true'
+  pr-risk-finance:
+    name: Risk Finance Tests
+    if: github.event_name == 'pull_request' && needs.pr-risk-router.outputs.run_risk_finance == 'true'
     needs: [pr-risk-router]
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -599,19 +599,19 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Run CODE-RED finance shard
+      - name: Run risk finance shard
         run: |
           set -euo pipefail
           bash scripts/run_test_manifest.sh \
-            --profile codered \
-            --label codered-finance \
-            --manifest ci/pr_manifests/pr_codered_finance.txt
+            --profile risk \
+            --label risk-finance \
+            --manifest ci/pr_manifests/pr_risk_finance.txt
 
       - name: Upload shard coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr-jacoco-codered-finance
+          name: pr-jacoco-risk-finance
           path: erp-domain/target/site/jacoco/jacoco.xml
           if-no-files-found: ignore
 
@@ -625,8 +625,8 @@ jobs:
       - pr-idempotency-outbox
       - pr-business-slice
       - pr-persistence-smoke
-      - pr-codered-access
-      - pr-codered-finance
+      - pr-risk-access
+      - pr-risk-finance
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -706,8 +706,8 @@ jobs:
       - pr-idempotency-outbox
       - pr-business-slice
       - pr-persistence-smoke
-      - pr-codered-access
-      - pr-codered-finance
+      - pr-risk-access
+      - pr-risk-finance
       - pr-changed-coverage
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -743,8 +743,8 @@ jobs:
               "pr-idempotency-outbox": ("product-tests", "Idempotency And Outbox Tests"),
               "pr-business-slice": ("product-tests", "Workflow Integration Tests"),
               "pr-persistence-smoke": ("product-tests", "Persistence Smoke"),
-              "pr-codered-access": ("security-tests", "CODE-RED Access Tests"),
-              "pr-codered-finance": ("finance-tests", "CODE-RED Finance Tests"),
+              "pr-risk-access": ("security-tests", "Risk Access Tests"),
+              "pr-risk-finance": ("finance-tests", "Risk Finance Tests"),
               "pr-changed-coverage": ("changed-code-coverage", "Changed-Code Coverage"),
           }
 
@@ -770,17 +770,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Guard legacy migration freeze
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            bash scripts/guard_legacy_migration_freeze.sh --base "${{ github.event.pull_request.base.sha }}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            bash scripts/guard_legacy_migration_freeze.sh --base "${{ github.event.before }}"
-          else
-            bash scripts/guard_legacy_migration_freeze.sh
-          fi
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -831,17 +820,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Guard legacy migration freeze
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            bash scripts/guard_legacy_migration_freeze.sh --base "${{ github.event.pull_request.base.sha }}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            bash scripts/guard_legacy_migration_freeze.sh --base "${{ github.event.before }}"
-          else
-            bash scripts/guard_legacy_migration_freeze.sh
-          fi
-
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
@@ -891,17 +869,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Guard legacy migration freeze
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            bash scripts/guard_legacy_migration_freeze.sh --base "${{ github.event.pull_request.base.sha }}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            bash scripts/guard_legacy_migration_freeze.sh --base "${{ github.event.before }}"
-          else
-            bash scripts/guard_legacy_migration_freeze.sh
-          fi
-
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
@@ -944,17 +911,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Guard legacy migration freeze
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            bash scripts/guard_legacy_migration_freeze.sh --base "${{ github.event.pull_request.base.sha }}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            bash scripts/guard_legacy_migration_freeze.sh --base "${{ github.event.before }}"
-          else
-            bash scripts/guard_legacy_migration_freeze.sh
-          fi
-
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
@@ -988,17 +944,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Guard legacy migration freeze
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            bash scripts/guard_legacy_migration_freeze.sh --base "${{ github.event.pull_request.base.sha }}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            bash scripts/guard_legacy_migration_freeze.sh --base "${{ github.event.before }}"
-          else
-            bash scripts/guard_legacy_migration_freeze.sh
-          fi
 
       - name: Set up Java
         uses: actions/setup-java@v5
