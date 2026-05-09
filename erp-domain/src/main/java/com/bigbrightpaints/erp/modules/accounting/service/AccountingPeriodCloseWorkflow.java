@@ -29,7 +29,6 @@ final class AccountingPeriodCloseWorkflow {
       CompanyClock companyClock,
       PeriodCloseRequestRepository periodCloseRequestRepository,
       ObjectProvider<JournalEntryService> journalEntryServiceProvider,
-      PeriodCloseHook periodCloseHook,
       AccountingPeriodSnapshotService snapshotService,
       AccountingPeriodLifecycleService lifecycleService,
       AccountingPeriodChecklistService checklistService) {
@@ -42,7 +41,6 @@ final class AccountingPeriodCloseWorkflow {
             accountRepository,
             companyClock,
             journalEntryServiceProvider,
-            periodCloseHook,
             snapshotService,
             lifecycleService,
             checklistService);

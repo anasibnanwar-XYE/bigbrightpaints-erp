@@ -276,12 +276,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
 
     // Order should be auto-approved or pending based on business rules
     assertThat(orderData.get("status"))
-        .isIn(
-            "DRAFT",
-            "PENDING_PRODUCTION",
-            "CONFIRMED",
-            "READY_TO_SHIP",
-            "RESERVED");
+        .isIn("DRAFT", "PENDING_PRODUCTION", "CONFIRMED", "READY_TO_SHIP", "RESERVED");
   }
 
   @Test

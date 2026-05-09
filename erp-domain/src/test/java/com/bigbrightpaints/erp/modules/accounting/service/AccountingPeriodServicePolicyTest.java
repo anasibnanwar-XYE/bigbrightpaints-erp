@@ -73,7 +73,6 @@ class AccountingPeriodServicePolicyTest {
   @Mock private PeriodCloseRequestRepository periodCloseRequestRepository;
   @Mock private ObjectProvider<JournalEntryService> journalEntryServiceProvider;
   @Mock private JournalEntryService journalEntryService;
-  @Mock private PeriodCloseHook periodCloseHook;
   @Mock private AccountingPeriodSnapshotService snapshotService;
 
   private AccountingPeriodService service;
@@ -98,7 +97,6 @@ class AccountingPeriodServicePolicyTest {
             reconciliationDiscrepancyRepository,
             periodCloseRequestRepository,
             journalEntryServiceProvider,
-            periodCloseHook,
             snapshotService);
     SecurityContextHolder.clearContext();
   }

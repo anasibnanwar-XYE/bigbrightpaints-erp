@@ -4,22 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
+import javax.sql.DataSource;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -40,17 +40,20 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
-import com.bigbrightpaints.erp.modules.accounting.service.PeriodCloseHook;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import com.bigbrightpaints.erp.test.support.TestDateUtils;
 
-@org.springframework.context.annotation.Import(PeriodCloseAtomicityTest.CloseHookConfig.class)
 @Tag("critical")
 @Tag("concurrency")
 @Tag("reconciliation")
 class PeriodCloseAtomicityTest extends AbstractIntegrationTest {
+
+  private static final int PERIOD_CLOSE_LOCK_CLASS = 4242;
+  private static final int PERIOD_CLOSE_LOCK_KEY = 20260509;
+  private static final String PERIOD_CLOSE_BLOCKER_TRIGGER = "test_period_close_blocker";
+  private static final String PERIOD_CLOSE_BLOCKER_FUNCTION = "test_period_close_blocker";
 
   @Autowired private AccountingPeriodService accountingPeriodService;
   @Autowired private AccountingService accountingService;
@@ -58,7 +61,7 @@ class PeriodCloseAtomicityTest extends AbstractIntegrationTest {
   @Autowired private JournalEntryRepository journalEntryRepository;
   @Autowired private CompanyRepository companyRepository;
   @Autowired private JdbcTemplate jdbcTemplate;
-  @Autowired private TestPeriodCloseHook closeHook;
+  @Autowired private DataSource dataSource;
 
   @AfterEach
   void clearCompanyContext() {
@@ -83,52 +86,61 @@ class PeriodCloseAtomicityTest extends AbstractIntegrationTest {
               line(cash.getId(), new BigDecimal("100.00"), BigDecimal.ZERO),
               line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("100.00"))));
 
-      closeHook.reset();
-      ExecutorService executor = Executors.newFixedThreadPool(2);
-      CompletableFuture<AccountingPeriodDto> closeFuture =
-          CompletableFuture.supplyAsync(
-              () -> {
-                CompanyContextHolder.setCompanyCode(companyCode);
-                try {
-                  return forceClosePeriod(
-                      period.getId(), "risk close request", "risk close approval");
-                } finally {
-                  CompanyContextHolder.clear();
-                  SecurityContextHolder.clearContext();
-                }
-              },
-              executor);
+      installPeriodCloseBlocker(period.getId());
+      try (Connection lockConnection = dataSource.getConnection()) {
+        acquirePeriodCloseBlocker(lockConnection);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+          CompletableFuture<AccountingPeriodDto> closeFuture =
+              CompletableFuture.supplyAsync(
+                  () -> {
+                    CompanyContextHolder.setCompanyCode(companyCode);
+                    try {
+                      return forceClosePeriod(
+                          period.getId(), "risk close request", "risk close approval");
+                    } finally {
+                      CompanyContextHolder.clear();
+                      SecurityContextHolder.clearContext();
+                    }
+                  },
+                  executor);
 
-      closeHook.awaitLocked(Duration.ofSeconds(5));
+          awaitPeriodCloseBlocked(Duration.ofSeconds(5));
 
-      CompletableFuture<?> postFuture =
-          CompletableFuture.supplyAsync(
-              () -> {
-                CompanyContextHolder.setCompanyCode(companyCode);
-                try {
-                  return postJournal(
-                      today,
-                      List.of(
-                          line(cash.getId(), new BigDecimal("10.00"), BigDecimal.ZERO),
-                          line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("10.00"))));
-                } finally {
-                  CompanyContextHolder.clear();
-                }
-              },
-              executor);
+          CompletableFuture<?> postFuture =
+              CompletableFuture.supplyAsync(
+                  () -> {
+                    CompanyContextHolder.setCompanyCode(companyCode);
+                    try {
+                      return postJournal(
+                          today,
+                          List.of(
+                              line(cash.getId(), new BigDecimal("10.00"), BigDecimal.ZERO),
+                              line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("10.00"))));
+                    } finally {
+                      CompanyContextHolder.clear();
+                    }
+                  },
+                  executor);
 
-      Thread.sleep(200);
-      assertThat(postFuture.isDone()).as("Posting should block while close holds lock").isFalse();
+          Thread.sleep(200);
+          assertThat(postFuture.isDone())
+              .as("Posting should block while close holds lock")
+              .isFalse();
 
-      closeHook.release();
-      AccountingPeriodDto closed = closeFuture.get(10, TimeUnit.SECONDS);
-      assertThat(closed.status()).isEqualTo("CLOSED");
+          releasePeriodCloseBlocker(lockConnection);
+          AccountingPeriodDto closed = closeFuture.get(10, TimeUnit.SECONDS);
+          assertThat(closed.status()).isEqualTo("CLOSED");
 
-      assertThatThrownBy(() -> postFuture.get(5, TimeUnit.SECONDS))
-          .hasCauseInstanceOf(ApplicationException.class)
-          .hasMessageContaining("locked/closed");
-
-      executor.shutdownNow();
+          assertThatThrownBy(() -> postFuture.get(5, TimeUnit.SECONDS))
+              .hasCauseInstanceOf(ApplicationException.class)
+              .hasMessageContaining("locked/closed");
+        } finally {
+          executor.shutdownNow();
+        }
+      } finally {
+        dropPeriodCloseBlocker();
+      }
     } finally {
       CompanyContextHolder.clear();
     }
@@ -271,41 +283,85 @@ class PeriodCloseAtomicityTest extends AbstractIntegrationTest {
                 java.util.Arrays.stream(roles).map(SimpleGrantedAuthority::new).toList()));
   }
 
-  @TestConfiguration
-  static class CloseHookConfig {
-    @Bean
-    @Primary
-    TestPeriodCloseHook periodCloseHook() {
-      return new TestPeriodCloseHook();
+  private void installPeriodCloseBlocker(Long periodId) {
+    dropPeriodCloseBlocker();
+    jdbcTemplate.execute(
+        """
+        create function test_period_close_blocker() returns trigger as $$
+        begin
+          if NEW.id = %d
+              and OLD.status is distinct from NEW.status
+              and NEW.status = 'CLOSED' then
+            perform pg_advisory_lock(%d, %d);
+            perform pg_advisory_unlock(%d, %d);
+          end if;
+          return NEW;
+        end;
+        $$ language plpgsql
+        """
+            .formatted(
+                periodId,
+                PERIOD_CLOSE_LOCK_CLASS,
+                PERIOD_CLOSE_LOCK_KEY,
+                PERIOD_CLOSE_LOCK_CLASS,
+                PERIOD_CLOSE_LOCK_KEY));
+    jdbcTemplate.execute(
+        "create trigger "
+            + PERIOD_CLOSE_BLOCKER_TRIGGER
+            + " before update of status on accounting_periods for each row execute function "
+            + PERIOD_CLOSE_BLOCKER_FUNCTION
+            + "()");
+  }
+
+  private void dropPeriodCloseBlocker() {
+    jdbcTemplate.execute(
+        "drop trigger if exists " + PERIOD_CLOSE_BLOCKER_TRIGGER + " on accounting_periods");
+    jdbcTemplate.execute("drop function if exists " + PERIOD_CLOSE_BLOCKER_FUNCTION + "()");
+  }
+
+  private void acquirePeriodCloseBlocker(Connection connection) throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(
+          "select pg_advisory_lock("
+              + PERIOD_CLOSE_LOCK_CLASS
+              + ", "
+              + PERIOD_CLOSE_LOCK_KEY
+              + ")");
     }
   }
 
-  static class TestPeriodCloseHook implements PeriodCloseHook {
-    private volatile CountDownLatch locked = new CountDownLatch(1);
-    private volatile CountDownLatch release = new CountDownLatch(1);
-
-    void reset() {
-      locked = new CountDownLatch(1);
-      release = new CountDownLatch(1);
+  private void releasePeriodCloseBlocker(Connection connection) throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(
+          "select pg_advisory_unlock("
+              + PERIOD_CLOSE_LOCK_CLASS
+              + ", "
+              + PERIOD_CLOSE_LOCK_KEY
+              + ")");
     }
+  }
 
-    void awaitLocked(Duration timeout) throws InterruptedException {
-      boolean ok = locked.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
-      assertThat(ok).as("close hook did not lock in time").isTrue();
-    }
-
-    void release() {
-      release.countDown();
-    }
-
-    @Override
-    public void onPeriodCloseLocked(Company company, AccountingPeriod period) {
-      locked.countDown();
-      try {
-        release.await(10, TimeUnit.SECONDS);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
+  private void awaitPeriodCloseBlocked(Duration timeout) throws InterruptedException {
+    long deadline = System.nanoTime() + timeout.toNanos();
+    while (System.nanoTime() < deadline) {
+      Integer waiters =
+          jdbcTemplate.queryForObject(
+              """
+              select count(*)
+              from pg_locks
+              where locktype = 'advisory'
+                and classid = ?
+                and objid = ?
+                and not granted
+              """,
+              Integer.class,
+              PERIOD_CLOSE_LOCK_CLASS,
+              PERIOD_CLOSE_LOCK_KEY);
+      if (waiters != null && waiters > 0) {
+        return;
       }
+      Thread.sleep(50);
     }
+    throw new AssertionError("period close did not reach the database blocker in time");
   }
 }

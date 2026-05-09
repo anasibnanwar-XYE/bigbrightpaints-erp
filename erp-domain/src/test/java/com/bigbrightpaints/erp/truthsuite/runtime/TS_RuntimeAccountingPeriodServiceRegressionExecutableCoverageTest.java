@@ -41,7 +41,6 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodServic
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodSnapshotService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
-import com.bigbrightpaints.erp.modules.accounting.service.PeriodCloseHook;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
@@ -75,7 +74,6 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
   @Mock private ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
   @Mock private PeriodCloseRequestRepository periodCloseRequestRepository;
   @Mock private ObjectProvider<JournalEntryService> journalEntryServiceProvider;
-  @Mock private PeriodCloseHook periodCloseHook;
   @Mock private AccountingPeriodSnapshotService snapshotService;
 
   @AfterEach
@@ -147,7 +145,6 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
     assertThat(period.getStatus()).isEqualTo(AccountingPeriodStatus.OPEN);
     assertThat(period.getReopenReason()).isEqualTo("reopen month");
 
-    verify(periodCloseHook).onPeriodCloseLocked(company, period);
     verify(snapshotService).captureSnapshot(company, period, "checker.user");
     verify(snapshotService).deleteSnapshotForPeriod(company, period);
   }
@@ -363,7 +360,6 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
         reconciliationDiscrepancyRepository,
         periodCloseRequestRepository,
         journalEntryServiceProvider,
-        periodCloseHook,
         snapshotService);
   }
 

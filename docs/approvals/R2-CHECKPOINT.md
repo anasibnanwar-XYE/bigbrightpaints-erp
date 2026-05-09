@@ -30,6 +30,30 @@ Last reviewed: 2026-05-14
   - `bash ci/lint-knowledgebase.sh`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
 
+## Addendum — `hard-cut-accounting-period-close-hook-cleanup`
+
+- Scope: removes the production test-only period-close hook layer from accounting period close and moves the concurrency pause into the period-close atomicity integration test with a test-local PostgreSQL trigger/advisory lock.
+- Risk trigger: touches high-risk accounting close/reopen code and period-close tests under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/**` and `erp-domain/src/test/java/**`.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no accounting workflow, tenant boundary, approval rule, or migration behavior changed. The cleanup removes a production bean that existed only for tests; period close still takes the pessimistic period lock, captures the snapshot before marking the period closed, and rejects concurrent posting after close.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the hook cleanup commit and rerun compile, Spotless, high-risk guard, and focused period-close tests.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - removed period-close hook names have no remaining source/docs/CI references
+  - the period-close atomicity integration test still proves posting blocks while close holds the accounting-period lock, now using test-owned database blocking instead of a production hook
+  - accounting period close/reopen unit and runtime coverage still pass
+- Commands run:
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Dtest=AccountingPeriodServiceTest,AccountingPeriodServicePolicyTest,PeriodCloseAtomicityTest,TS_RuntimeAccountingFacadePeriodCloseBoundaryTest,TS_RuntimeAccountingPeriodServiceExecutableCoverageTest,TS_RuntimeAccountingPeriodPolicyExecutableCoverageTest,TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest -Djacoco.skip=true test`
+  - `MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `git diff --check`
+  - `bash ci/check-high-risk-changes.sh`
+- Result summary:
+  - test-compile passed after removing the production hook
+  - focused period-close pack reported 89 tests run, 0 failures/errors/skips
+  - Spotless check, whitespace diff check, high-risk guard, and stale hook-name scan passed
+
 ## Addendum — `hard-cut-runtime-auth-cleanup`
 
 - Scope: hard-cut cleanup branch that removes the duplicate tenant runtime access layer, unused SQL-backed IAM entity mirrors, and unused DTO leftovers while keeping the canonical runtime/auth/API contracts intact.

@@ -88,7 +88,6 @@ class AccountingPeriodServiceTest {
   @Mock private ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
   @Mock private PeriodCloseRequestRepository periodCloseRequestRepository;
   @Mock private ObjectProvider<JournalEntryService> journalEntryServiceProvider;
-  @Mock private PeriodCloseHook periodCloseHook;
   @Mock private AccountingPeriodSnapshotService snapshotService;
   @Mock private ClosedPeriodPostingExceptionService closedPeriodPostingExceptionService;
   @Mock private AccountingComplianceAuditService accountingComplianceAuditService;
@@ -122,7 +121,6 @@ class AccountingPeriodServiceTest {
             reconciliationDiscrepancyRepository,
             periodCloseRequestRepository,
             journalEntryServiceProvider,
-            periodCloseHook,
             snapshotService);
     ReflectionFieldAccess.setField(
         service, "closedPeriodPostingExceptionService", closedPeriodPostingExceptionService);
@@ -374,7 +372,6 @@ class AccountingPeriodServiceTest {
     assertThat(period.getClosingJournalEntryId()).isNull();
     assertThat(pending.getStatus()).isEqualTo(PeriodCloseRequestStatus.APPROVED);
     assertThat(pending.getReviewedBy()).isEqualTo("checker.user");
-    verify(periodCloseHook).onPeriodCloseLocked(company, period);
     verify(snapshotService).captureSnapshot(company, period, "checker.user");
     verify(journalEntryRepository, never()).findByCompanyAndReferenceNumber(any(), anyString());
   }
@@ -598,7 +595,6 @@ class AccountingPeriodServiceTest {
                 service.approvePeriodClose(33L, new PeriodCloseRequestActionRequest("close", true)))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Un-invoiced goods receipts exist in this period (3)");
-    verify(periodCloseHook).onPeriodCloseLocked(company, period);
     verify(snapshotService, never()).captureSnapshot(any(), any(), anyString());
     verify(accountingPeriodRepository, never()).save(any(AccountingPeriod.class));
   }
