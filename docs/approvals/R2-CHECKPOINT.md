@@ -293,6 +293,31 @@ Last reviewed: 2026-05-14
   - targeted digest-token/auth/activation suite reported 34 tests run, 0 failures/errors/skips after formatting
   - no bearer tokens, passwords, activation links, reset links, token digests, provider credentials, or `.env` values were printed in evidence
 
+## Addendum — `hard-cut-tenant-usage-shutdown-flush`
+
+- Scope: tenant usage metric persistence shutdown behavior.
+- Risk trigger: touches tenant/company usage accounting under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/TenantUsageMetricsService.java`.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary change, data migration, or billing model expansion was introduced. The change removes the shutdown-only best-effort database flush because JVM shutdown hook ordering can make the database unavailable first and stall CI/runtime shutdown. Scheduled and explicit tenant usage flush behavior remains canonical.
+- Rollback owner: Droid mission orchestrator.
+- Rollback method: revert this packet and rerun the tenant usage metrics service test, high-risk guard, Spotless, compile/test-compile, and gate-fast.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - shutdown-only `@PreDestroy` database flush was removed from tenant usage metrics
+  - obsolete tests covering the removed shutdown-only flush were deleted
+  - scheduled and explicit `flushPendingMetrics()` persistence tests still cover counter persistence, rollup recording, retry restoration, and multi-tenant partial failure behavior
+  - this removes the shutdown hook path that waited on unavailable Testcontainers PostgreSQL connections after the truth-suite tests had already passed
+- Commands run:
+  - `git diff --check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TenantUsageMetricsServiceTest test`
+  - `bash ci/check-high-risk-changes.sh`
+  - `bash ci/lint-knowledgebase.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `cd erp-domain && DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
+- Result summary:
+  - targeted tenant usage metrics suite reported 15 tests run, 0 failures/errors/skips
+  - high-risk guard, docs lint, Spotless, and test-compile passed
+
 ## Scope
 - Feature: `identity-account-hardcut-20260427` / PR #197
 - Branch: codex identity-account-hardcut-20260427

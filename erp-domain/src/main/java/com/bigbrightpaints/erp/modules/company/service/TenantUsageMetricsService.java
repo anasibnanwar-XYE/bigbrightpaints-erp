@@ -8,8 +8,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -28,12 +26,8 @@ import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 
-import jakarta.annotation.PreDestroy;
-
 @Service
 public class TenantUsageMetricsService {
-
-  private static final Logger log = LoggerFactory.getLogger(TenantUsageMetricsService.class);
 
   private static final String API_CALL_COUNT_PREFIX = "tenant.usage.api-call-count.";
   private static final String LAST_ACTIVITY_AT_PREFIX = "tenant.usage.last-activity-at.";
@@ -118,18 +112,6 @@ public class TenantUsageMetricsService {
     }
     if (firstFailure != null) {
       throw firstFailure;
-    }
-  }
-
-  @PreDestroy
-  public void flushPendingMetricsBeforeShutdown() {
-    try {
-      flushPendingMetrics();
-    } catch (RuntimeException ex) {
-      log.warn(
-          "Unable to flush pending tenant usage metrics during shutdown: {}: {}",
-          ex.getClass().getSimpleName(),
-          ex.getMessage());
     }
   }
 

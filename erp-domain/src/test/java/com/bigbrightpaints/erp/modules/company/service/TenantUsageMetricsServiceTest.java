@@ -209,36 +209,6 @@ class TenantUsageMetricsServiceTest {
   }
 
   @Test
-  void flushPendingMetricsBeforeShutdown_persistsBufferedUsage() {
-    TenantUsageMetricsService service =
-        new TenantUsageMetricsService(
-            companyRepository, systemSettingsRepository, tenantUsageRollupService);
-    Company company = company(42L, "ACME");
-    when(companyRepository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(company));
-
-    service.recordApiCall("ACME");
-    service.recordApiCall("ACME");
-    service.flushPendingMetricsBeforeShutdown();
-
-    verify(systemSettingsRepository).incrementLongSettingBy("tenant.usage.api-call-count.42", 2L);
-    verify(tenantUsageRollupService).recordApiCalls(company, 2L);
-  }
-
-  @Test
-  void flushPendingMetricsBeforeShutdown_doesNotThrowWhenFinalFlushCannotReachStorage() {
-    TenantUsageMetricsService service =
-        new TenantUsageMetricsService(
-            companyRepository, systemSettingsRepository, tenantUsageRollupService);
-    when(companyRepository.findByCodeIgnoreCase("ACME"))
-        .thenThrow(new RuntimeException("storage-down"));
-
-    service.recordApiCall("ACME");
-    service.flushPendingMetricsBeforeShutdown();
-
-    verify(companyRepository).findByCodeIgnoreCase("ACME");
-  }
-
-  @Test
   void flushPendingMetrics_restoresDrainedUsageWhenPersistenceFails() {
     TenantUsageMetricsService service =
         new TenantUsageMetricsService(
