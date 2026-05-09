@@ -66,7 +66,8 @@ class ProducedAtTimezoneTest extends AbstractIntegrationTest {
     Map<String, Account> accounts = ensureManufacturingAccounts(company);
     ProductionProduct product = ensureProductionProduct(company, accounts, "RISK-FG-" + shortId());
 
-    RawMaterial material = ensureRawMaterial(company, accounts.get("RM_INV"), "RISK-RM-" + shortId());
+    RawMaterial material =
+        ensureRawMaterial(company, accounts.get("RM_INV"), "RISK-RM-" + shortId());
     ensureRawMaterialBatch(material, new BigDecimal("100"), new BigDecimal("5.00"));
 
     LocalDate today = companyClock.today(company);
