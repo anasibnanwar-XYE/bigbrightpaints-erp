@@ -1,6 +1,6 @@
 # orchestrator-erp — Backend Documentation Index
 
-Last reviewed: 2026-05-05
+Last reviewed: 2026-05-09
 
 This is the canonical entrypoint for backend documentation. Every major docs section is linked from here. If a change is not reachable through this index, it is not part of the canonical docs tree.
 
@@ -81,6 +81,10 @@ The seeded ADR set covers multi-tenant auth scoping (ADR-002), outbox/idempotenc
 
 | Document | Purpose |
 | --- | --- |
+| [docs/frontend/roles-and-permissions.md](frontend/roles-and-permissions.md) | **Frontend role map** — portal entry, role abilities, forbidden actions, shared permission UX rules |
+| [docs/frontend/api-contract.md](frontend/api-contract.md) | **Compact current API contract** — auth bootstrap, tenant scope, endpoint ownership, error/idempotency rules, request examples |
+| [docs/frontend/workflows.md](frontend/workflows.md) | **Cross-portal workflow map** — bootstrap, onboarding, user management, O2C, P2P, production, period close, support and approvals |
+| [docs/frontend/removed-legacy-behavior.md](frontend/removed-legacy-behavior.md) | **Hard-cut frontend boundary** — legacy routes, scope assumptions, workflow aliases, and compatibility UX that must not be rebuilt |
 | [docs/frontend-portals/README.md](frontend-portals/README.md) | **Canonical portal ownership map** — six portal shells (superadmin, tenant-admin, accounting, sales, factory, dealer-client), each with routes, API contracts, workflows, role-boundaries, states-and-errors, and playwright-journeys |
 | [docs/frontend-api/README.md](frontend-api/README.md) | **Canonical shared API contracts** — bootstrap rules (`GET /api/v1/auth/me` as sole entry), tenant scoping (`companyCode`), retired-route warnings, and shared topic files (auth/company-scope, pagination/filters, exports/approvals, idempotency/errors, accounting-reference-chains, dto-examples) |
 
