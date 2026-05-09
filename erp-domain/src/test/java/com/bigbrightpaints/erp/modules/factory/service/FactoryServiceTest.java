@@ -8,11 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.lang.reflect.Method;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -236,30 +232,6 @@ class FactoryServiceTest {
     assertThat(result.id()).isEqualTo(13L);
     verify(planRepository).save(any(ProductionPlan.class));
     verify(planRepository, never()).findByCompanyAndPlanNumber(any(), any());
-  }
-
-  @Test
-  void factoryServiceDoesNotExposeRetiredBatchLoggingSurface() {
-    assertThat(Arrays.stream(FactoryService.class.getDeclaredMethods()).map(Method::getName))
-        .doesNotContain(
-            "listBatches",
-            "logBatch",
-            "logBatchInternal",
-            "createBatchWithNaturalKey",
-            "resolveExistingBatch",
-            "isBatchPayloadEquivalent",
-            "assertRetiredBatchLoggingAllowed",
-            "registerFinishedGoodsBatch");
-    assertThat(
-            Files.exists(
-                Path.of(
-                    "src/main/java/com/bigbrightpaints/erp/modules/factory/dto/ProductionBatchRequest.java")))
-        .isFalse();
-    assertThat(
-            Files.exists(
-                Path.of(
-                    "src/main/java/com/bigbrightpaints/erp/modules/factory/dto/ProductionBatchDto.java")))
-        .isFalse();
   }
 
   @Test

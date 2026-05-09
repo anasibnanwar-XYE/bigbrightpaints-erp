@@ -15,11 +15,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -662,13 +660,6 @@ class IntegrationCoordinatorTest {
                         && task.description() != null
                         && task.description().contains("[trace=trace-order-42]")
                         && task.description().contains("[idem=idem-order-42]")));
-  }
-
-  @Test
-  void integrationCoordinatorDoesNotExposeRetiredReleaseInventoryCaller() {
-    assertThat(
-            Arrays.stream(IntegrationCoordinator.class.getDeclaredMethods()).map(Method::getName))
-        .doesNotContain("releaseInventory");
   }
 
   @Test

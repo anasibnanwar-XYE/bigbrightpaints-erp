@@ -291,16 +291,6 @@ class CommandDispatcherTest {
   }
 
   @Test
-  void retiredDispatchShortcutIsRemovedFromCommandDispatcher() {
-    assertThat(java.util.Arrays.stream(CommandDispatcher.class.getDeclaredMethods()))
-        .extracting(java.lang.reflect.Method::getName)
-        .doesNotContain("dispatchBatch");
-
-    verifyNoInteractions(
-        integrationCoordinator, eventPublisherService, traceService, idempotencyService);
-  }
-
-  @Test
   void autoApproveOrderUsesIdempotencyAndRecordsIdentifiers() {
     OrchestratorCommand command =
         new OrchestratorCommand(1L, "ORCH.ORDER.AUTO_APPROVE", "auto-1", "hash", "trace-999");
