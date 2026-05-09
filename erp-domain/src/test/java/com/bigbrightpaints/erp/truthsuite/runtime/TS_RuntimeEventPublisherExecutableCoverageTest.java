@@ -13,11 +13,15 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.amqp.AmqpConnectException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -48,7 +52,15 @@ class TS_RuntimeEventPublisherExecutableCoverageTest {
 
     EventPublisherService service =
         new EventPublisherService(
-            outboxEventRepository, rabbitTemplate, companyContextService, objectMapper(), null);
+            outboxEventRepository,
+            rabbitTemplate,
+            companyContextService,
+            objectMapper(),
+            new ResourcelessTransactionManager(),
+            120,
+            300,
+            "PT5M",
+            null);
 
     DomainEvent event =
         DomainEvent.of(
@@ -85,23 +97,49 @@ class TS_RuntimeEventPublisherExecutableCoverageTest {
     CompanyContextService companyContextService = mock(CompanyContextService.class);
     EventPublisherService service =
         new EventPublisherService(
-            outboxEventRepository, rabbitTemplate, companyContextService, objectMapper(), null);
+            outboxEventRepository,
+            rabbitTemplate,
+            companyContextService,
+            objectMapper(),
+            new ResourcelessTransactionManager(),
+            120,
+            300,
+            "PT5M",
+            null);
 
     OutboxEvent success = new OutboxEvent("order", "SO-1", "OK", "{\"ok\":true}", 10L);
     OutboxEvent retry = new OutboxEvent("order", "SO-2", "RETRY", "{\"ok\":false}", 10L);
     OutboxEvent deadLetter = new OutboxEvent("order", "SO-3", "DLQ", "{\"ok\":false}", 10L);
+    UUID successId = UUID.randomUUID();
+    UUID retryId = UUID.randomUUID();
+    UUID deadLetterId = UUID.randomUUID();
+    ReflectionTestUtils.setField(success, "id", successId);
+    ReflectionTestUtils.setField(retry, "id", retryId);
+    ReflectionTestUtils.setField(deadLetter, "id", deadLetterId);
     ReflectionTestUtils.setField(deadLetter, "retryCount", 4);
 
     when(outboxEventRepository
             .findTop10ByStatusAndDeadLetterFalseAndNextAttemptAtLessThanEqualOrderByCreatedAtAsc(
+                eq(OutboxEvent.Status.PUBLISHING), any()))
+        .thenReturn(List.of());
+    when(outboxEventRepository
+            .findTop10ByStatusAndDeadLetterFalseAndNextAttemptAtLessThanEqualOrderByCreatedAtAsc(
                 eq(OutboxEvent.Status.PENDING), any()))
         .thenReturn(List.of(success, retry, deadLetter));
+    when(outboxEventRepository.findByIdForUpdate(successId))
+        .thenReturn(Optional.of(success), Optional.of(success));
+    when(outboxEventRepository.findByIdForUpdate(retryId))
+        .thenReturn(Optional.of(retry), Optional.of(retry));
+    when(outboxEventRepository.findByIdForUpdate(deadLetterId))
+        .thenReturn(Optional.of(deadLetter), Optional.of(deadLetter));
+    when(outboxEventRepository.saveAndFlush(any(OutboxEvent.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
 
     doAnswer(
             invocation -> {
               String routingKey = invocation.getArgument(1);
               if ("RETRY".equals(routingKey) || "DLQ".equals(routingKey)) {
-                throw new RuntimeException("broker down");
+                throw new AmqpConnectException(new RuntimeException("broker down"));
               }
               return null;
             })
@@ -116,12 +154,12 @@ class TS_RuntimeEventPublisherExecutableCoverageTest {
     assertThat(retry.getStatus()).isEqualTo(OutboxEvent.Status.PENDING);
     assertThat(retry.getRetryCount()).isEqualTo(1);
     assertThat(retry.isDeadLetter()).isFalse();
-    assertThat(retry.getLastError()).isEqualTo("broker down");
+    assertThat(retry.getLastError()).isEqualTo("java.lang.RuntimeException: broker down");
 
     assertThat(deadLetter.getStatus()).isEqualTo(OutboxEvent.Status.FAILED);
     assertThat(deadLetter.getRetryCount()).isEqualTo(5);
     assertThat(deadLetter.isDeadLetter()).isTrue();
-    assertThat(deadLetter.getLastError()).isEqualTo("broker down");
+    assertThat(deadLetter.getLastError()).isEqualTo("java.lang.RuntimeException: broker down");
   }
 
   @Test
@@ -131,7 +169,15 @@ class TS_RuntimeEventPublisherExecutableCoverageTest {
     CompanyContextService companyContextService = mock(CompanyContextService.class);
     EventPublisherService service =
         new EventPublisherService(
-            outboxEventRepository, rabbitTemplate, companyContextService, objectMapper(), null);
+            outboxEventRepository,
+            rabbitTemplate,
+            companyContextService,
+            objectMapper(),
+            new ResourcelessTransactionManager(),
+            120,
+            300,
+            "PT5M",
+            null);
 
     when(outboxEventRepository.countByStatusAndDeadLetterFalse(OutboxEvent.Status.PENDING))
         .thenReturn(7L);
@@ -178,7 +224,15 @@ class TS_RuntimeEventPublisherExecutableCoverageTest {
 
     EventPublisherService service =
         new EventPublisherService(
-            outboxEventRepository, rabbitTemplate, companyContextService, objectMapper, null);
+            outboxEventRepository,
+            rabbitTemplate,
+            companyContextService,
+            objectMapper,
+            new ResourcelessTransactionManager(),
+            120,
+            300,
+            "PT5M",
+            null);
 
     DomainEvent event =
         DomainEvent.of(
@@ -206,6 +260,10 @@ class TS_RuntimeEventPublisherExecutableCoverageTest {
             mock(RabbitTemplate.class),
             mock(CompanyContextService.class),
             objectMapper(),
+            new ResourcelessTransactionManager(),
+            120,
+            300,
+            "PT5M",
             null);
 
     assertThat(

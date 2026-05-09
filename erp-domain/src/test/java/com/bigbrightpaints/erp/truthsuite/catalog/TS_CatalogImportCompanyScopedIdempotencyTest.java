@@ -12,7 +12,7 @@ class TS_CatalogImportCompanyScopedIdempotencyTest {
   private static final String CATALOG_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/production/service/ProductionCatalogService.java";
   private static final String CATALOG_MIGRATION =
-      "src/main/resources/db/migration/V127__catalog_import_idempotency.sql";
+      "src/main/resources/db/migration_v2/V4__inventory_production.sql";
 
   @Test
   void catalogImportIsCompanyScopedAndIdempotentByReserveFirst() {
@@ -39,6 +39,9 @@ class TS_CatalogImportCompanyScopedIdempotencyTest {
 
   @Test
   void catalogImportSchemaEnforcesUniqueCompanyAndIdempotencyKey() {
-    TruthSuiteFileAssert.assertContains(CATALOG_MIGRATION, "UNIQUE(company_id, idempotency_key)");
+    TruthSuiteFileAssert.assertContains(
+        CATALOG_MIGRATION,
+        "ADD CONSTRAINT catalog_imports_company_id_idempotency_key_key UNIQUE (company_id,"
+            + " idempotency_key)");
   }
 }
