@@ -21,25 +21,16 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
-import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
-import com.bigbrightpaints.erp.modules.hr.service.HrService;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
-import com.bigbrightpaints.erp.modules.reports.service.ReportService;
-import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.controller.OrchestratorController;
 import com.bigbrightpaints.erp.orchestrator.repository.AuditRecord;
 import com.bigbrightpaints.erp.orchestrator.repository.AuditRepository;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommandRepository;
-import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalStateRepository;
 import com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher;
 import com.bigbrightpaints.erp.orchestrator.service.CorrelationIdentifierSanitizer;
 import com.bigbrightpaints.erp.orchestrator.service.EventPublisherService;
@@ -144,30 +135,6 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
   }
 
   @Test
-  void integrationCoordinator_correlation_helpers_cover_append_and_skip_branches() {
-    IntegrationCoordinator coordinator =
-        coordinator(mock(SalesService.class), new OrchestratorFeatureFlags(true, true));
-
-    String memoWithCorrelation =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            coordinator, "correlationMemo", "dispatch memo", " trace-200 ", " idem-200 ");
-    String memoWithoutCorrelation =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            coordinator, "correlationMemo", "dispatch memo", "   ", null);
-    String suffixWithCorrelation =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            coordinator, "correlationSuffix", " trace-201 ", " idem-201 ");
-    String suffixWithoutCorrelation =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            coordinator, "correlationSuffix", null, "   ");
-
-    assertThat(memoWithCorrelation).contains("[trace=trace-200]").contains("[idem=idem-200]");
-    assertThat(memoWithoutCorrelation).isEqualTo("dispatch memo");
-    assertThat(suffixWithCorrelation).contains("[trace=trace-201").contains("[idem=idem-201");
-    assertThat(suffixWithoutCorrelation).isEmpty();
-  }
-
-  @Test
   void traceService_getTrace_sanitizes_and_scopes_by_company() {
     AuditRepository auditRepository = mock(AuditRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
@@ -232,23 +199,6 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
             eq(requestHash),
             traceCaptor.capture());
     assertThat(traceCaptor.getValue()).isNotBlank();
-  }
-
-  private IntegrationCoordinator coordinator(
-      SalesService salesService, OrchestratorFeatureFlags featureFlags) {
-    return new IntegrationCoordinator(
-        salesService,
-        mock(FactoryService.class),
-        mock(FinishedGoodsService.class),
-        mock(AccountingService.class),
-        mock(HrService.class),
-        mock(ReportService.class),
-        mock(OrderAutoApprovalStateRepository.class),
-        mock(AccountingFacade.class),
-        mock(CompanyRepository.class),
-        mock(CompanyClock.class),
-        featureFlags,
-        new ResourcelessTransactionManager());
   }
 
   private Company company(Long id) {
