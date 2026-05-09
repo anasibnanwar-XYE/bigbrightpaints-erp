@@ -195,8 +195,7 @@ class OrderSupportCoordinator {
   void requireFactoryDispatchEnabled() {
     if (featureFlags != null && !featureFlags.isFactoryDispatchEnabled()) {
       throw new ApplicationException(
-              ErrorCode.BUSINESS_INVALID_STATE,
-              "Orchestrator factory dispatch is disabled (CODE-RED).")
+              ErrorCode.BUSINESS_INVALID_STATE, "Orchestrator factory dispatch is disabled (risk).")
           .withDetail("canonicalPath", "/api/v1/factory");
     }
   }

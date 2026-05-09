@@ -14,8 +14,8 @@ class TS_OrchestratorIdempotencyCoverageTest {
       "src/main/java/com/bigbrightpaints/erp/orchestrator/service/CommandDispatcher.java";
   private static final String INTEGRATION_COORDINATOR =
       "src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java";
-  private static final String FINISHED_GOODS_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java";
+  private static final String FINISHED_GOODS_RESERVATION_ENGINE =
+      "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsReservationEngine.java";
 
   @Test
   void commandDispatcher_uses_lease_lifecycle_for_idempotent_execution() {
@@ -41,10 +41,10 @@ class TS_OrchestratorIdempotencyCoverageTest {
   @Test
   void finishedGoods_reservation_replay_short_circuits_duplicate_allocation_paths() {
     TruthSuiteFileAssert.assertContains(
-        FINISHED_GOODS_SERVICE,
+        FINISHED_GOODS_RESERVATION_ENGINE,
         "if (!slip.getLines().isEmpty()) {",
         "if (slipLinesMatchOrder(slip, managedOrder)) {",
-        "return new InventoryReservationResult(toSlipDto(slip), List.of());",
+        "return new FinishedGoodsService.InventoryReservationResult(toSlipDto(slip), List.of());",
         "releaseReservationsForOrder(order.getId());");
   }
 }
