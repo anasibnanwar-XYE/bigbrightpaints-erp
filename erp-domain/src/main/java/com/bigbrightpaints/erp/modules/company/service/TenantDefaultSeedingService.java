@@ -454,7 +454,7 @@ public class TenantDefaultSeedingService {
         List.of(
             new TenantSeedStatusDto.DocumentPrefix("SALES_ORDER", "SO-"),
             new TenantSeedStatusDto.DocumentPrefix("INVOICE", "INV-"),
-            new TenantSeedStatusDto.DocumentPrefix("CREDIT_NOTE", "CN-"),
+            new TenantSeedStatusDto.DocumentPrefix("CREDIT_NOTE", "CRN-"),
             new TenantSeedStatusDto.DocumentPrefix("PURCHASE_ORDER", "PO-"),
             new TenantSeedStatusDto.DocumentPrefix("RECEIPT", "RCP-")),
         roleTemplates());

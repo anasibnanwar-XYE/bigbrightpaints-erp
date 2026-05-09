@@ -38,8 +38,7 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 /**
  * Canonical tenant runtime policy-mutation and snapshot owner.
  *
- * <p>Request admission now enters through {@link TenantRuntimeRequestAdmissionService} so runtime
- * filters, interceptors, and auth flows do not bind directly to this policy service.
+ * <p>Runtime filters, interceptors, and auth flows bind directly to this canonical service.
  */
 @Service
 public class TenantRuntimeEnforcementService {
@@ -93,12 +92,12 @@ public class TenantRuntimeEnforcementService {
     this.persistedPolicyCacheTtlMillis = Math.max(1L, policyCacheSeconds) * 1000L;
   }
 
-  TenantRequestAdmission admitRequest(
+  public TenantRequestAdmission admitRequest(
       String companyCode, String requestPath, String requestMethod, String actor) {
     return admitRequest(companyCode, requestPath, requestMethod, actor, false);
   }
 
-  TenantRequestAdmission admitRequest(
+  public TenantRequestAdmission admitRequest(
       String companyCode,
       String requestPath,
       String requestMethod,
@@ -199,7 +198,7 @@ public class TenantRuntimeEnforcementService {
     return TenantRequestAdmission.admitted(normalizedCompany, policy.auditChainId, usageCounters);
   }
 
-  void completeRequestAdmission(TenantRequestAdmission admission, int responseStatus) {
+  public void completeRequestAdmission(TenantRequestAdmission admission, int responseStatus) {
     if (admission == null || !admission.isAdmitted()) {
       return;
     }
@@ -212,7 +211,7 @@ public class TenantRuntimeEnforcementService {
     }
   }
 
-  void enforceAuthOperation(String companyCode, String actor, String operation) {
+  public void enforceAuthOperation(String companyCode, String actor, String operation) {
     String normalizedCompany = requireCompanyCode(companyCode);
     String scope = "auth_" + normalizeUpperToken(operation, "UNKNOWN");
     TenantRuntimeCounters usageCounters = countersFor(normalizedCompany);
@@ -1216,19 +1215,19 @@ public class TenantRuntimeEnforcementService {
     };
   }
 
-  private int parseRuntimeLimit(String rawValue, int fallback) {
+  private int parseRuntimeLimit(String rawValue, int defaultValue) {
     if (!StringUtils.hasText(rawValue)) {
-      return fallback;
+      return defaultValue;
     }
     String normalized = rawValue.trim();
     if (!normalized.chars().allMatch(Character::isDigit)) {
-      return fallback;
+      return defaultValue;
     }
     try {
       int parsed = Integer.parseInt(normalized);
-      return parsed >= 0 ? parsed : fallback;
+      return parsed >= 0 ? parsed : defaultValue;
     } catch (NumberFormatException ex) {
-      return fallback;
+      return defaultValue;
     }
   }
 
@@ -1243,9 +1242,12 @@ public class TenantRuntimeEnforcementService {
     }
   }
 
-  private String readSetting(String companyCode, String key, String fallback) {
+  private String readSetting(String companyCode, String key, String defaultValue) {
     try {
-      return systemSettingsRepository.findById(key).map(SystemSetting::getValue).orElse(fallback);
+      return systemSettingsRepository
+          .findById(key)
+          .map(SystemSetting::getValue)
+          .orElse(defaultValue);
     } catch (RuntimeException ex) {
       throw new TenantRuntimeAdmissionFailure(
           unavailableRejection(
@@ -1469,9 +1471,9 @@ public class TenantRuntimeEnforcementService {
     return normalizeUpperToken(reasonCode, DEFAULT_REASON);
   }
 
-  private String normalizeUpperToken(String value, String fallback) {
+  private String normalizeUpperToken(String value, String defaultValue) {
     if (!StringUtils.hasText(value)) {
-      return fallback;
+      return defaultValue;
     }
     return IdempotencyUtils.normalizeUpperToken(value);
   }
@@ -1792,22 +1794,22 @@ public class TenantRuntimeEnforcementService {
       this.policyRefreshAfterEpochMillis = policyRefreshAfterEpochMillis;
     }
 
-    private int effectiveMaxConcurrentRequests(int fallback) {
+    private int effectiveMaxConcurrentRequests(int defaultValue) {
       return maxConcurrentRequests == UNLIMITED_LIMIT
           ? UNLIMITED_LIMIT
-          : Math.max(MIN_LIMIT, maxConcurrentRequests > 0 ? maxConcurrentRequests : fallback);
+          : Math.max(MIN_LIMIT, maxConcurrentRequests > 0 ? maxConcurrentRequests : defaultValue);
     }
 
-    private int effectiveMaxRequestsPerMinute(int fallback) {
+    private int effectiveMaxRequestsPerMinute(int defaultValue) {
       return maxRequestsPerMinute == UNLIMITED_LIMIT
           ? UNLIMITED_LIMIT
-          : Math.max(MIN_LIMIT, maxRequestsPerMinute > 0 ? maxRequestsPerMinute : fallback);
+          : Math.max(MIN_LIMIT, maxRequestsPerMinute > 0 ? maxRequestsPerMinute : defaultValue);
     }
 
-    private int effectiveMaxActiveUsers(int fallback) {
+    private int effectiveMaxActiveUsers(int defaultValue) {
       return maxActiveUsers == UNLIMITED_LIMIT
           ? UNLIMITED_LIMIT
-          : Math.max(MIN_LIMIT, maxActiveUsers > 0 ? maxActiveUsers : fallback);
+          : Math.max(MIN_LIMIT, maxActiveUsers > 0 ? maxActiveUsers : defaultValue);
     }
   }
 

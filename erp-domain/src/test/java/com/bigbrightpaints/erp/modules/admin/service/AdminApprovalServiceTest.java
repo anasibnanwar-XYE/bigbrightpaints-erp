@@ -323,7 +323,6 @@ class AdminApprovalServiceTest {
             BigDecimal.ONE,
             BigDecimal.ONE,
             BigDecimal.ONE,
-            BigDecimal.ONE,
             BigDecimal.ZERO,
             "APPROVED",
             "Reviewed and approved",

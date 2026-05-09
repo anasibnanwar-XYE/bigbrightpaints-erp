@@ -93,7 +93,7 @@ class TenantDefaultSeedingServiceTest {
     assertThat(first.paymentModes()).contains("CASH", "BANK_TRANSFER", "UPI", "CREDIT");
     assertThat(first.documentPrefixes())
         .extracting(TenantSeedStatusDto.DocumentPrefix::prefix)
-        .contains("INV-", "SO-", "PO-", "RCP-");
+        .contains("INV-", "SO-", "CRN-", "PO-", "RCP-");
     assertThat(first.roleTemplates())
         .extracting(TenantSeedStatusDto.RoleTemplate::key)
         .containsExactly("ROLE_ACCOUNTING", "ROLE_FACTORY", "ROLE_SALES", "ROLE_DEALER");

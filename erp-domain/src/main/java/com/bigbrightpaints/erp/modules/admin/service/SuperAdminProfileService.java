@@ -247,12 +247,12 @@ public class SuperAdminProfileService {
     return normalized.isEmpty() ? null : normalized;
   }
 
-  private String settingValue(String key, String fallback) {
+  private String settingValue(String key, String defaultValue) {
     return settingsRepository
         .findById(key)
         .map(SystemSetting::getValue)
         .filter(StringUtils::hasText)
-        .orElse(fallback);
+        .orElse(defaultValue);
   }
 
   private String timezoneKey(UserAccount user) {

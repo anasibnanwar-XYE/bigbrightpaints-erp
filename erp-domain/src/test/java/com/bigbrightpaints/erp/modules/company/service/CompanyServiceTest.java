@@ -231,7 +231,7 @@ class CompanyServiceTest {
 
   @Test
   void
-      synchronizeRuntimePolicyEnvelope_usesFallbackReasonAndActiveStateWhenLifecycleFieldsAreBlank() {
+      synchronizeRuntimePolicyEnvelope_usesDefaultReasonAndActiveStateWhenLifecycleFieldsAreBlank() {
     authenticateAs("ROLE_SUPER_ADMIN");
     Company target = company(4L, "ACME");
     target.setLifecycleState(null);
@@ -245,13 +245,13 @@ class CompanyServiceTest {
         "synchronizeRuntimePolicyEnvelope",
         target,
         SecurityContextHolder.getContext().getAuthentication(),
-        "fallback-sync");
+        "default-sync");
 
     verify(tenantRuntimeEnforcementService)
         .updatePolicy(
             "ACME",
             TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
-            "fallback-sync",
+            "default-sync",
             0,
             77,
             Integer.MAX_VALUE,
@@ -931,7 +931,7 @@ class CompanyServiceTest {
   }
 
   @Test
-  void companyRequest_legacyQuotaConstructor_initializesAdminFieldsAsNull() {
+  void companyRequest_quotaConstructorInitializesAdminFieldsAsNull() {
     CompanyRequest request =
         new CompanyRequest("Acme", "ACME", "UTC", BigDecimal.TEN, 10L, 20L, 30L, 40L, true, true);
 

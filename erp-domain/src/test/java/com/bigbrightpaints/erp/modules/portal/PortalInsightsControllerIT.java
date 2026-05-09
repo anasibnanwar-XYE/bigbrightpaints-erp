@@ -31,8 +31,8 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTask;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTaskRepository;
-import com.bigbrightpaints.erp.modules.factory.domain.ProductionBatch;
-import com.bigbrightpaints.erp.modules.factory.domain.ProductionBatchRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionPlan;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionPlanRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.Employee;
@@ -49,6 +49,10 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
@@ -70,7 +74,9 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
   @Autowired private PackagingSlipRepository packagingSlipRepository;
   @Autowired private EmployeeRepository employeeRepository;
   @Autowired private ProductionPlanRepository productionPlanRepository;
-  @Autowired private ProductionBatchRepository productionBatchRepository;
+  @Autowired private ProductionLogRepository productionLogRepository;
+  @Autowired private ProductionBrandRepository productionBrandRepository;
+  @Autowired private ProductionProductRepository productionProductRepository;
   @Autowired private FactoryTaskRepository factoryTaskRepository;
   @Autowired private RawMaterialRepository rawMaterialRepository;
   @Autowired private FinishedGoodRepository finishedGoodRepository;
@@ -161,13 +167,31 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
     plan.setStatus("IN DESIGN");
     plan = productionPlanRepository.saveAndFlush(plan);
 
-    ProductionBatch batch = new ProductionBatch();
-    batch.setCompany(company);
-    batch.setPlan(plan);
-    batch.setBatchNumber("BATCH-" + codeSuffix);
-    batch.setQuantityProduced(82);
-    batch.setProducedAt(Instant.now());
-    productionBatchRepository.save(batch);
+    ProductionBrand brand = new ProductionBrand();
+    brand.setCompany(company);
+    brand.setCode("BR-PORTAL-" + codeSuffix);
+    brand.setName("Portal Brand " + codeSuffix);
+    brand = productionBrandRepository.saveAndFlush(brand);
+
+    ProductionProduct product = new ProductionProduct();
+    product.setCompany(company);
+    product.setBrand(brand);
+    product.setSkuCode("SKU-PORTAL-" + codeSuffix);
+    product.setProductName("Portal Paint");
+    product.setCategory("FINISHED_GOOD");
+    product.setUnitOfMeasure("L");
+    product = productionProductRepository.saveAndFlush(product);
+
+    ProductionLog log = new ProductionLog();
+    log.setCompany(company);
+    log.setBrand(brand);
+    log.setProduct(product);
+    log.setProductionCode("PROD-PORTAL-" + codeSuffix);
+    log.setBatchSize(new BigDecimal("100"));
+    log.setUnitOfMeasure("L");
+    log.setMixedQuantity(new BigDecimal("82"));
+    log.setProducedAt(Instant.now());
+    productionLogRepository.save(log);
 
     FactoryTask task = new FactoryTask();
     task.setCompany(company);
@@ -195,7 +219,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
     payrollRun.setPeriodEnd(payrollEnd);
     payrollRun.setRunDate(payrollEnd);
     payrollRun.setRunNumber("PR-M-" + payrollEnd + "-" + codeSuffix);
-    payrollRun.setStatus("DRAFT");
+    payrollRun.setStatus(PayrollRun.PayrollStatus.DRAFT);
     payrollRunRepository.save(payrollRun);
 
     Account account = new Account();

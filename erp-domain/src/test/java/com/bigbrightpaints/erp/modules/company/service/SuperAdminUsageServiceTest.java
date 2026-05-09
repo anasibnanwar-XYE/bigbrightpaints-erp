@@ -18,12 +18,12 @@ import com.bigbrightpaints.erp.modules.company.dto.SuperAdminUsageDtos;
 class SuperAdminUsageServiceTest {
 
   @Mock private TenantUsageRollupService tenantUsageRollupService;
-  @Mock private TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
+  @Mock private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
 
   @Test
   void tenantUsageAddsRuntimeOperationalDimensionsFromAdmissionSnapshot() {
     SuperAdminUsageService service =
-        new SuperAdminUsageService(tenantUsageRollupService, tenantRuntimeRequestAdmissionService);
+        new SuperAdminUsageService(tenantUsageRollupService, tenantRuntimeEnforcementService);
     SuperAdminUsageDtos.Period monthly =
         new SuperAdminUsageDtos.Period(
             "MONTHLY",
@@ -48,7 +48,7 @@ class SuperAdminUsageServiceTest {
                 List.of(durableApiCalls),
                 List.of(),
                 List.of()));
-    when(tenantRuntimeRequestAdmissionService.snapshot("ACME"))
+    when(tenantRuntimeEnforcementService.snapshot("ACME"))
         .thenReturn(
             new TenantRuntimeEnforcementService.TenantRuntimeSnapshot(
                 "ACME",

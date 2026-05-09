@@ -213,14 +213,14 @@ public class TenantUsageMetricsService {
     systemSettingsRepository.save(new SystemSetting(key, value));
   }
 
-  private long parseLong(String raw, long fallback) {
+  private long parseLong(String raw, long defaultValue) {
     if (!StringUtils.hasText(raw)) {
-      return fallback;
+      return defaultValue;
     }
     try {
       return Long.parseLong(ValidationUtils.requireNotBlank(raw, "setting value"));
     } catch (RuntimeException ex) {
-      return fallback;
+      return defaultValue;
     }
   }
 

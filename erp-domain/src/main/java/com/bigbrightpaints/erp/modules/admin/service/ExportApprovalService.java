@@ -366,9 +366,9 @@ public class ExportApprovalService {
     };
   }
 
-  private String safeToken(String value, String fallback) {
+  private String safeToken(String value, String defaultValue) {
     if (!StringUtils.hasText(value)) {
-      return fallback;
+      return defaultValue;
     }
     return value.trim().replaceAll("[^A-Za-z0-9_-]", "-");
   }

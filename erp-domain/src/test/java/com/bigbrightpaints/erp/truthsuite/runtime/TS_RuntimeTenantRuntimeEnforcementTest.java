@@ -37,7 +37,6 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
-import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
 
 import io.jsonwebtoken.Claims;
 
@@ -47,7 +46,7 @@ import io.jsonwebtoken.Claims;
 @Tag("reconciliation")
 class TS_RuntimeTenantRuntimeEnforcementTest {
 
-  @Mock private TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
+  @Mock private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
 
   @Mock private CompanyService companyService;
 
@@ -59,7 +58,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
   void setUp() {
     filter =
         new CompanyContextFilter(
-            tenantRuntimeRequestAdmissionService,
+            tenantRuntimeEnforcementService,
             companyService,
             authScopeService,
             new ObjectMapper().findAndRegisterModules());
@@ -82,8 +81,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     filter.doFilter(request, response, new MockFilterChain());
 
     assertThat(response.getStatus()).isEqualTo(403);
-    verify(tenantRuntimeRequestAdmissionService)
-        .completeRequest(any(), org.mockito.ArgumentMatchers.eq(403));
+    verify(tenantRuntimeEnforcementService)
+        .completeRequestAdmission(any(), org.mockito.ArgumentMatchers.eq(403));
     verifyNoInteractions(companyService);
   }
 
@@ -113,8 +112,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     filter.doFilter(request, response, new MockFilterChain());
 
     assertThat(response.getStatus()).isEqualTo(403);
-    verify(tenantRuntimeRequestAdmissionService, never())
-        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    verify(tenantRuntimeEnforcementService, never())
+        .admitRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
   }
 
   @Test
@@ -124,7 +123,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         .thenReturn(CompanyLifecycleState.SUSPENDED);
     TenantRuntimeEnforcementService.TenantRequestAdmission admission =
         TenantRuntimeEnforcementService.TenantRequestAdmission.admitted("ACME", "chain-1");
-    when(tenantRuntimeRequestAdmissionService.beginRequest(
+    when(tenantRuntimeEnforcementService.admitRequest(
             "ACME", "/api/v1/private", "GET", "actor@bbp.com", false))
         .thenReturn(admission);
 
@@ -135,9 +134,9 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     filter.doFilter(request, response, new MockFilterChain());
 
     assertThat(response.getStatus()).isEqualTo(200);
-    verify(tenantRuntimeRequestAdmissionService)
-        .beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com", false);
-    verify(tenantRuntimeRequestAdmissionService).completeRequest(admission, 200);
+    verify(tenantRuntimeEnforcementService)
+        .admitRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com", false);
+    verify(tenantRuntimeEnforcementService).completeRequestAdmission(admission, 200);
   }
 
   @Test
@@ -145,7 +144,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     authenticateForCompany("actor@bbp.com", "ACME", "ROLE_ADMIN");
     when(companyService.resolveLifecycleStateByCode("ACME"))
         .thenReturn(CompanyLifecycleState.ACTIVE);
-    when(tenantRuntimeRequestAdmissionService.beginRequest(
+    when(tenantRuntimeEnforcementService.admitRequest(
             "ACME", "/api/v1/private", "GET", "actor@bbp.com", false))
         .thenReturn(null);
 
@@ -169,7 +168,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     TenantRuntimeEnforcementService.TenantRequestAdmission admission =
         TenantRuntimeEnforcementService.TenantRequestAdmission.admittedPolicyControl(
             "ACME", "chain-1");
-    when(tenantRuntimeRequestAdmissionService.beginRequest(
+    when(tenantRuntimeEnforcementService.admitRequest(
             "ACME", "/api/v1/superadmin/tenants/42/limits", "PUT", "super-admin@bbp.com", true))
         .thenReturn(admission);
 
@@ -185,10 +184,10 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
 
     assertThat(response.getStatus()).isEqualTo(200);
     assertThat(companyInChain.get()).isEqualTo("ACME");
-    verify(tenantRuntimeRequestAdmissionService)
-        .beginRequest(
+    verify(tenantRuntimeEnforcementService)
+        .admitRequest(
             "ACME", "/api/v1/superadmin/tenants/42/limits", "PUT", "super-admin@bbp.com", true);
-    verify(tenantRuntimeRequestAdmissionService).completeRequest(admission, 200);
+    verify(tenantRuntimeEnforcementService).completeRequestAdmission(admission, 200);
   }
 
   @Test
@@ -199,7 +198,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
 
     TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
         admission(true, "ACME", 200, null);
-    when(tenantRuntimeRequestAdmissionService.beginRequest(
+    when(tenantRuntimeEnforcementService.admitRequest(
             "ACME", "/api/v1/private", "GET", "actor@bbp.com", false))
         .thenReturn(admittedAdmission);
 
@@ -213,7 +212,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
 
     assertThat(companyInChain.get()).isEqualTo("ACME");
     assertThat(CompanyContextHolder.getCompanyCode()).isNull();
-    verify(tenantRuntimeRequestAdmissionService).completeRequest(admittedAdmission, 200);
+    verify(tenantRuntimeEnforcementService).completeRequestAdmission(admittedAdmission, 200);
   }
 
   @Test
@@ -226,7 +225,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     filter.doFilter(request, response, chain);
 
     assertThat(chain.getRequest()).isNotNull();
-    verifyNoInteractions(tenantRuntimeRequestAdmissionService, companyService);
+    verifyNoInteractions(tenantRuntimeEnforcementService, companyService);
   }
 
   private Claims claims(String companyCode, String legacyCompanyId) {

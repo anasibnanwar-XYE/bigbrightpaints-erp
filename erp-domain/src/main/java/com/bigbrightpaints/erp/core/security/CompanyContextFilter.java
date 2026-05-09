@@ -32,7 +32,6 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
-import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import io.jsonwebtoken.Claims;
@@ -120,7 +119,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
 
   private record CompanyBoundControlBinding(Long companyId, boolean tenantRuntimePolicyControl) {}
 
-  private final TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
+  private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
   private final CompanyService companyService;
   private final AuthScopeService authScopeService;
   private final ObjectMapper objectMapper;
@@ -130,11 +129,11 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   private AuditService auditService;
 
   public CompanyContextFilter(
-      TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService,
+      TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
       CompanyService companyService,
       AuthScopeService authScopeService,
       ObjectMapper objectMapper) {
-    this.tenantRuntimeRequestAdmissionService = tenantRuntimeRequestAdmissionService;
+    this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
     this.companyService = companyService;
     this.authScopeService = authScopeService;
     this.objectMapper = objectMapper;
@@ -334,7 +333,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         }
         if (!lifecycleControlRequest || tenantRuntimePolicyControlRequest) {
           TenantRuntimeEnforcementService.TenantRequestAdmission runtimeAdmission =
-              tenantRuntimeRequestAdmissionService.beginRequest(
+              tenantRuntimeEnforcementService.admitRequest(
                   companyCode,
                   runtimePath,
                   request.getMethod(),
@@ -365,7 +364,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       }
       filterChain.doFilter(request, response);
     } finally {
-      tenantRuntimeRequestAdmissionService.completeRequest(admission, response.getStatus());
+      tenantRuntimeEnforcementService.completeRequestAdmission(admission, response.getStatus());
       CompanyContextHolder.clear();
     }
   }
