@@ -24,6 +24,7 @@ import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -278,6 +279,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         request);
   }
 
+  @ExceptionHandler(MissingRequestHeaderException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleMissingRequestHeader(
+      MissingRequestHeaderException ex, HttpServletRequest request) {
+    return buildServletFrameworkError(
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+        "Required request header is missing",
+        request);
+  }
+
   @Override
   protected ResponseEntity<Object> handleNoHandlerFoundException(
       NoHandlerFoundException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
@@ -369,6 +380,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     data.put("reason", message);
     data.put("traceId", traceId);
     data.put("path", resolveRequestPath(request));
+    return ResponseEntity.status(status).body(ApiResponse.failure(message, data));
+  }
+
+  private ResponseEntity<ApiResponse<Map<String, Object>>> buildServletFrameworkError(
+      HttpStatus status, ErrorCode code, String message, HttpServletRequest request) {
+    String traceId = RequestTraceContext.traceId();
+    logger.warn("Safe framework request error [{}] - status: {}", traceId, status.value());
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", code.getCode());
+    data.put("message", message);
+    data.put("reason", message);
+    data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
     return ResponseEntity.status(status).body(ApiResponse.failure(message, data));
   }
 

@@ -390,7 +390,7 @@ class PurchaseJournalFacadeOperations {
       return;
     }
     if (journalReferenceMappingRepository
-        .findByCompanyAndLegacyReferenceIgnoreCase(company, baseReference)
+        .findByCompanyAndReferenceKeyIgnoreCase(company, baseReference)
         .isPresent()) {
       return;
     }

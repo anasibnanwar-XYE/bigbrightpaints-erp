@@ -121,7 +121,7 @@ class CR_ManualJournalSafetyTest extends AbstractIntegrationTest {
     assertThat(journalIds).as("Both callers receive the same journal id").hasSize(1);
 
     assertThat(
-            journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+            journalReferenceMappingRepository.findAllByCompanyAndReferenceKeyIgnoreCase(
                 company, idempotencyKey))
         .as("Single idempotency mapping row")
         .hasSize(1)
@@ -173,7 +173,7 @@ class CR_ManualJournalSafetyTest extends AbstractIntegrationTest {
     CompanyContextHolder.clear();
 
     assertThat(
-            journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+            journalReferenceMappingRepository.findAllByCompanyAndReferenceKeyIgnoreCase(
                 company, idempotencyKey))
         .as("Failed attempt should not leave a reserved mapping behind")
         .isEmpty();

@@ -186,9 +186,10 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void approve_order_request_id_fallback_normalizes_equivalent_payload_replay() {
+  void approve_order_explicit_idempotency_rejects_changed_payload_shape() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
+    headers.add("Idempotency-Key", "idem-" + UUID.randomUUID());
     headers.add("X-Request-Id", "req-" + UUID.randomUUID());
     long outboxBefore = outboxEventRepository.count();
 
@@ -225,9 +226,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
             Map.class);
 
     assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(secondResponse.getBody().get("traceId"))
-        .isEqualTo(firstResponse.getBody().get("traceId"));
+    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore + 1);
   }
 
@@ -275,10 +274,11 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void fulfillment_accepts_request_id_fallback_when_idempotency_header_missing() {
+  void fulfillment_uses_explicit_idempotency_with_optional_request_id() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
     String requestId = "req-" + UUID.randomUUID();
+    headers.add("Idempotency-Key", "idem-" + UUID.randomUUID());
     headers.add("X-Request-Id", requestId);
     long outboxBefore = outboxEventRepository.count();
 
@@ -309,7 +309,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void fulfillment_auto_derives_idempotency_key_when_headers_missing() {
+  void fulfillment_rejects_missing_idempotency_header() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
     long outboxBefore = outboxEventRepository.count();
@@ -319,31 +319,23 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
             "status", "PROCESSING",
             "notes", "start production auto");
 
-    ResponseEntity<Map> firstResponse =
+    ResponseEntity<Map> response =
         rest.exchange(
             "/api/v1/orchestrator/orders/" + seededOrderId + "/fulfillment",
             HttpMethod.POST,
             new HttpEntity<>(body, headers),
             Map.class);
 
-    ResponseEntity<Map> secondResponse =
-        rest.exchange(
-            "/api/v1/orchestrator/orders/" + seededOrderId + "/fulfillment",
-            HttpMethod.POST,
-            new HttpEntity<>(body, headers),
-            Map.class);
-
-    assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    String traceId = (String) firstResponse.getBody().get("traceId");
-    assertThat(secondResponse.getBody().get("traceId")).isEqualTo(traceId);
-    assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore + 1);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody()).containsEntry("success", false);
+    assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore);
   }
 
   @Test
-  void fulfillment_auto_key_treats_blank_and_missing_notes_as_equivalent() {
+  void fulfillment_explicit_idempotency_rejects_blank_and_missing_notes_mismatch() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
+    headers.add("Idempotency-Key", "idem-" + UUID.randomUUID());
     long outboxBefore = outboxEventRepository.count();
 
     Map<String, Object> firstBody = new HashMap<>();
@@ -368,16 +360,15 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
             Map.class);
 
     assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(secondResponse.getBody().get("traceId"))
-        .isEqualTo(firstResponse.getBody().get("traceId"));
+    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore + 1);
   }
 
   @Test
-  void fulfillment_auto_key_normalizes_status_case_for_replay() {
+  void fulfillment_explicit_idempotency_normalizes_status_case_for_replay() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
+    headers.add("Idempotency-Key", "idem-" + UUID.randomUUID());
     long outboxBefore = outboxEventRepository.count();
 
     Map<String, Object> lowerCaseBody =
@@ -411,9 +402,10 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void fulfillment_request_id_fallback_hashes_oversized_request_id() {
+  void fulfillment_explicit_idempotency_hashes_oversized_request_id() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
+    headers.add("Idempotency-Key", "idem-" + UUID.randomUUID());
     headers.add("X-Request-Id", "req-" + "x".repeat(420));
     long outboxBefore = outboxEventRepository.count();
 
@@ -444,7 +436,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void fulfillment_explicit_idempotency_key_keeps_payload_case_contract() {
+  void fulfillment_explicit_idempotency_key_replays_canonical_status_case() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
     headers.add("Idempotency-Key", "idem-" + UUID.randomUUID());
@@ -473,7 +465,9 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
             Map.class);
 
     assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+    assertThat(secondResponse.getBody().get("traceId"))
+        .isEqualTo(firstResponse.getBody().get("traceId"));
   }
 
   @Test

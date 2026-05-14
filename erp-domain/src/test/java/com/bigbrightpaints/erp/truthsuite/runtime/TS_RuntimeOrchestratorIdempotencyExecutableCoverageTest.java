@@ -431,14 +431,17 @@ class TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest {
         new Object() {
           @Override
           public String toString() {
-            return "fallback-payload";
+            return "unserializable-payload";
           }
         };
 
     assertThatThrownBy(
             () ->
                 service.start(
-                    "ORCH.ORDER.APPROVE", "idem-fallback", payload, () -> "trace-fallback"))
+                    "ORCH.ORDER.APPROVE",
+                    "idem-serialization-failure",
+                    payload,
+                    () -> "trace-serialization-failure"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("Unable to deterministically hash orchestrator payload");
     verify(commandRepository, never()).reserveScope(any(), any(), any(), any(), any());

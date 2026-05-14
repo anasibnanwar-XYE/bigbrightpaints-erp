@@ -162,7 +162,7 @@ public class ApiTraceFilter extends OncePerRequestFilter {
 
   private String resolveTraceId(HttpServletRequest request) {
     String candidate = firstHeader(request, TRACE_HEADER, "X-Request-ID", "X-Request-Id");
-    return CorrelationIdentifierSanitizer.sanitizeTraceIdOrFallback(
+    return CorrelationIdentifierSanitizer.sanitizeTraceIdOrGenerate(
         candidate, () -> UUID.randomUUID().toString());
   }
 

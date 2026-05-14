@@ -139,7 +139,7 @@ class TS_RuntimeAccountingFacadePeriodCloseBoundaryTest {
         .thenReturn(generatedReference);
     when(journalEntryRepository.findByCompanyAndReferenceNumber(company, generatedReference))
         .thenReturn(Optional.empty());
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             company, baseReference))
         .thenReturn(Optional.empty());
     when(accountingService.createStandardJournal(org.mockito.ArgumentMatchers.any()))
@@ -322,7 +322,7 @@ class TS_RuntimeAccountingFacadePeriodCloseBoundaryTest {
         .thenReturn(generatedReference);
     when(journalEntryRepository.findByCompanyAndReferenceNumber(company, generatedReference))
         .thenReturn(Optional.empty());
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             company, baseReference))
         .thenReturn(
             Optional.of(

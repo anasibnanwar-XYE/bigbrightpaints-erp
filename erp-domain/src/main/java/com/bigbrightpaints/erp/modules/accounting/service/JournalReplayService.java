@@ -104,7 +104,7 @@ class JournalReplayService {
       return Optional.empty();
     }
     List<JournalReferenceMapping> mappings =
-        journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+        journalReferenceMappingRepository.findAllByCompanyAndReferenceKeyIgnoreCase(
             company, idempotencyKey);
     if (mappings == null || mappings.isEmpty()) {
       return Optional.empty();

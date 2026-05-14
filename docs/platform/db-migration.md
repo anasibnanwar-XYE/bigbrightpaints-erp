@@ -217,13 +217,11 @@ Several modules expose bulk data-import endpoints that matter for backend unders
 | Endpoint | Method | Module | Purpose |
 | --- | --- | --- | --- |
 | `POST /api/v1/accounting/opening-balances` | Multipart file upload | accounting | Import opening balance journal entries from CSV. Admin-only (`ROLE_ADMIN`). Idempotency key + company-scoped unique constraint on `opening_balance_imports`. |
-| `POST /api/v1/migration/tally-import` | Multipart file upload | accounting | Import Tally XML data into the accounting system. Admin-only (`ROLE_ADMIN`). Idempotency key + company-scoped unique constraint on `tally_imports`. |
 
 Entity conventions for accounting imports:
 
 - `OpeningBalanceImport` extends `VersionedEntity`, carries `companyId`, `idempotencyKey`, `fileHash`, `status`, and row-level results.
-- `TallyImport` extends `VersionedEntity`, carries `companyId`, `idempotencyKey`, `fileHash`, `status`, and row-level results.
-- Both have `@UniqueConstraint(columnNames = {"company_id", "idempotency_key"})` at the JPA level.
+- It has `@UniqueConstraint(columnNames = {"company_id", "idempotency_key"})` at the JPA level.
 
 ### 6.2 Catalog import
 
@@ -247,8 +245,6 @@ Entity: The opening-stock import path uses `opening_stock_imports` with `company
 - All import endpoints require `ROLE_ADMIN` — they are not available to dealer or portal users.
 - Import services perform their own idempotency checks before processing; the shared `IdempotencyReservationService` is not always used directly (some imports use module-local import-table unique constraints instead).
 - Import results are persisted on the import record (row-level `results_json` or equivalent), so historical imports can be audited.
-- The Tally import uses the `/api/v1/migration/` host prefix rather than `/api/v1/accounting/`. This is a historical convention that has not been migrated to the accounting host.
-
 ---
 
 ## 7. Scope and Default-Value Caveats

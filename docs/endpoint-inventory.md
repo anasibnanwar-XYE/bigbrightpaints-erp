@@ -19,9 +19,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `43a4225c802b908590f39f91bdbd803139e8ad464d76d7c271b61fc541f11891`)
-- OpenAPI total paths: `362`
-- OpenAPI total operations: `428`
+- OpenAPI snapshot: `openapi.json` (sha256 `39a623dae25910e847e927813be82cdafde0614159068f275eb3c55c8a9ec955`)
+- OpenAPI total paths: `361`
+- OpenAPI total operations: `427`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 - Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, direct `/api/v1/accounting/periods/{periodId}/close`, removed Super Admin flat onboarding, and removed Super Admin support-reset routes are intentionally absent from this inventory and must not be reintroduced in frontend or review docs.
 
@@ -48,7 +48,6 @@ Portal scope guardrail:
 | `integration` | 1 | /api/integration/health |
 | `inventory` | 6 | /api/v1/inventory/adjustments, /api/v1/inventory/batches/expiring-soon, /api/v1/inventory/batches/{id}/movements |
 | `invoices` | 4 | /api/v1/invoices, /api/v1/invoices/{id}, /api/v1/invoices/{id}/email |
-| `migration` | 1 | /api/v1/migration/tally-import |
 | `orchestrator` | 8 | /api/v1/orchestrator/dashboard/admin, /api/v1/orchestrator/dashboard/factory, /api/v1/orchestrator/dashboard/finance |
 | `payroll` | 13 | /api/v1/payroll/runs, /api/v1/payroll/runs/monthly, /api/v1/payroll/runs/weekly |
 | `portal` | 9 | /api/v1/portal/dashboard, /api/v1/portal/finance/aging, /api/v1/portal/finance/invoices |
@@ -303,10 +302,6 @@ Portal scope guardrail:
 - `GET` `/api/v1/invoices/{id}`
 - `POST` `/api/v1/invoices/{id}/email`
 - `GET` `/api/v1/invoices/{id}/pdf`
-
-## `migration`
-
-- `POST` `/api/v1/migration/tally-import`
 
 ## `orchestrator`
 

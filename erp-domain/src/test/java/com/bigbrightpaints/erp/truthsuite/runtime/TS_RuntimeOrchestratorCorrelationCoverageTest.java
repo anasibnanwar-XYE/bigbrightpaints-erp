@@ -73,36 +73,6 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
   }
 
   @Test
-  void orchestratorController_resolve_idempotency_key_hashes_oversized_request_scope() {
-    OrchestratorController controller =
-        new OrchestratorController(mock(CommandDispatcher.class), mock(TraceService.class));
-
-    String direct =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            controller,
-            "resolveIdempotencyKey",
-            null,
-            "req-10",
-            "ORCH.ORDER.FULFILLMENT.UPDATE",
-            "COMP",
-            "payload");
-    String hashed =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            controller,
-            "resolveIdempotencyKey",
-            null,
-            "r".repeat(512),
-            "ORCH.ORDER.FULFILLMENT.UPDATE",
-            "COMP",
-            "payload");
-
-    assertThat(direct).isEqualTo("REQ|ORCH.ORDER.FULFILLMENT.UPDATE|req-10");
-    assertThat(hashed).startsWith("REQH|ORCH.ORDER.FULFILLMENT.UPDATE|");
-    assertThat(hashed.length())
-        .isLessThanOrEqualTo(CorrelationIdentifierSanitizer.MAX_IDEMPOTENCY_KEY_LENGTH);
-  }
-
-  @Test
   void commandDispatcher_trace_summary_sanitizes_trace_and_fetches_events() {
     TraceService traceService = mock(TraceService.class);
     List<AuditRecord> events = List.of();
@@ -127,22 +97,22 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
   }
 
   @Test
-  void correlationIdentifierSanitizer_covers_request_and_trace_fallback_paths() {
-    String normalizedFromLongIdempotency =
-        CorrelationIdentifierSanitizer.normalizeRequestId(null, "idem-" + "x".repeat(160));
+  void correlationIdentifierSanitizer_covers_request_hash_and_trace_generation_paths() {
+    String normalizedFromLongRequestId =
+        CorrelationIdentifierSanitizer.sanitizeOptionalRequestId("req-" + "x".repeat(160));
 
-    assertThat(normalizedFromLongIdempotency).startsWith("RIDH|");
-    assertThat(normalizedFromLongIdempotency.length())
+    assertThat(normalizedFromLongRequestId).startsWith("RIDH|");
+    assertThat(normalizedFromLongRequestId.length())
         .isLessThanOrEqualTo(CorrelationIdentifierSanitizer.MAX_REQUEST_ID_LENGTH);
 
     assertThatThrownBy(
-            () -> CorrelationIdentifierSanitizer.sanitizeTraceIdOrFallback("bad\ntrace", null))
+            () -> CorrelationIdentifierSanitizer.sanitizeTraceIdOrGenerate("bad\ntrace", null))
         .isInstanceOf(ApplicationException.class);
 
-    String fallback =
-        CorrelationIdentifierSanitizer.sanitizeTraceIdOrFallback(
+    String generated =
+        CorrelationIdentifierSanitizer.sanitizeTraceIdOrGenerate(
             "bad\ntrace", () -> " trace-safe ");
-    assertThat(fallback).isEqualTo("trace-safe");
+    assertThat(generated).isEqualTo("trace-safe");
   }
 
   @Test

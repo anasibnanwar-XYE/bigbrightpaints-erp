@@ -12,13 +12,13 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 
 public interface JournalReferenceMappingRepository
     extends JpaRepository<JournalReferenceMapping, Long> {
-  Optional<JournalReferenceMapping> findByCompanyAndLegacyReferenceIgnoreCase(
+  Optional<JournalReferenceMapping> findByCompanyAndReferenceKeyIgnoreCase(
       Company company, String legacyReference);
 
   Optional<JournalReferenceMapping> findByCompanyAndCanonicalReferenceIgnoreCase(
       Company company, String canonicalReference);
 
-  List<JournalReferenceMapping> findAllByCompanyAndLegacyReferenceIgnoreCase(
+  List<JournalReferenceMapping> findAllByCompanyAndReferenceKeyIgnoreCase(
       Company company, String legacyReference);
 
   List<JournalReferenceMapping> findAllByCompanyAndCanonicalReferenceIgnoreCase(
@@ -30,13 +30,13 @@ public interface JournalReferenceMappingRepository
           """
           INSERT INTO journal_reference_mappings (
               company_id,
-              legacy_reference,
+              reference_key,
               canonical_reference,
               entity_type,
               created_at
           )
           VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, :createdAt)
-          ON CONFLICT (company_id, legacy_reference) DO NOTHING
+          ON CONFLICT (company_id, reference_key) DO NOTHING
           """,
       nativeQuery = true)
   int reserveManualReference(
@@ -52,13 +52,13 @@ public interface JournalReferenceMappingRepository
           """
           INSERT INTO journal_reference_mappings (
               company_id,
-              legacy_reference,
+              reference_key,
               canonical_reference,
               entity_type,
               created_at
           )
           VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, :createdAt)
-          ON CONFLICT (company_id, legacy_reference) DO NOTHING
+          ON CONFLICT (company_id, reference_key) DO NOTHING
           """,
       nativeQuery = true)
   int reserveReferenceMapping(

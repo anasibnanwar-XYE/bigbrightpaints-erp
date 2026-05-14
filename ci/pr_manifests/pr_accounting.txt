@@ -43,7 +43,6 @@ com.bigbrightpaints.erp.modules.accounting.service.PurchaseJournalFacadeOperatio
 com.bigbrightpaints.erp.modules.accounting.service.SalesJournalFacadeOperationsTest
 com.bigbrightpaints.erp.modules.accounting.service.SettlementReplayValidationServiceTest
 com.bigbrightpaints.erp.modules.accounting.service.OpeningBalanceImportServiceTest
-com.bigbrightpaints.erp.modules.accounting.service.TallyImportServiceTest
 com.bigbrightpaints.erp.core.audit.AuditServiceTest
 com.bigbrightpaints.erp.core.audit.IntegrationFailureMetadataSchemaContractTest
 com.bigbrightpaints.erp.core.audittrail.AuditCorrelationIdResolverTest

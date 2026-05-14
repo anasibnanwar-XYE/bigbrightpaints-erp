@@ -2,15 +2,15 @@
 
 ## Scope and evidence
 
-This review covers finance bootstrap/configuration, account/default-account governance, opening-balance and Tally migration paths, journal posting/idempotency/reversal behavior, period-close and month-end controls, reconciliation and discrepancy handling, GST/tax reporting, payroll accounting, accounting/enterprise audit trails, report generation and export governance, temporal/as-of reporting, and the purchasing/inventory boundary that can double-post the same business event into GL.
+This review covers finance bootstrap/configuration, account/default-account governance, opening-balance migration paths, journal posting/idempotency/reversal behavior, period-close and month-end controls, reconciliation and discrepancy handling, GST/tax reporting, payroll accounting, accounting/enterprise audit trails, report generation and export governance, temporal/as-of reporting, and the purchasing/inventory boundary that can double-post the same business event into GL.
 
 Primary evidence:
 
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/{AccountingController,AccountingAuditController,AccountingConfigurationController,JournalController,OpeningBalanceImportController,TallyImportController}.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/{AccountingController,AccountingAuditController,AccountingConfigurationController,JournalController,OpeningBalanceImportController}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/controller/HrPayrollController.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/controller/ReportController.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audittrail/web/EnterpriseAuditTrailController.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/{CompanyDefaultAccountsService,CompanyAccountingSettingsService,OpeningBalanceImportService,TallyImportService,AccountingPeriodService,TaxService,AccountingAuditTrailService}.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/{CompanyDefaultAccountsService,CompanyAccountingSettingsService,OpeningBalanceImportService,AccountingPeriodService,TaxService,AccountingAuditTrailService}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/{AccountingCoreEngineCore,AccountingFacadeCore,AccountingPeriodServiceCore,ReconciliationServiceCore}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/{PayrollService,PayrollPostingService}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/service/{ReportService,ReportQuerySupport,BalanceSheetReportQueryService,ProfitLossReportQueryService,TrialBalanceReportQueryService,TemporalBalanceService,InventoryValuationService}.java`
@@ -44,7 +44,7 @@ Planning notes:
 
 | Surface | Entrypoints | Controller | Notes |
 | --- | --- | --- | --- |
-| Finance bootstrap and configuration | `GET/PUT /api/v1/accounting/default-accounts`, `GET /api/v1/accounting/configuration/health`, `POST /api/v1/accounting/opening-balances`, `POST /api/v1/migration/tally-import` | `AccountingController`, `AccountingConfigurationController`, `OpeningBalanceImportController`, `TallyImportController` | Default-account governance, configuration health scan, and migration/bootstrap flows share the finance setup boundary. |
+| Finance bootstrap and configuration | `GET/PUT /api/v1/accounting/default-accounts`, `GET /api/v1/accounting/configuration/health`, `POST /api/v1/accounting/opening-balances` | `AccountingController`, `AccountingConfigurationController`, `OpeningBalanceImportController` | Default-account governance, configuration health scan, and migration/bootstrap flows share the finance setup boundary. |
 | Journal posting and finance operations | `GET/POST /api/v1/accounting/accounts`, `GET/POST /api/v1/accounting/journal-entries`, `GET /api/v1/accounting/journals`, `POST /api/v1/accounting/journal-entries/{id}/reverse`, `POST /api/v1/accounting/{receipts/dealer,receipts/dealer/hybrid,settlements/dealers,dealers/{dealerId}/auto-settle,payroll/payments,suppliers/payments,settlements/suppliers,suppliers/{supplierId}/auto-settle,credit-notes,debit-notes,accruals,bad-debts/write-off}`, `POST /api/v1/accounting/inventory/{landed-cost,revaluation,wip-adjustment}` | `AccountingController` | One controller fronts general GL posting, settlements, bad-debt/credit/debit adjustments, payroll payment, and finance-led inventory journals. |
 | Tax, period, and month-end controls | `GET /api/v1/accounting/gst/{return,reconciliation}`, `GET/POST/PUT /api/v1/accounting/periods`, `POST /api/v1/accounting/periods/{id}/{request-close,approve-close,reject-close,reopen}`, `GET/POST /api/v1/accounting/month-end/checklist{/{periodId}}` | `AccountingController` | Period close is a maker-checker path; direct close is not part of the frontend contract. |
 | Reconciliation and statements | `POST/PUT/GET /api/v1/accounting/reconciliation/bank/sessions{/**}`, `GET /api/v1/accounting/reconciliation/{subledger,discrepancies,inter-company}`, `POST /api/v1/accounting/reconciliation/discrepancies/{id}/resolve`, `GET /api/v1/accounting/{statements,aging}/{dealers|suppliers}/{id}`, admin-only PDF variants | `ReconciliationController`, `StatementReportController` | Covers AR/AP/bank/GST/inter-company reconciliation plus partner statement and aging exports via the session-based bank reconciliation contract. |
@@ -80,8 +80,6 @@ The finance stack starts with company-level account wiring rather than journals.
 Bootstrap/migration paths already create accounting truth, not just metadata:
 
 - `OpeningBalanceImportService` hashes the uploaded CSV, derives an idempotency key/reference, creates missing accounts when needed, posts a balancing opening-balance journal, persists the import row, and writes audit metadata with the resulting `journalEntryId`.
-- `TallyImportService` follows the same file-hash/idempotency pattern, maps Tally groups into ERP `AccountType`s, converts opening vouchers into opening-balance rows, then delegates the final balancing journal to `OpeningBalanceImportService`.
-
 Operationally, these imports are not “load data and fix later” tools. They are finance-posting surfaces with replay protection and audit side effects.
 
 ### 2. Journal posting is reference-driven, strictly balanced, and context-aware
@@ -338,7 +336,7 @@ So production correctness currently depends on keeping the inventory-accounting 
 
 ### Idempotency assumptions
 
-- **Opening balances / Tally import:** keyed by file hash plus normalized idempotency key/reference.
+- **Opening balances:** keyed by file hash plus normalized idempotency key/reference.
 - **General journals:** keyed by canonical reference number plus alias mappings; duplicate payloads replay, mismatched payloads fail.
 - **Manual journals:** explicit `idempotencyKey` is copied into the posting request.
 - **Inventory-accounting listener:** builds deterministic references from GRN reference plus `movementId`.
@@ -347,7 +345,7 @@ So production correctness currently depends on keeping the inventory-accounting 
 
 ## Side effects, integrations, and recovery behavior
 
-- Opening-balance and Tally imports can create accounts and immediately create balancing journals.
+- Opening-balance imports can create accounts and immediately create balancing journals.
 - Standard journal posting updates AR/AP partner ledgers, accounting events, and export/audit metadata depending on the path.
 - Period close captures immutable period snapshots; reopen reverses closing posture and deletes the snapshot.
 - Reconciliation resolutions can create finance journals tied back to discrepancy rows.

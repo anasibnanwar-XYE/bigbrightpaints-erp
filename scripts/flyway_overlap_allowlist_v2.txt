@@ -1,0 +1,6 @@
+# Flyway v2 overlap scan allowlist.
+# Format: <kind>:<name> where kind is table|constraint|index.
+
+# Constraint names intentionally replaced by later hard-cut migrations.
+constraint:chk_bank_recon_session_status
+constraint:chk_recon_discrepancy_resolution

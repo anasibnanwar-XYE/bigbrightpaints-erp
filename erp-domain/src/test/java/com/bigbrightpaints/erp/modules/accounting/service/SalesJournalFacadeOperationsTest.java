@@ -75,7 +75,7 @@ class SalesJournalFacadeOperationsTest {
   void upsertJournalReferenceMapping_updatesExistingReservationWithoutEntityId() {
     JournalReferenceMapping mapping = journalReferenceMapping("LEGACY-100", null, null);
     JournalEntry entry = journalEntry(1001L, "SALES-100");
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq("LEGACY-100")))
         .thenReturn(Optional.of(mapping));
 
@@ -91,7 +91,7 @@ class SalesJournalFacadeOperationsTest {
   void upsertJournalReferenceMapping_skipsConflictingExistingMapping() {
     JournalReferenceMapping mapping = journalReferenceMapping("LEGACY-101", "OTHER-REF", 44L);
     JournalEntry entry = journalEntry(1002L, "SALES-101");
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq("LEGACY-101")))
         .thenReturn(Optional.of(mapping));
 
@@ -105,7 +105,7 @@ class SalesJournalFacadeOperationsTest {
   @Test
   void upsertJournalReferenceMapping_ignoresConcurrentInsertViolation() {
     JournalEntry entry = journalEntry(1003L, "SALES-102");
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq("LEGACY-102")))
         .thenReturn(Optional.empty());
     when(journalReferenceMappingRepository.save(any(JournalReferenceMapping.class)))
@@ -118,7 +118,7 @@ class SalesJournalFacadeOperationsTest {
 
   @Test
   void reserveSalesJournalReference_returnsFalseWhenCanonicalReservationExists() {
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq("SO-200")))
         .thenReturn(Optional.of(journalReferenceMapping("SO-200", "SO-200", 200L)));
 
@@ -129,7 +129,7 @@ class SalesJournalFacadeOperationsTest {
 
   @Test
   void reserveSalesJournalReference_throwsWhenReservationCannotBeResolved() {
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq("SO-201")))
         .thenReturn(Optional.empty(), Optional.empty());
     when(journalReferenceMappingRepository.reserveReferenceMapping(
@@ -147,7 +147,7 @@ class SalesJournalFacadeOperationsTest {
     JournalEntry entry = journalEntry(2020L, "SO-202");
     when(journalReferenceResolver.findExistingEntry(eq(company), eq("SO-202")))
         .thenReturn(Optional.empty());
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq("SO-202")))
         .thenReturn(Optional.of(mapping));
     when(journalEntryRepository.findByCompanyAndId(eq(company), eq(2020L)))
@@ -162,7 +162,7 @@ class SalesJournalFacadeOperationsTest {
     JournalEntry entry = journalEntry(2031L, "SALES-203");
     when(journalReferenceResolver.findExistingEntry(eq(company), eq("SO-203")))
         .thenReturn(Optional.empty());
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq("SO-203")))
         .thenReturn(Optional.of(mapping));
     when(journalEntryRepository.findByCompanyAndId(eq(company), eq(2030L)))
@@ -176,7 +176,7 @@ class SalesJournalFacadeOperationsTest {
   @Test
   void postSalesJournal_doesNotTreatCanonicalAliasAsSeparateLookup() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(any(), any()))
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(any(), any()))
         .thenReturn(Optional.empty());
 
     Dealer dealer = new Dealer();
@@ -211,7 +211,7 @@ class SalesJournalFacadeOperationsTest {
   @Test
   void postSalesJournal_skipsAliasLookupWhenReferenceNumberIsBlank() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(any(), any()))
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(any(), any()))
         .thenReturn(Optional.empty());
 
     Dealer dealer = new Dealer();
@@ -251,7 +251,7 @@ class SalesJournalFacadeOperationsTest {
   @Test
   void postSalesJournal_looksUpDistinctTrimmedAliasReference() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(any(), any()))
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(any(), any()))
         .thenReturn(Optional.empty());
 
     Dealer dealer = new Dealer();

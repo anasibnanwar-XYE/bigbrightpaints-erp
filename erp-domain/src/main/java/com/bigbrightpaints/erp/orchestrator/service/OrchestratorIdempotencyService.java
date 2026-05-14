@@ -70,7 +70,7 @@ public class OrchestratorIdempotencyService {
         status -> {
           String traceCandidate = traceIdSupplier != null ? traceIdSupplier.get() : null;
           String traceId =
-              CorrelationIdentifierSanitizer.sanitizeTraceIdOrFallback(
+              CorrelationIdentifierSanitizer.sanitizeTraceIdOrGenerate(
                   traceCandidate, () -> UUID.randomUUID().toString());
           boolean reserved =
               commandRepository.reserveScope(

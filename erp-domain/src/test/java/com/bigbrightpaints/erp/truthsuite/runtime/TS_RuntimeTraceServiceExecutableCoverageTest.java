@@ -8,7 +8,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,7 +64,8 @@ class TS_RuntimeTraceServiceExecutableCoverageTest {
   }
 
   @Test
-  void record_handles_null_details_and_json_fallback_to_string() throws Exception {
+  void record_handles_null_details_and_fails_closed_when_details_cannot_serialize()
+      throws Exception {
     AuditRepository auditRepository = mock(AuditRepository.class);
     CompanyRepository companyRepository = mock(CompanyRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
@@ -86,17 +86,17 @@ class TS_RuntimeTraceServiceExecutableCoverageTest {
         .thenThrow(new JsonProcessingException("broken payload") {});
     TraceService serviceWithBrokenMapper =
         new TraceService(auditRepository, companyRepository, companyContextService, brokenMapper);
-    Map<String, Object> fallbackDetails = new LinkedHashMap<>();
-    fallbackDetails.put("alpha", 1);
-    fallbackDetails.put("beta", "two");
 
-    serviceWithBrokenMapper.record("trace-fallback", "BROKEN_JSON", "C2", fallbackDetails);
-
-    ArgumentCaptor<AuditRecord> fallbackCaptor = ArgumentCaptor.forClass(AuditRecord.class);
-    verify(auditRepository, org.mockito.Mockito.times(2)).save(fallbackCaptor.capture());
-    List<AuditRecord> savedRecords = fallbackCaptor.getAllValues();
-    AuditRecord fallbackRecord = savedRecords.get(1);
-    assertThat(fallbackRecord.getDetails()).contains("alpha=1").contains("beta=two");
+    assertThatThrownBy(
+            () ->
+                serviceWithBrokenMapper.record(
+                    "trace-serialization-failure",
+                    "BROKEN_JSON",
+                    "C2",
+                    Map.of("alpha", 1, "beta", "two")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Unable to serialize trace details");
+    verify(auditRepository, org.mockito.Mockito.times(1)).save(any());
   }
 
   @Test

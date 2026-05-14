@@ -1,6 +1,34 @@
 # R2 Checkpoint
 
-Last reviewed: 2026-05-01
+Last reviewed: 2026-05-14
+
+## Addendum — `pr199-hardcut-merge-ready`
+
+- Scope: compact PR #199 carry-forward onto `main` after merged PR #198, limited to Flyway v2 forward migrations `V204`-`V206`, canonical orchestrator idempotency/correlation enforcement, and trace JSON fail-fast cleanup.
+- Risk trigger: touches high-risk Flyway v2 schema under `erp-domain/src/main/resources/db/migration_v2/**` and orchestrator runtime under `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/**`.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no tenant boundary, privilege, route compatibility, or historical-state bridge was added. The branch removes request/payload-derived idempotency fallbacks and keeps a single canonical leased idempotency path.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the compact branch and rerun Flyway guards, orchestrator correlation guard, focused orchestrator/Flyway tests, compile, Spotless, high-risk guard, and whitespace checks.
+- Expiry: 2026-05-21.
+- Verification evidence:
+  - `V204` renames `journal_reference_mappings.legacy_reference` to canonical `reference_key` through a forward migration.
+  - `V205` drops retired `tally_imports` through the current v2 migration track.
+  - `V206` backfills historical packaging-slip COGS journal links before runtime relies on the canonical marker.
+  - orchestrator ingress now requires `Idempotency-Key` for mutating commands instead of deriving keys from request IDs or payload hashes.
+  - `CommandDispatcher` propagates the persisted lease idempotency key and fails fast if the lease command is missing or malformed.
+  - trace detail serialization fails closed instead of storing non-JSON fallback strings.
+- Commands run:
+  - `bash scripts/guard_orchestrator_correlation_contract.sh`
+  - `bash scripts/guard_flyway_v2_migration_ownership.sh`
+  - `bash scripts/guard_flyway_v2_referential_contract.sh`
+  - `bash scripts/flyway_overlap_scan.sh`
+  - `git diff --check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=CorrelationIdentifierSanitizerTest,TS_RuntimeOrchestratorExecutableCoverageTest,TS_RuntimeOrchestratorCorrelationCoverageTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest,TS_RuntimeTraceServiceExecutableCoverageTest,TS_PackagingSlipInvoiceLinkV2MigrationContractTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
+  - `bash ci/check-high-risk-changes.sh`
+  - `bash ci/lint-knowledgebase.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
 
 ## Addendum — `pr198-rebase-on-pr197-hard-cut`
 

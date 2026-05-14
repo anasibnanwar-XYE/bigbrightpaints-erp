@@ -82,7 +82,6 @@ Accounting is the financial truth boundary for the ERP. Other modules may trigge
 | Entrypoint | Method | Path | Actor | Purpose |
 | --- | --- | --- | --- | --- |
 | Opening Balance Import | POST | `/api/v1/accounting/opening-balances` | ADMIN | CSV opening-balance import. |
-| Tally Import | POST | `/api/v1/migration/tally-import` | ADMIN | Legacy Tally XML migration path. |
 
 ---
 
@@ -178,8 +177,7 @@ The flow is complete when:
 
 1. **No separate finalize route** — approval is the close completion step.
 2. **No dealer/supplier-specific reconciliation routes** — AR/AP reconciliation is exposed through the combined subledger route.
-3. **Tally XML remains legacy migration support** — use opening-balance import for current controlled opening balance work.
-4. **Reopen is super-admin-only** — close is maker-checker; reopen is a controlled privileged correction route.
+3. **Reopen is super-admin-only** — close is maker-checker; reopen is a controlled privileged correction route.
 
 ---
 
