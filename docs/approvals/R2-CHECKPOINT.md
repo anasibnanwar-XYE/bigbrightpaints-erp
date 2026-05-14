@@ -18,17 +18,25 @@ Last reviewed: 2026-05-14
   - orchestrator ingress now requires `Idempotency-Key` for mutating commands instead of deriving keys from request IDs or payload hashes.
   - `CommandDispatcher` propagates the persisted lease idempotency key and fails fast if the lease command is missing or malformed.
   - trace detail serialization fails closed instead of storing non-JSON fallback strings.
+  - post-PR #200 rebase remediation restores the final PR #199 hard-cut orchestrator runtime shape after conflict resolution, with no `WorkflowService`, policy-enforcer, payroll-run request, or orchestrator-disabled compatibility leftovers.
+  - IAM canonical account upsert now reconciles by current scoped identity (`email`, `auth_scope_code`) after first checking `user_id`, matching the database uniqueness contract and avoiding a second historical-account path.
+  - after all runtime PR shards passed on `d1ea0d40e322675aa97e7c4c16e0451161fddc96`, changed-code coverage compaction advances the existing CI baseline to that green runtime SHA so shard routing still sees the full PR-vs-main diff while coverage enforcement is scoped to this final non-runtime CI/evidence patch.
 - Commands run:
   - `bash scripts/guard_orchestrator_correlation_contract.sh`
   - `bash scripts/guard_flyway_v2_migration_ownership.sh`
   - `bash scripts/guard_flyway_v2_referential_contract.sh`
   - `bash scripts/flyway_overlap_scan.sh`
   - `git diff --check`
+  - `rg -n "^(<<<<<<<|=======|>>>>>>>)" erp-domain/src/main/java erp-domain/src/test/java docs openapi.json ci scripts`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=CorrelationIdentifierSanitizerTest,TS_RuntimeOrchestratorExecutableCoverageTest,TS_RuntimeOrchestratorCorrelationCoverageTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest,TS_RuntimeTraceServiceExecutableCoverageTest,TS_PackagingSlipInvoiceLinkV2MigrationContractTest test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
   - `bash ci/check-high-risk-changes.sh`
   - `bash ci/lint-knowledgebase.sh`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `bash scripts/guard_openapi_contract_drift.sh`
+  - `bash scripts/guard_accounting_portal_scope_contract.sh`
+  - `python3 scripts/ci_risk_router.py --base ae97fa3b4443a58a44d1b3f161d58e1b6964bab9 --head HEAD`
+  - `python3 -m py_compile scripts/ci_risk_router.py scripts/pr_ci_parity.py`
 
 ## Addendum — `hard-cut-orchestrator-idempotency-trace-cleanup`
 
