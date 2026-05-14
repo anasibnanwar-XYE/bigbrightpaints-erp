@@ -186,32 +186,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
   }
 
   @Test
-  void orchestratorController_idempotency_payload_selection_branches_are_deterministic() {
-    String rawPayload = " raw ";
-    String normalizedPayload = "raw";
-
-    String explicit =
-        (String)
-            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                OrchestratorController.class,
-                "selectPayloadForIdempotency",
-                " idem-1 ",
-                rawPayload,
-                normalizedPayload);
-    String derived =
-        (String)
-            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                OrchestratorController.class,
-                "selectPayloadForIdempotency",
-                null,
-                rawPayload,
-                normalizedPayload);
-
-    assertThat(explicit).isEqualTo(rawPayload);
-    assertThat(derived).isEqualTo(normalizedPayload);
-  }
-
-  @Test
   void orchestratorController_canonical_paths_execute_and_retired_shims_stay_deleted() {
     CommandDispatcher dispatcher = mock(CommandDispatcher.class);
     TraceService traceService = mock(TraceService.class);
@@ -232,7 +206,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
       controller.fulfillOrder(
           "SO-1",
           new OrderFulfillmentRequest("processing", " note "),
-          null,
+          "idem-fulfill",
           "req-fulfill",
           principal);
       assertThat(
@@ -332,18 +306,21 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             mock(TenantRealActionUsageService.class));
 
     OrchestratorCommand failingApprove =
-        new OrchestratorCommand(1L, "ORCH.ORDER.APPROVE", "   ", "hash", "trace-failing");
-    when(idempotencyService.start(eq("ORCH.ORDER.APPROVE"), eq("  idem-fallback  "), any(), any()))
+        new OrchestratorCommand(
+            1L, "ORCH.ORDER.APPROVE", "idem-reserve-failure", "hash", "trace-failing");
+    when(idempotencyService.start(
+            eq("ORCH.ORDER.APPROVE"), eq("  idem-reserve-failure  "), any(), any()))
         .thenReturn(
             new OrchestratorIdempotencyService.CommandLease("trace-failing", failingApprove, true));
-    when(integrationCoordinator.reserveInventory("99", "C1", "trace-failing", "idem-fallback"))
+    when(integrationCoordinator.reserveInventory(
+            "99", "C1", "trace-failing", "idem-reserve-failure"))
         .thenThrow(new RuntimeException("reserve failed"));
 
     assertThatThrownBy(
             () ->
                 dispatcher.approveOrder(
                     new ApproveOrderRequest("99", "ops@bbp.com", new BigDecimal("10.00")),
-                    "  idem-fallback  ",
+                    "  idem-reserve-failure  ",
                     "req-approve-fail",
                     "C1",
                     "ops@bbp.com"))
@@ -543,11 +520,11 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
                 dispatcher, "normalizeRequestId", "  req-1  ", "idem-fallback");
     assertThat(normalizedFromRequest).isEqualTo("req-1");
 
-    String normalizedFromFallback =
+    String blankRequestId =
         (String)
             com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "normalizeRequestId", "   ", "  idem-fallback  ");
-    assertThat(normalizedFromFallback).isEqualTo("idem-fallback");
+    assertThat(blankRequestId).isNull();
 
     String normalizedNull =
         (String)
@@ -562,34 +539,31 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     String canonicalFromLease =
         (String)
             com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                dispatcher, "canonicalIdempotencyKey", leaseWithCommandKey, "fallback-key");
+                dispatcher, "canonicalIdempotencyKey", leaseWithCommandKey);
     assertThat(canonicalFromLease).isEqualTo("persisted-key");
 
     OrchestratorCommand commandWithoutIdempotency =
         new OrchestratorCommand(1L, "ORCH.ORDER.APPROVE", "   ", "hash", "trace-2");
     OrchestratorIdempotencyService.CommandLease leaseWithoutCommandKey =
         new OrchestratorIdempotencyService.CommandLease("trace-2", commandWithoutIdempotency, true);
-    String canonicalFromFallback =
-        (String)
-            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                dispatcher, "canonicalIdempotencyKey", leaseWithoutCommandKey, "  fallback-key  ");
-    assertThat(canonicalFromFallback).isEqualTo("fallback-key");
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    dispatcher, "canonicalIdempotencyKey", leaseWithoutCommandKey))
+        .hasMessageContaining("idempotencyKey is required");
 
     OrchestratorIdempotencyService.CommandLease leaseWithNullCommand =
         new OrchestratorIdempotencyService.CommandLease("trace-3", null, true);
-    String canonicalFromNullCommand =
-        (String)
-            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                dispatcher,
-                "canonicalIdempotencyKey",
-                leaseWithNullCommand,
-                "  fallback-from-null-command  ");
-    assertThat(canonicalFromNullCommand).isEqualTo("fallback-from-null-command");
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    dispatcher, "canonicalIdempotencyKey", leaseWithNullCommand))
+        .hasMessageContaining("Orchestrator idempotency lease is missing command");
 
-    String canonicalNull =
-        (String)
-            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                dispatcher, "canonicalIdempotencyKey", null, null);
-    assertThat(canonicalNull).isNull();
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    dispatcher, "canonicalIdempotencyKey", (Object) null))
+        .hasMessageContaining("Orchestrator idempotency lease is missing command");
   }
 }

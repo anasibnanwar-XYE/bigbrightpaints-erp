@@ -35,10 +35,10 @@ class CorrelationIdentifierSanitizerTest {
   }
 
   @Test
-  void normalizeRequestIdFallsBackToIdempotencyKeyWhenRequestIdMissing() {
-    String normalized = CorrelationIdentifierSanitizer.normalizeRequestId(null, " idem-001 ");
+  void sanitizeOptionalRequestIdKeepsMissingRequestIdMissing() {
+    String normalized = CorrelationIdentifierSanitizer.sanitizeOptionalRequestId(null);
 
-    assertThat(normalized).isEqualTo("idem-001");
+    assertThat(normalized).isNull();
   }
 
   @Test

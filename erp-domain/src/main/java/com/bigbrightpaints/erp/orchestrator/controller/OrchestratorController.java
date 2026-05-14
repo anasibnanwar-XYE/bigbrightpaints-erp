@@ -1,6 +1,5 @@
 package com.bigbrightpaints.erp.orchestrator.controller;
 
-import java.math.BigDecimal;
 import java.security.Principal;
 import java.util.Locale;
 import java.util.Map;
@@ -15,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
@@ -43,7 +41,7 @@ public class OrchestratorController {
       @Valid @RequestBody ApproveOrderRequest request,
       @org.springframework.web.bind.annotation.RequestHeader(
               value = "Idempotency-Key",
-              required = false)
+              required = true)
           String idempotencyKey,
       @org.springframework.web.bind.annotation.RequestHeader(
               value = "X-Request-Id",
@@ -52,31 +50,13 @@ public class OrchestratorController {
       Principal principal) {
     String companyCode = requireCompanyCode();
     String sanitizedRequestId = CorrelationIdentifierSanitizer.sanitizeOptionalRequestId(requestId);
-    String sanitizedHeaderIdempotencyKey =
-        CorrelationIdentifierSanitizer.sanitizeOptionalIdempotencyKey(idempotencyKey);
-    ApproveOrderRequest raw =
+    String sanitizedIdempotencyKey =
+        CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(idempotencyKey);
+    ApproveOrderRequest command =
         new ApproveOrderRequest(orderId, request.approvedBy(), request.totalAmount());
-    ApproveOrderRequest normalized =
-        new ApproveOrderRequest(
-            orderId,
-            canonicalText(request.approvedBy()),
-            stripTrailingZeros(request.totalAmount()));
     String traceId =
         commandDispatcher.approveOrder(
-            selectPayloadForIdempotency(sanitizedHeaderIdempotencyKey, raw, normalized),
-            resolveIdempotencyKey(
-                sanitizedHeaderIdempotencyKey,
-                sanitizedRequestId,
-                "ORCH.ORDER.APPROVE",
-                companyCode,
-                normalized.orderId()
-                    + "|"
-                    + canonicalText(normalized.approvedBy())
-                    + "|"
-                    + canonicalAmount(normalized.totalAmount())),
-            sanitizedRequestId,
-            companyCode,
-            principal.getName());
+            command, sanitizedIdempotencyKey, sanitizedRequestId, companyCode, principal.getName());
     return ResponseEntity.accepted().body(Map.of("traceId", traceId));
   }
 
@@ -87,7 +67,7 @@ public class OrchestratorController {
       @Valid @RequestBody OrderFulfillmentRequest request,
       @org.springframework.web.bind.annotation.RequestHeader(
               value = "Idempotency-Key",
-              required = false)
+              required = true)
           String idempotencyKey,
       @org.springframework.web.bind.annotation.RequestHeader(
               value = "X-Request-Id",
@@ -96,25 +76,15 @@ public class OrchestratorController {
       Principal principal) {
     String companyCode = requireCompanyCode();
     String sanitizedRequestId = CorrelationIdentifierSanitizer.sanitizeOptionalRequestId(requestId);
-    String sanitizedHeaderIdempotencyKey =
-        CorrelationIdentifierSanitizer.sanitizeOptionalIdempotencyKey(idempotencyKey);
-    OrderFulfillmentRequest normalized =
-        new OrderFulfillmentRequest(
-            normalizeFulfillmentStatus(request.status()), canonicalText(request.notes()));
+    String sanitizedIdempotencyKey =
+        CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(idempotencyKey);
+    OrderFulfillmentRequest command =
+        new OrderFulfillmentRequest(normalizeFulfillmentStatus(request.status()), request.notes());
     String traceId =
         commandDispatcher.updateOrderFulfillment(
             orderId,
-            selectPayloadForIdempotency(sanitizedHeaderIdempotencyKey, request, normalized),
-            resolveIdempotencyKey(
-                sanitizedHeaderIdempotencyKey,
-                sanitizedRequestId,
-                "ORCH.ORDER.FULFILLMENT.UPDATE",
-                companyCode,
-                orderId
-                    + "|"
-                    + canonicalText(normalized.status())
-                    + "|"
-                    + canonicalText(normalized.notes())),
+            command,
+            sanitizedIdempotencyKey,
             sanitizedRequestId,
             companyCode,
             principal.getName());
@@ -149,47 +119,11 @@ public class OrchestratorController {
     return companyCode.trim();
   }
 
-  private String resolveIdempotencyKey(
-      String idempotencyKey,
-      String requestId,
-      String commandName,
-      String companyCode,
-      String payloadSignature) {
-    if (StringUtils.hasText(idempotencyKey)) {
-      return CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(idempotencyKey);
-    }
-    if (StringUtils.hasText(requestId)) {
-      String requestScoped = "REQ|" + commandName + "|" + requestId;
-      if (requestScoped.length() <= CorrelationIdentifierSanitizer.MAX_IDEMPOTENCY_KEY_LENGTH) {
-        return CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(requestScoped);
-      }
-      return CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(
-          "REQH|" + commandName + "|" + IdempotencyUtils.sha256Hex(requestScoped));
-    }
-    String source =
-        commandName + "|" + canonicalText(companyCode) + "|" + canonicalText(payloadSignature);
-    return CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(
-        "AUTO|" + commandName + "|" + IdempotencyUtils.sha256Hex(source));
-  }
-
   private static String normalizeFulfillmentStatus(String status) {
     return canonicalText(status).toUpperCase(Locale.ROOT);
   }
 
   private static String canonicalText(String value) {
     return value == null ? "" : value.trim();
-  }
-
-  private static <T> T selectPayloadForIdempotency(
-      String idempotencyKey, T rawPayload, T normalizedPayload) {
-    return StringUtils.hasText(idempotencyKey) ? rawPayload : normalizedPayload;
-  }
-
-  private static BigDecimal stripTrailingZeros(BigDecimal amount) {
-    return amount == null ? null : amount.stripTrailingZeros();
-  }
-
-  private static String canonicalAmount(BigDecimal amount) {
-    return amount == null ? "" : amount.stripTrailingZeros().toPlainString();
   }
 }

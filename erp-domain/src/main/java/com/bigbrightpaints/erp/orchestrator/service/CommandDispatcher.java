@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
@@ -384,23 +383,20 @@ public class CommandDispatcher {
             idempotencyKey,
             payload,
             () -> workflowService.startWorkflow(workflowName));
-    String canonicalIdempotencyKey = canonicalIdempotencyKey(lease, idempotencyKey);
+    String canonicalIdempotencyKey = canonicalIdempotencyKey(lease);
     return new LeaseEnvelope(lease, normalizedRequestId, canonicalIdempotencyKey);
   }
 
   private String normalizeRequestId(String requestId, String idempotencyKey) {
-    return CorrelationIdentifierSanitizer.normalizeRequestId(requestId, idempotencyKey);
+    return CorrelationIdentifierSanitizer.sanitizeOptionalRequestId(requestId);
   }
 
-  private String canonicalIdempotencyKey(
-      OrchestratorIdempotencyService.CommandLease lease, String fallbackIdempotencyKey) {
-    if (lease != null
-        && lease.command() != null
-        && StringUtils.hasText(lease.command().getIdempotencyKey())) {
-      return CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(
-          lease.command().getIdempotencyKey());
+  private String canonicalIdempotencyKey(OrchestratorIdempotencyService.CommandLease lease) {
+    if (lease == null || lease.command() == null) {
+      throw new IllegalStateException("Orchestrator idempotency lease is missing command");
     }
-    return CorrelationIdentifierSanitizer.sanitizeOptionalIdempotencyKey(fallbackIdempotencyKey);
+    return CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(
+        lease.command().getIdempotencyKey());
   }
 
   private String executeWithLease(

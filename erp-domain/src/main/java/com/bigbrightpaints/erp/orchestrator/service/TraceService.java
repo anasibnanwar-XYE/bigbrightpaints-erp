@@ -86,7 +86,7 @@ public class TraceService {
     try {
       return objectMapper.writeValueAsString(safe);
     } catch (JsonProcessingException ex) {
-      return safe.toString();
+      throw new IllegalStateException("Unable to serialize trace details", ex);
     }
   }
 }

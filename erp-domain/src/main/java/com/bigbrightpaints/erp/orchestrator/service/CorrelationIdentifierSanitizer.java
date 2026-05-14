@@ -49,30 +49,14 @@ public final class CorrelationIdentifierSanitizer {
     return REQUEST_ID_HASH_PREFIX + IdempotencyUtils.sha256Hex(normalized);
   }
 
-  public static String normalizeRequestId(String requestId, String idempotencyKey) {
-    String normalizedRequestId = sanitizeOptionalRequestId(requestId);
-    if (StringUtils.hasText(normalizedRequestId)) {
-      return normalizedRequestId;
-    }
-    String normalizedIdempotencyKey = sanitizeOptionalIdempotencyKey(idempotencyKey);
-    if (!StringUtils.hasText(normalizedIdempotencyKey)) {
-      return null;
-    }
-    if (normalizedIdempotencyKey.length() <= MAX_REQUEST_ID_LENGTH) {
-      return normalizedIdempotencyKey;
-    }
-    return REQUEST_ID_HASH_PREFIX + IdempotencyUtils.sha256Hex(normalizedIdempotencyKey);
-  }
-
-  public static String sanitizeTraceIdOrFallback(
-      String candidate, Supplier<String> fallbackSupplier) {
+  public static String sanitizeTraceIdOrGenerate(String candidate, Supplier<String> generator) {
     try {
       return sanitizeRequiredTraceId(candidate);
     } catch (RuntimeException ex) {
-      if (fallbackSupplier == null) {
+      if (generator == null) {
         throw ex;
       }
-      return sanitizeRequiredTraceId(fallbackSupplier.get());
+      return sanitizeRequiredTraceId(generator.get());
     }
   }
 
