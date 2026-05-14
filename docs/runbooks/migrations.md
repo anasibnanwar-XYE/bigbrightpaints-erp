@@ -1,6 +1,20 @@
 # Migration Runbook
 
-Last reviewed: 2026-04-16
+Last reviewed: 2026-05-14
+
+## 2026-05-14 — `V204`-`V206` PR199 hard-cut carry-forward
+
+- **Purpose:** carry forward the still-live PR #199 Flyway v2 work after PR #198 without replaying the broad stale cleanup branch. `V204__journal_reference_mapping_reference_key.sql` renames `journal_reference_mappings.legacy_reference` to canonical `reference_key` and recreates the canonical lookup indexes. `V205__drop_tally_imports_hard_cut.sql` drops retired Tally import storage. `V206__backfill_packaging_slip_cogs_journal_links.sql` links historical `COGS-{slip_number}` journal entries to `packaging_slips.cogs_journal_entry_id`.
+- **Release-guard posture:** this is a high-risk Flyway v2 hard cut on the active migration track. Runtime and schema must stay aligned: current Java/JPA code targets `reference_key`, Tally imports remain retired, and packaging-slip COGS reads rely on the persisted canonical journal marker. Do not add runtime compatibility for `legacy_reference`, `tally_imports`, or implicit COGS lookup fallback.
+- **Forward plan:** apply `V204`, `V205`, and `V206` in order with the compact PR199 carry-forward packet, keep historical migrations unchanged, then verify Flyway v2 ownership/referential/overlap guards, packaging-slip migration contract coverage, orchestrator correlation guard coverage, and the focused orchestrator trace/idempotency tests.
+- **Dry-run commands:**
+  - `bash scripts/guard_flyway_v2_migration_ownership.sh`
+  - `bash scripts/guard_flyway_v2_referential_contract.sh`
+  - `bash scripts/flyway_overlap_scan.sh`
+  - `bash scripts/guard_orchestrator_correlation_contract.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_PackagingSlipInvoiceLinkV2MigrationContractTest,CorrelationIdentifierSanitizerTest,TS_RuntimeOrchestratorExecutableCoverageTest,TS_RuntimeOrchestratorCorrelationCoverageTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest,TS_RuntimeTraceServiceExecutableCoverageTest test`
+  - `bash ci/check-high-risk-changes.sh`
+- **Rollback strategy:** treat `V204` through `V206` as a coordinated app-and-schema cut. If rollout must be abandoned after execution, keep the compact PR199-compatible backend live or restore the affected database from a snapshot/PITR taken before `V204`; do not hand-recreate `legacy_reference`, `tally_imports`, or null out COGS links as a compatibility shortcut.
 
 ## 2026-04-28 — `V190__iam_core_schema_and_model_hard_cut.sql`
 

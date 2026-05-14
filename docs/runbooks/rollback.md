@@ -1,6 +1,20 @@
 # Rollback Runbook
 
-Last reviewed: 2026-04-16
+Last reviewed: 2026-05-14
+
+## 2026-05-14 — `pr199-hardcut-carry-forward-v204-v206`
+
+- **Scope:** revert the compact PR199 carry-forward packet together with `erp-domain/src/main/resources/db/migration_v2/V204__journal_reference_mapping_reference_key.sql`, `V205__drop_tally_imports_hard_cut.sql`, and `V206__backfill_packaging_slip_cogs_journal_links.sql`.
+- **Application rollback:** do not redeploy a pre-PR199-carry-forward backend against a database where `V204` through `V206` have already run unless the database is first restored to a pre-`V204` state. The current backend expects `journal_reference_mappings.reference_key`, no live Tally import storage, and persisted packaging-slip COGS links.
+- **Database rollback:** preferred path is snapshot/PITR restore to a point before `V204`. Ad hoc reverse SQL is intentionally unsupported because recreating `legacy_reference`, restoring `tally_imports`, or selectively clearing `packaging_slips.cogs_journal_entry_id` would reintroduce mixed old/current schema truth.
+- **Guard note:** this packet intentionally avoids compatibility shims. If rollback is abandoned and deployment stays forward, rerun High-Risk Change Control plus the Flyway and orchestrator guards.
+- **Verification:** after restore or coordinated packet revert, rerun:
+  - `bash scripts/guard_flyway_v2_migration_ownership.sh`
+  - `bash scripts/guard_flyway_v2_referential_contract.sh`
+  - `bash scripts/flyway_overlap_scan.sh`
+  - `bash scripts/guard_orchestrator_correlation_contract.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_PackagingSlipInvoiceLinkV2MigrationContractTest,CorrelationIdentifierSanitizerTest,TS_RuntimeOrchestratorExecutableCoverageTest,TS_RuntimeOrchestratorCorrelationCoverageTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest,TS_RuntimeTraceServiceExecutableCoverageTest test`
+  - `bash ci/check-high-risk-changes.sh`
 
 ## 2026-04-28 — `iam-core-schema-and-model-hard-cut`
 
