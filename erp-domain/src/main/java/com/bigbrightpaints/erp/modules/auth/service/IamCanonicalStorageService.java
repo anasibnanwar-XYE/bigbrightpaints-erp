@@ -591,6 +591,42 @@ public class IamCanonicalStorageService {
   }
 
   private void upsertAccount(UserAccount user) {
+    String accountType = user.getCompany() == null ? "PLATFORM" : "TENANT";
+    String authScopeCode = normalizeScopeCode(user.getAuthScopeCode());
+    Long companyId = user.getCompany() == null ? null : user.getCompany().getId();
+    String email = normalizeEmail(user.getEmail());
+    String status = user.isEnabled() ? "ACTIVE" : "DISABLED";
+    int updated =
+        jdbcTemplate.update(
+            """
+            update iam_accounts
+               set public_id = ?,
+                   account_type = ?,
+                   auth_scope_code = ?,
+                   company_id = ?,
+                   email = ?,
+                   status = ?,
+                   locked_until = ?,
+                   failed_login_attempts = ?,
+                   must_change_password = ?,
+                   updated_at = ?,
+                   version = version + 1
+             where user_id = ?
+            """,
+            user.getPublicId(),
+            accountType,
+            authScopeCode,
+            companyId,
+            email,
+            status,
+            timestamp(user.getLockedUntil()),
+            user.getFailedLoginAttempts(),
+            user.isMustChangePassword(),
+            timestampNow(),
+            user.getId());
+    if (updated > 0) {
+      return;
+    }
     jdbcTemplate.update(
         """
         insert into iam_accounts (
@@ -608,12 +644,11 @@ public class IamCanonicalStorageService {
             updated_at
         )
         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        on conflict (user_id) do update
+        on conflict (email, auth_scope_code) do update
             set public_id = excluded.public_id,
+                user_id = excluded.user_id,
                 account_type = excluded.account_type,
-                auth_scope_code = excluded.auth_scope_code,
                 company_id = excluded.company_id,
-                email = excluded.email,
                 status = excluded.status,
                 locked_until = excluded.locked_until,
                 failed_login_attempts = excluded.failed_login_attempts,
@@ -623,11 +658,11 @@ public class IamCanonicalStorageService {
         """,
         user.getId(),
         user.getPublicId(),
-        user.getCompany() == null ? "PLATFORM" : "TENANT",
-        normalizeScopeCode(user.getAuthScopeCode()),
-        user.getCompany() == null ? null : user.getCompany().getId(),
-        normalizeEmail(user.getEmail()),
-        user.isEnabled() ? "ACTIVE" : "DISABLED",
+        accountType,
+        authScopeCode,
+        companyId,
+        email,
+        status,
         timestamp(user.getLockedUntil()),
         user.getFailedLoginAttempts(),
         user.isMustChangePassword(),
