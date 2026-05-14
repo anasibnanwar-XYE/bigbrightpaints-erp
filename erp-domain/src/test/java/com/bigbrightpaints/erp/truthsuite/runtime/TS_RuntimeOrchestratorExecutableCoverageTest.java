@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -20,7 +19,6 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
@@ -43,16 +41,12 @@ import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.controller.OrchestratorController;
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
-import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
-import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
-import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
 import com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher;
 import com.bigbrightpaints.erp.orchestrator.service.EventPublisherService;
 import com.bigbrightpaints.erp.orchestrator.service.IntegrationCoordinator;
 import com.bigbrightpaints.erp.orchestrator.service.OrchestratorIdempotencyService;
 import com.bigbrightpaints.erp.orchestrator.service.TraceService;
-import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 
 @Tag("concurrency")
 @Tag("reconciliation")
@@ -60,53 +54,18 @@ import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 class TS_RuntimeOrchestratorExecutableCoverageTest {
 
   @Test
-  void policyEnforcer_rejects_missing_user_or_company_context() {
-    PolicyEnforcer enforcer = new PolicyEnforcer();
-
-    assertThatThrownBy(() -> enforcer.checkOrderApprovalPermissions(null, "C1"))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkOrderApprovalPermissions("u1", null))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkDispatchPermissions("u1", null))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkDispatchPermissions(null, "C1"))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkPayrollPermissions(null, null))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkPayrollPermissions("u1", null))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkPayrollPermissions(null, "C1"))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-
-    enforcer.checkOrderApprovalPermissions("u1", "C1");
-    enforcer.checkDispatchPermissions("u1", "C1");
-    enforcer.checkPayrollPermissions("u1", "C1");
-  }
-
-  @Test
   void commandDispatcher_covers_success_replay_and_feature_gated_paths() {
-    WorkflowService workflowService = mock(WorkflowService.class);
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
     TraceService traceService = mock(TraceService.class);
-    PolicyEnforcer policyEnforcer = new PolicyEnforcer();
     OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
     OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
 
     CommandDispatcher dispatcher =
         new CommandDispatcher(
-            workflowService,
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags,
             mock(TenantRealActionUsageService.class));
@@ -155,38 +114,13 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     assertThat(
             java.util.Arrays.stream(CommandDispatcher.class.getDeclaredMethods())
                 .map(java.lang.reflect.Method::getName))
-        .doesNotContain("dispatchBatch");
+        .doesNotContain("dispatchBatch", "runPayroll");
 
-    OrchestratorCommand payrollCommand =
-        new OrchestratorCommand(1L, "ORCH.PAYROLL.RUN", "idem-payroll", "hash", "trace-payroll");
-    OrchestratorIdempotencyService.CommandLease payrollLease =
-        new OrchestratorIdempotencyService.CommandLease("trace-payroll", payrollCommand, true);
-    when(idempotencyService.start(eq("ORCH.PAYROLL.RUN"), eq("idem-payroll"), any(), any()))
-        .thenReturn(payrollLease);
-    when(featureFlags.isPayrollEnabled()).thenReturn(false);
-
-    assertThatThrownBy(
-            () ->
-                dispatcher.runPayroll(
-                    new PayrollRunRequest(
-                        LocalDate.of(2026, 2, 1),
-                        "ops@bbp.com",
-                        11L,
-                        12L,
-                        new BigDecimal("500.00")),
-                    "idem-payroll",
-                    "req-payroll",
-                    "C1",
-                    "ops@bbp.com"))
-        .isInstanceOf(OrchestratorFeatureDisabledException.class)
-        .hasMessageContaining("disabled (CODE-RED)");
-
-    verify(idempotencyService).markFailed(eq(payrollCommand), any(RuntimeException.class));
     assertThat(dispatcher.generateTraceId()).isNotBlank();
   }
 
   @Test
-  void orchestratorController_canonical_paths_execute_and_retired_shims_stay_deleted() {
+  void orchestratorController_canonical_paths_execute_without_retired_shortcuts() {
     CommandDispatcher dispatcher = mock(CommandDispatcher.class);
     TraceService traceService = mock(TraceService.class);
     OrchestratorController controller = new OrchestratorController(dispatcher, traceService);
@@ -216,11 +150,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
       assertThatThrownBy(
               () ->
                   OrchestratorController.class.getDeclaredMethod(
-                      "runPayroll",
-                      Class.forName("com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest"),
-                      String.class,
-                      String.class,
-                      Principal.class))
+                      "runPayroll", Object.class, String.class, String.class, Principal.class))
           .isInstanceOf(NoSuchMethodException.class);
     } finally {
       CompanyContextHolder.clear();
@@ -287,20 +217,16 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
 
   @Test
   void commandDispatcher_failure_and_validation_paths_cover_helper_branches() {
-    WorkflowService workflowService = mock(WorkflowService.class);
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
     TraceService traceService = mock(TraceService.class);
-    PolicyEnforcer policyEnforcer = new PolicyEnforcer();
     OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
     OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
     CommandDispatcher dispatcher =
         new CommandDispatcher(
-            workflowService,
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags,
             mock(TenantRealActionUsageService.class));
@@ -337,21 +263,17 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
 
   @Test
   void commandDispatcher_update_fulfillment_path_covers_lease_canonical_idempotency_payload() {
-    WorkflowService workflowService = mock(WorkflowService.class);
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
     TraceService traceService = mock(TraceService.class);
-    PolicyEnforcer policyEnforcer = new PolicyEnforcer();
     OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
     OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
 
     CommandDispatcher dispatcher =
         new CommandDispatcher(
-            workflowService,
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags,
             mock(TenantRealActionUsageService.class));
@@ -397,21 +319,17 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
 
   @Test
   void commandDispatcher_auto_approve_path_uses_shared_lease_bootstrap_and_canonical_key() {
-    WorkflowService workflowService = mock(WorkflowService.class);
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
     TraceService traceService = mock(TraceService.class);
-    PolicyEnforcer policyEnforcer = new PolicyEnforcer();
     OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
     OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
 
     CommandDispatcher dispatcher =
         new CommandDispatcher(
-            workflowService,
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags,
             mock(TenantRealActionUsageService.class));
@@ -445,23 +363,18 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
   }
 
   @Test
-  void
-      commandDispatcher_retired_dispatch_shortcut_stays_deleted_while_payroll_replay_shortCircuits() {
-    WorkflowService workflowService = mock(WorkflowService.class);
+  void commandDispatcher_has_no_dispatch_shortcut_while_payroll_replay_shortCircuits() {
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
     TraceService traceService = mock(TraceService.class);
-    PolicyEnforcer policyEnforcer = new PolicyEnforcer();
     OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
     OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
 
     CommandDispatcher dispatcher =
         new CommandDispatcher(
-            workflowService,
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags,
             mock(TenantRealActionUsageService.class));
@@ -469,40 +382,17 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     assertThat(
             java.util.Arrays.stream(CommandDispatcher.class.getDeclaredMethods())
                 .map(java.lang.reflect.Method::getName))
-        .doesNotContain("dispatchBatch");
+        .doesNotContain("dispatchBatch", "runPayroll");
     verifyNoInteractions(idempotencyService);
-
-    OrchestratorCommand replayPayroll =
-        new OrchestratorCommand(
-            202L, "ORCH.PAYROLL.RUN", "idem-payroll-replay", "hash", "trace-payroll-replay");
-    when(idempotencyService.start(eq("ORCH.PAYROLL.RUN"), eq("idem-payroll-replay"), any(), any()))
-        .thenReturn(
-            new OrchestratorIdempotencyService.CommandLease(
-                "trace-payroll-replay", replayPayroll, false));
-
-    String payrollTrace =
-        dispatcher.runPayroll(
-            new PayrollRunRequest(
-                LocalDate.of(2026, 2, 1), "ops@bbp.com", 11L, 12L, BigDecimal.ZERO),
-            "idem-payroll-replay",
-            "req-payroll-replay",
-            "C1",
-            "ops@bbp.com");
-
-    assertThat(payrollTrace).isEqualTo("trace-payroll-replay");
-    verify(featureFlags, never()).isPayrollEnabled();
-    verify(idempotencyService, never()).markFailed(eq(replayPayroll), any(RuntimeException.class));
   }
 
   @Test
-  void commandDispatcher_private_idempotency_and_requestid_helpers_cover_all_branches() {
+  void commandDispatcher_idempotency_and_requestid_helpers_cover_all_branches() {
     CommandDispatcher dispatcher =
         new CommandDispatcher(
-            mock(WorkflowService.class),
             mock(IntegrationCoordinator.class),
             mock(EventPublisherService.class),
             mock(TraceService.class),
-            new PolicyEnforcer(),
             mock(OrchestratorIdempotencyService.class),
             mock(OrchestratorFeatureFlags.class),
             mock(TenantRealActionUsageService.class));
@@ -520,11 +410,11 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
                 dispatcher, "normalizeRequestId", "  req-1  ");
     assertThat(normalizedFromRequest).isEqualTo("req-1");
 
-    String blankRequestId =
+    String normalizedBlank =
         (String)
             com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "normalizeRequestId", "   ");
-    assertThat(blankRequestId).isNull();
+    assertThat(normalizedBlank).isNull();
 
     String normalizedNull =
         (String)
