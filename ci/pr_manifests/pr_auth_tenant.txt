@@ -63,5 +63,8 @@ com.bigbrightpaints.erp.modules.rbac.service.RoleServiceTest
 com.bigbrightpaints.erp.modules.rbac.domain.SystemRoleTest
 com.bigbrightpaints.erp.modules.auth.SuperAdminTenantWorkflowIsolationIT
 com.bigbrightpaints.erp.orchestrator.OrchestratorControllerIT
+com.bigbrightpaints.erp.orchestrator.service.CorrelationIdentifierSanitizerTest
+com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeOrchestratorExecutableCoverageTest
+com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeTraceServiceExecutableCoverageTest
 com.bigbrightpaints.erp.modules.company.controller.CompanyControllerTest
 com.bigbrightpaints.erp.core.config.SystemSettingsServiceCorsTest

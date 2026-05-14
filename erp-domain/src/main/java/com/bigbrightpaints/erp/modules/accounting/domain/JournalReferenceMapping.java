@@ -31,8 +31,7 @@ public class JournalReferenceMapping {
   @JoinColumn(name = "company_id")
   private Company company;
 
-  @Column(name = "reference_key", nullable = false)
-  private String legacyReference;
+  private String referenceKey;
 
   @Column(name = "canonical_reference", nullable = false)
   private String canonicalReference;
@@ -66,11 +65,11 @@ public class JournalReferenceMapping {
   }
 
   public String getLegacyReference() {
-    return legacyReference;
+    return referenceKey;
   }
 
   public void setLegacyReference(String legacyReference) {
-    this.legacyReference = legacyReference;
+    this.referenceKey = legacyReference;
   }
 
   public String getCanonicalReference() {
