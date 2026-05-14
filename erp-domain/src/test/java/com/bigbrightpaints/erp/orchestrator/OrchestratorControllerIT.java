@@ -186,7 +186,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void approve_order_explicit_idempotency_normalizes_equivalent_payload_replay() {
+  void approve_order_explicit_idempotency_rejects_changed_payload_shape() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
     headers.add("Idempotency-Key", "idem-" + UUID.randomUUID());
@@ -226,9 +226,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
             Map.class);
 
     assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(secondResponse.getBody().get("traceId"))
-        .isEqualTo(firstResponse.getBody().get("traceId"));
+    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore + 1);
   }
 
@@ -334,7 +332,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void fulfillment_explicit_idempotency_treats_blank_and_missing_notes_as_equivalent() {
+  void fulfillment_explicit_idempotency_rejects_blank_and_missing_notes_mismatch() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
     headers.add("Idempotency-Key", "idem-" + UUID.randomUUID());
@@ -362,9 +360,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
             Map.class);
 
     assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(secondResponse.getBody().get("traceId"))
-        .isEqualTo(firstResponse.getBody().get("traceId"));
+    assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore + 1);
   }
 
