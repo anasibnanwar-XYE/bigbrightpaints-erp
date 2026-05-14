@@ -226,18 +226,15 @@ Primary files:
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/ModuleGatingInterceptor.java`
 
-### 2.6 Data migration/import flows (opening balances, opening stock, Tally XML)
+### 2.6 Data migration/import flows (opening balances, opening stock)
 
 - Opening balances CSV import creates/matches accounts, validates balanced totals, and posts opening journal under deterministic import reference (`OpeningBalanceImportController`, `OpeningBalanceImportService.importOpeningBalances`, `postOpeningBalanceJournal`).
-- Tally XML import parses ledgers + opening rows, maps Tally groups to account types, and delegates posting via opening balance service (`TallyImportController`, `TallyImportService.importTallyXml`, `processImport`).
 - Opening stock import ingests RM/FG batches, increments inventory, and posts aggregate opening stock journal with idempotency by key/hash (`OpeningStockImportController`, `OpeningStockImportService.importOpeningStock`).
 
 Primary files:
 
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/OpeningBalanceImportController.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/OpeningBalanceImportService.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/TallyImportController.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/TallyImportService.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/controller/OpeningStockImportController.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/OpeningStockImportService.java`
 
@@ -335,7 +332,6 @@ Key references:
 - Tenant onboarding templates: `V24__tenant_onboarding_coa_templates.sql`
 - Module gating + period costing method: `V25__module_gating_and_period_costing_method.sql`
 - Opening balance import idempotency: `V36__opening_balance_import_idempotency.sql`
-- Tally import idempotency: `V37__tally_import_idempotency.sql`
 - Support ticket GitHub integration: `V41__support_tickets_github_integration.sql`
 - Period close request workflow: `V44__period_close_requests.sql`
 - Raw material adjustments: `V45__raw_material_adjustments.sql`
@@ -466,6 +462,6 @@ All paths below are relative to `erp-domain/src/main/java/com/bigbrightpaints/er
 - Factory/M2S: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/*`
 - Payroll: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/controller/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/`
 - Tenant/runtime security: `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/*`
-- Migration/import: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/OpeningBalanceImportService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/TallyImportService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/OpeningStockImportService.java`
+- Migration/import: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/OpeningBalanceImportService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/OpeningStockImportService.java`
 - Support tickets: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/controller/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/domain/`
 - Runtime config + migrations: `erp-domain/src/main/resources/application.yml`, `erp-domain/src/main/resources/db/migration_v2/*`

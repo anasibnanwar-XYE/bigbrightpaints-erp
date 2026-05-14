@@ -15,7 +15,7 @@ The accounting module owns financial posting, corrections, period controls, sett
 - **Accounting periods** — period open/close/lock/reopen with maker-checker workflow.
 - **Reconciliation** — discrepancy resolution and control account matching.
 - **Settlements and corrections** — notes, reversals, and explicit correction paths (see Posted-Truth Rules below).
-- **Data imports** — opening balances (CSV), Tally XML import.
+- **Data imports** — opening balances (CSV).
 - **Payroll posting seam** — receives payroll journal posting from the HR module.
 
 ## Primary Controllers
@@ -28,7 +28,6 @@ The accounting module owns financial posting, corrections, period controls, sett
 - `StatementReportController` — statements, aging, temporal/date-context, GST/reporting, and sales-return reporting surfaces.
 - `InventoryAccountingController` — landed cost, revaluation, and WIP accounting adjustments.
 - `OpeningBalanceImportController` — CSV opening balance import.
-- `TallyImportController` — Tally XML import.
 
 ## Key Services/Facades
 
@@ -44,7 +43,6 @@ The accounting module owns financial posting, corrections, period controls, sett
   - `SettlementJournalLineDraftService` — drafts dealer/supplier settlement journal lines from resolved totals and account bindings.
   - `DealerSettlementService`, `SupplierSettlementService`, and `SupplierPaymentService` consume the focused collaborators directly; `SettlementRequestResolutionService` is retired.
 - `OpeningBalanceImportService` — opening balance import processing.
-- `TallyImportService` — Tally XML import processing.
 
 Canonical module-boundary guidance: route new cross-module work through `AccountingFacade`, `AccountingService`, `AccountingPeriodService`, and `ReconciliationService`. Do not treat legacy support or `*Core` classes as public accounting seams.
 
@@ -88,20 +86,9 @@ Accounting enforces strict immutability for posted journal entries:
 ## Known Limitations
 
 - Period close uses a maker-checker workflow, but reopen is super-admin-only.
-- Some import paths (Tally XML) have limited error recovery.
 - Partner ledgers (`DealerLedgerEntry`, `SupplierLedgerEntry`) track per-partner financial position but are derived from journal entries rather than independently posted.
 
 ## Deprecated and Non-Canonical Surfaces
-
-### Tally XML Import - Limited Support
-
-The `TallyImportController` at `/api/v1/migration/tally-import` provides Tally XML compatibility for data migration. However:
-
-- **Limited error recovery**: Failed imports may leave partial data without clear rollback paths
-- **No idempotency**: Re-submitting the same XML file may create duplicate entries
-- **Canonical replacement**: For new data imports, use the CSV opening balance import (`OpeningBalanceImportController` at `/api/v1/accounting/opening-balances`) which has better validation and error handling
-
-**Recommendation**: Use CSV opening balance import for new migrations. Tally XML import is retained for legacy compatibility only.
 
 ### Legacy Period Reopen Behavior
 

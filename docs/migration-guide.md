@@ -2,7 +2,7 @@
 
 > ⚠️ **RETIRED / REFERENCE ONLY**: This guide is retained as an archival snapshot of older onboarding migration notes. Current canonical migration rollout and rollback truth lives in [docs/runbooks/migrations.md](runbooks/migrations.md).
 >
-> There is **no maintained canonical replacement** for the legacy CSV/Tally appendix below. If you reuse any detail from this file, verify it directly against current source, `openapi.json`, and the runbook before treating it as current truth.
+> There is **no maintained canonical replacement** for the legacy CSV appendix below. If you reuse any detail from this file, verify it directly against current source, `openapi.json`, and the runbook before treating it as current truth.
 
 Last reviewed: 2026-04-02
 
@@ -10,9 +10,8 @@ This archival guide covers end-to-end onboarding migration for a new company in 
 
 1. Prepare and import opening accounting balances from CSV
 2. Prepare and import opening inventory stock from CSV
-3. Export and import opening data from Tally Prime XML
-4. Resolve import errors quickly
-5. Follow the go-live onboarding workflow
+3. Resolve import errors quickly
+4. Follow the go-live onboarding workflow
 
 ---
 
@@ -114,98 +113,9 @@ FINISHED_GOOD,FG-PAINT-1L,Premium Enamel 1L,L,L,FG-OPEN-001,900,242.80,,2026-03-
 
 ---
 
-## 2) Tally Prime Export Instructions (for XML import)
+## 2) Error Handling Guide (What errors mean and how to fix)
 
-BigBright Tally endpoint: `POST /api/v1/migration/tally-import` (admin only).
-
-The importer expects Tally XML with:
-- `LEDGER` masters (`NAME`, `PARENT/GROUP`)
-- Opening voucher ledger entries (`VOUCHER` with opening context and `ALLLEDGERENTRIES.LIST` + `AMOUNT`)
-
-## 2.1 Prepare company period in Tally Prime
-
-1. Open the target company in Tally Prime.
-2. Set the migration period using **Alt+F2** (Period), so opening balances are visible for export.
-3. Ensure ledger masters are cleaned up (especially group assignments), because group mapping drives ERP account type mapping.
-
-## 2.2 Export ledger masters as XML
-
-1. Go to the ledger/master listing screen in Tally Prime.
-2. Press **Alt+E (Export)**.
-3. Set **Format** = `XML (Data Interchange)`.
-4. Select masters/ledgers export scope (all ledgers recommended for first-time migration).
-5. Save/export the XML file.
-
-## 2.3 Export opening vouchers as XML
-
-1. Open voucher export for opening entries (or opening balance voucher report).
-2. Press **Alt+E (Export)**.
-3. Set **Format** = `XML`.
-4. Include opening voucher entries in the selected period.
-5. Save/export the XML file.
-
-## 2.4 Upload into BigBright ERP
-
-```bash
-curl -X POST "<BASE_URL>/api/v1/migration/tally-import" \
-  -H "Authorization: Bearer <ADMIN_TOKEN>" \
-  -F "file=@tally-opening.xml"
-```
-
-### Tally import response highlights
-
-- `ledgersProcessed`
-- `mappedLedgers`
-- `accountsCreated`
-- `openingVoucherEntriesProcessed`
-- `openingBalanceRowsProcessed`
-- `unmappedGroups[]`
-- `unmappedItems[]`
-- `errors[]`
-
-Re-uploading the **exact same XML bytes** is replay-safe (idempotent by SHA-256 file hash).
-
----
-
-## 3) Tally Group → ERP Account Type Mapping Reference
-
-The mapping below is implemented in the Tally import adapter.
-
-| Tally Group | ERP `AccountType` |
-|---|---|
-| `SUNDRY DEBTORS` | `ASSET` |
-| `SUNDRY CREDITORS` | `LIABILITY` |
-| `BANK ACCOUNTS` | `ASSET` |
-| `BANK OD A/C` | `LIABILITY` |
-| `BANK OCC A/C` | `LIABILITY` |
-| `CASH-IN-HAND` | `ASSET` |
-| `CAPITAL ACCOUNT` | `EQUITY` |
-| `RESERVES & SURPLUS` | `EQUITY` |
-| `CURRENT ASSETS` | `ASSET` |
-| `CURRENT LIABILITIES` | `LIABILITY` |
-| `FIXED ASSETS` | `ASSET` |
-| `LOANS (LIABILITY)` | `LIABILITY` |
-| `LOANS & ADVANCES (ASSET)` | `ASSET` |
-| `DUTIES & TAXES` | `LIABILITY` |
-| `SALES ACCOUNTS` | `REVENUE` |
-| `PURCHASE ACCOUNTS` | `EXPENSE` |
-| `INDIRECT INCOMES` | `REVENUE` |
-| `INDIRECT EXPENSES` | `EXPENSE` |
-| `DIRECT INCOMES` | `REVENUE` |
-| `DIRECT EXPENSES` | `EXPENSE` |
-| `BRANCH / DIVISIONS` | `ASSET` |
-| `SUSPENSE A/C` | `ASSET` |
-| `PROVISIONS` | `LIABILITY` |
-| `SECURED LOANS` | `LIABILITY` |
-| `UNSECURED LOANS` | `LIABILITY` |
-
-If a group is not listed, it is returned in `unmappedGroups[]` and needs manual mapping cleanup before retry.
-
----
-
-## 4) Error Handling Guide (What errors mean and how to fix)
-
-## 4.1 Opening balance CSV errors
+## 2.1 Opening balance CSV errors
 
 | Error pattern | Meaning | Fix |
 |---|---|---|
@@ -220,7 +130,7 @@ If a group is not listed, it is returned in `unmappedGroups[]` and needs manual 
 | `Account mapping mismatch for code ...` | Existing account type differs from CSV type | Correct CSV type or account master |
 | `Import totals are unbalanced` | Total debit != total credit | Correct CSV totals before re-upload |
 
-## 4.2 Opening stock CSV errors
+## 2.2 Opening stock CSV errors
 
 | Error pattern | Meaning | Fix |
 |---|---|---|
@@ -237,20 +147,9 @@ If a group is not listed, it is returned in `unmappedGroups[]` and needs manual 
 | `... missing an inventory account` | Item/account setup incomplete | Configure valuation/inventory account and retry |
 | `Batch code already exists...` | Duplicate batch code for item | Change batch code or omit to auto-generate |
 
-## 4.3 Tally XML import errors
+## 2.3 Partial success behavior
 
-| Response field / error | Meaning | Fix |
-|---|---|---|
-| `Invalid Tally XML format` | XML parse failed | Re-export XML from Tally, verify file integrity |
-| `Invalid amount in Tally XML` | Non-numeric amount token | Clean source amount values and re-export |
-| `unmappedGroups[]` | Ledger groups not mapped to ERP account type | Reclassify those ledgers to supported groups (or add mapping in backend) |
-| `unmappedItems[]` | Voucher ledger lines could not resolve to account | Fix ledger master/group or create matching accounts, then re-import |
-| `errors[].context=ledger:*` | Ledger creation/type mismatch issues | Correct group/type consistency for that ledger |
-| `errors[].context=opening-row:*` | Opening row could not map/post | Fix ledger/group and opening amount data |
-
-## 4.4 Partial success behavior
-
-All three imports are designed for migration resilience:
+The current import surfaces are designed for migration resilience:
 - Row-level failures are reported in `errors[]`
 - Valid rows continue processing
 - Replaying the same opening-stock batch requires the original `Idempotency-Key`
@@ -258,7 +157,7 @@ All three imports are designed for migration resilience:
 
 ---
 
-## 5) Step-by-Step Onboarding Workflow (Create company → migrate → verify → go live)
+## 3) Step-by-Step Onboarding Workflow (Create company → migrate → verify → go live)
 
 ## Step 1: Create tenant/company with CoA template
 
@@ -349,16 +248,7 @@ curl -X POST "<BASE_URL>/api/v1/inventory/opening-stock?openingStockBatchKey=ope
 
 ---
 
-## Step 4: (Optional) Import from Tally XML
-
-If migrating from Tally Prime, follow section 2 export steps and upload XML to:
-- `POST /api/v1/migration/tally-import`
-
-Then resolve `unmappedGroups[]`, `unmappedItems[]`, and `errors[]` until clean.
-
----
-
-## Step 5: Verify trial balance
+## Step 4: Verify trial balance
 
 Run trial balance after imports to confirm accounting integrity.
 
@@ -382,7 +272,6 @@ Before first live transaction:
 - [ ] Company onboarding completed with correct template
 - [ ] Opening balance import completed with no unresolved `errors[]`
 - [ ] Opening stock import completed; history reviewed
-- [ ] (If applicable) Tally import completed with no unresolved unmapped groups/items
 - [ ] Trial balance verified (`balanced=true`)
 - [ ] Admin credentials tested and business users activated
 - [ ] First sale/purchase dry run completed successfully

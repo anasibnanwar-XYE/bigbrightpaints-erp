@@ -12,7 +12,7 @@ A reader can discover module ownership from this inventory without grepping the 
 
 | Module | Ownership Summary | Canonical Packet |
 | --- | --- | --- |
-| **accounting** | Financial truth boundary: journals, ledgers, chart of accounts, period controls, settlements, corrections, reconciliation, opening balance import, Tally XML import, payroll posting seam | [AGENTS.md](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md) |
+| **accounting** | Financial truth boundary: journals, ledgers, chart of accounts, period controls, settlements, corrections, reconciliation, opening balance import, payroll posting seam | [AGENTS.md](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md) |
 | **admin** | Admin/management surfaces: admin settings, tenant administration, support ticket access, and enterprise admin operations | [admin-portal-rbac.md](admin-portal-rbac.md) |
 | **auth** | Authentication corridor: login, refresh, logout, MFA, password reset, must-change-password, token/session revocation, JWT-based tenant scoping, security filter chain | [auth.md](auth.md) |
 | **company** | Tenant/company lifecycle: company CRUD, runtime admission, module gating, licensing checks, company-scoping assumptions | [company.md](company.md) |

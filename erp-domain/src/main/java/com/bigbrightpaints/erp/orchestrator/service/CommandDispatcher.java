@@ -376,7 +376,7 @@ public class CommandDispatcher {
       Object payload,
       String workflowName,
       String requestId) {
-    String normalizedRequestId = normalizeRequestId(requestId, idempotencyKey);
+    String normalizedRequestId = normalizeRequestId(requestId);
     OrchestratorIdempotencyService.CommandLease lease =
         idempotencyService.start(
             commandName,
@@ -387,7 +387,7 @@ public class CommandDispatcher {
     return new LeaseEnvelope(lease, normalizedRequestId, canonicalIdempotencyKey);
   }
 
-  private String normalizeRequestId(String requestId, String idempotencyKey) {
+  private String normalizeRequestId(String requestId) {
     return CorrelationIdentifierSanitizer.sanitizeOptionalRequestId(requestId);
   }
 

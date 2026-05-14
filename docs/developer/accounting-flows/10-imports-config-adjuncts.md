@@ -3,7 +3,7 @@
 ## Folder Map
 
 - `modules/accounting/controller|service|domain|dto`
-  Purpose: opening balances, Tally import, default-account setup, payroll entrypoints.
+  Purpose: opening balances, default-account setup, payroll entrypoints.
 - `modules/production/controller|service|domain|dto`
   Purpose: accounting-aware catalog maintenance and product account metadata.
 - `modules/inventory/controller|service|domain|dto`
@@ -21,16 +21,6 @@
   - resolve or create accounts
   - persist import record
   - post one opening journal
-
-### Tally Import
-
-- entry: `TallyImportController`
-- canonical path:
-  - dedupe by file hash
-  - parse XML
-  - resolve or create accounts
-  - synthesize opening-balance rows
-  - hand off to opening-balance importer
 
 ### Default Accounts Setup
 
@@ -54,7 +44,7 @@
 
 ## What Works
 
-- opening balances and Tally imports converge onto the same journal-posting path
+- opening balances converge onto the journal-posting path
 - config health is read-only and separate from write flows
 - default-account service is a central setup choke point
 
@@ -72,6 +62,5 @@
 - `ProductionCatalogService.ensureFinishedGoodAccounts`
 - `OpeningBalanceImportService.importOpeningBalances`
 - `OpeningBalanceImportService.postOpeningBalanceJournal`
-- `TallyImportService.importTallyXml`
 - `CompanyDefaultAccountsService.updateDefaults`
 - `PayrollAccountingService.recordPayrollPayment`

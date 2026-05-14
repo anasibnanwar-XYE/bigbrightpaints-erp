@@ -511,25 +511,25 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     String normalizedHashed =
         (String)
             com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                dispatcher, "normalizeRequestId", hashInput, "idem-fallback");
+                dispatcher, "normalizeRequestId", hashInput);
     assertThat(normalizedHashed).startsWith("RIDH|");
 
     String normalizedFromRequest =
         (String)
             com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                dispatcher, "normalizeRequestId", "  req-1  ", "idem-fallback");
+                dispatcher, "normalizeRequestId", "  req-1  ");
     assertThat(normalizedFromRequest).isEqualTo("req-1");
 
     String blankRequestId =
         (String)
             com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                dispatcher, "normalizeRequestId", "   ", "  idem-fallback  ");
+                dispatcher, "normalizeRequestId", "   ");
     assertThat(blankRequestId).isNull();
 
     String normalizedNull =
         (String)
             com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                dispatcher, "normalizeRequestId", null, "   ");
+                dispatcher, "normalizeRequestId", (Object) null);
     assertThat(normalizedNull).isNull();
 
     OrchestratorCommand commandWithIdempotency =
