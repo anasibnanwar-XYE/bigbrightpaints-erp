@@ -115,7 +115,7 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
     when(journalEntryRepository.findByCompanyAndReferenceNumber(
             eq(company), eq(canonicalReference)))
         .thenReturn(Optional.empty());
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq(baseReference)))
         .thenReturn(Optional.empty());
     JournalEntryDto created =

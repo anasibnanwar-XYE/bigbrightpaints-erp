@@ -41,7 +41,7 @@ public class JournalReferenceResolver {
       return direct;
     }
     List<JournalReferenceMapping> legacyMappings =
-        journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+        journalReferenceMappingRepository.findAllByCompanyAndReferenceKeyIgnoreCase(
             company, trimmed);
     Optional<JournalEntry> legacyEntry =
         findEntryByMappings(company, legacyMappings, true, "legacy", trimmed);

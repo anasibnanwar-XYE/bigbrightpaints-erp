@@ -12,13 +12,13 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 
 public interface JournalReferenceMappingRepository
     extends JpaRepository<JournalReferenceMapping, Long> {
-  Optional<JournalReferenceMapping> findByCompanyAndLegacyReferenceIgnoreCase(
+  Optional<JournalReferenceMapping> findByCompanyAndReferenceKeyIgnoreCase(
       Company company, String legacyReference);
 
   Optional<JournalReferenceMapping> findByCompanyAndCanonicalReferenceIgnoreCase(
       Company company, String canonicalReference);
 
-  List<JournalReferenceMapping> findAllByCompanyAndLegacyReferenceIgnoreCase(
+  List<JournalReferenceMapping> findAllByCompanyAndReferenceKeyIgnoreCase(
       Company company, String legacyReference);
 
   List<JournalReferenceMapping> findAllByCompanyAndCanonicalReferenceIgnoreCase(

@@ -300,7 +300,7 @@ class SalesJournalFacadeOperations {
     }
     String normalizedLegacy = legacyReference.trim();
     Optional<JournalReferenceMapping> existing =
-        journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+        journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             company, normalizedLegacy);
     if (existing.isPresent()) {
       JournalReferenceMapping mapping = existing.get();
@@ -333,7 +333,7 @@ class SalesJournalFacadeOperations {
     }
     String canonical = canonicalReference.trim();
     Optional<JournalReferenceMapping> existing =
-        journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+        journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             company, canonical);
     if (existing.isPresent()) {
       return false;
@@ -345,7 +345,7 @@ class SalesJournalFacadeOperations {
       return true;
     }
     if (journalReferenceMappingRepository
-        .findByCompanyAndLegacyReferenceIgnoreCase(company, canonical)
+        .findByCompanyAndReferenceKeyIgnoreCase(company, canonical)
         .isPresent()) {
       return false;
     }
@@ -367,7 +367,7 @@ class SalesJournalFacadeOperations {
       return existing;
     }
     Optional<JournalReferenceMapping> mapping =
-        journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+        journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             company, canonical);
     if (mapping.isEmpty()) {
       return Optional.empty();

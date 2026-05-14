@@ -161,7 +161,7 @@ class AccountingFacadeTest {
         .thenReturn(Optional.of(existing));
     when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq(hashReference)))
         .thenReturn(Optional.empty(), Optional.of(existing));
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(any(), any()))
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(any(), any()))
         .thenReturn(Optional.empty());
 
     JournalEntryDto stub =
@@ -289,7 +289,7 @@ class AccountingFacadeTest {
     when(journalEntryRepository.findByCompanyAndReferenceNumber(
             eq(company), eq(canonicalReference)))
         .thenReturn(Optional.empty());
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq(baseReference)))
         .thenReturn(Optional.empty());
     JournalEntryDto created =
@@ -502,7 +502,7 @@ class AccountingFacadeTest {
     ReflectionFieldAccess.setField(saved, "id", 910L);
     saved.setReferenceNumber(canonicalReference);
     when(companyEntityLookup.requireJournalEntry(eq(company), eq(910L))).thenReturn(saved);
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+    when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq(baseReference)))
         .thenReturn(Optional.empty());
 

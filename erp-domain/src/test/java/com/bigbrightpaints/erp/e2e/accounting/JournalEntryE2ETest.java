@@ -515,7 +515,7 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
     }
 
     List<JournalReferenceMapping> mappings =
-        journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+        journalReferenceMappingRepository.findAllByCompanyAndReferenceKeyIgnoreCase(
             company, manualRef);
     assertThat(mappings).hasSize(1);
     assertThat(mappings.getFirst().getEntityId()).isEqualTo(firstId);
@@ -693,7 +693,7 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
     assertThat(id1).isEqualTo(id2);
 
     List<JournalReferenceMapping> mappings =
-        journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+        journalReferenceMappingRepository.findAllByCompanyAndReferenceKeyIgnoreCase(
             company, manualRef);
     assertThat(mappings).hasSize(1);
     JournalReferenceMapping mapping = mappings.get(0);
@@ -776,7 +776,7 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
     assertThat(secondId).isEqualTo(firstId);
 
     List<JournalReferenceMapping> mappings =
-        journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+        journalReferenceMappingRepository.findAllByCompanyAndReferenceKeyIgnoreCase(
             company, manualRef);
     assertThat(mappings).hasSize(1);
     assertThat(mappings.getFirst().getEntityId()).isEqualTo(firstId);

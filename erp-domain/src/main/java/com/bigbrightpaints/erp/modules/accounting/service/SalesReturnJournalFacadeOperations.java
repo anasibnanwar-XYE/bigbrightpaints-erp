@@ -233,7 +233,7 @@ class SalesReturnJournalFacadeOperations {
       return;
     }
     if (journalReferenceMappingRepository
-        .findByCompanyAndLegacyReferenceIgnoreCase(company, legacyReference.trim())
+        .findByCompanyAndReferenceKeyIgnoreCase(company, legacyReference.trim())
         .isPresent()) {
       return;
     }
