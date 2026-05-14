@@ -10,13 +10,13 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 @Tag("reconciliation")
 class TS_P2PGoodsReceiptIdempotencyTest {
 
-  private static final String PURCHASING_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java";
+  private static final String GOODS_RECEIPT_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/GoodsReceiptService.java";
 
   @Test
   void goodsReceiptRequiresIdempotencyAndOpenPeriod() {
     TruthSuiteFileAssert.assertContains(
-        PURCHASING_SERVICE,
+        GOODS_RECEIPT_SERVICE,
         "String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());",
         "\"Idempotency key is required for goods receipts\"",
         "goodsReceiptRepository.findWithLinesByCompanyAndIdempotencyKey(company, idempotencyKey)",
@@ -27,7 +27,7 @@ class TS_P2PGoodsReceiptIdempotencyTest {
   @Test
   void goodsReceiptRetryPathIsDuplicateSafe() {
     TruthSuiteFileAssert.assertContains(
-        PURCHASING_SERVICE,
+        GOODS_RECEIPT_SERVICE,
         "if (!isDataIntegrityViolation(ex)) {",
         "GoodsReceipt concurrent ="
             + " goodsReceiptRepository.findWithLinesByCompanyAndIdempotencyKey(company,"
@@ -38,7 +38,7 @@ class TS_P2PGoodsReceiptIdempotencyTest {
   @Test
   void goodsReceiptPersistsInventoryMovementsThroughRawMaterialService() {
     TruthSuiteFileAssert.assertContains(
-        PURCHASING_SERVICE,
+        GOODS_RECEIPT_SERVICE,
         "RawMaterialService.ReceiptResult receiptResult ="
             + " rawMaterialService.recordReceipt(rawMaterial.getId(), batchRequest, context);",
         "GoodsReceipt savedReceipt = goodsReceiptRepository.saveAndFlush(receipt);");

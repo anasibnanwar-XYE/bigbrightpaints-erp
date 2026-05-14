@@ -62,7 +62,6 @@ public class AccountingPeriodService {
       ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository,
       PeriodCloseRequestRepository periodCloseRequestRepository,
       ObjectProvider<JournalEntryService> journalEntryServiceProvider,
-      PeriodCloseHook periodCloseHook,
       AccountingPeriodSnapshotService snapshotService) {
     AccountingPeriodLifecycleService lifecycleService =
         new AccountingPeriodLifecycleService(
@@ -101,7 +100,6 @@ public class AccountingPeriodService {
             companyClock,
             periodCloseRequestRepository,
             journalEntryServiceProvider,
-            periodCloseHook,
             snapshotService,
             lifecycleService,
             checklistService);

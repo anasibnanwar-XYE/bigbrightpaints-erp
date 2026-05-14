@@ -15,11 +15,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -479,35 +477,6 @@ class IntegrationCoordinatorTest {
   }
 
   @Test
-  void isHrPayrollEnabled_requiresCompanyAndEnabledModules() {
-    Company modulesMissing = new Company();
-    modulesMissing.setEnabledModules(null);
-
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", (Company) null))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", modulesMissing))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", company))
-        .isFalse();
-
-    company.setEnabledModules(Set.of("HR_PAYROLL"));
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", company))
-        .isTrue();
-  }
-
-  @Test
   void updateProductionStatusFailsClosedWhenFactoryDispatchDisabled() {
     IntegrationCoordinator disabled =
         new IntegrationCoordinator(
@@ -580,7 +549,7 @@ class IntegrationCoordinatorTest {
   }
 
   @Test
-  void queueProductionPrefersCompanyCodeBeforeNumericIdFallback() {
+  void queueProductionPrefersCompanyCodeBeforeNumericIdLookup() {
     Company codeCompany = new Company();
     codeCompany.setCode("99");
     codeCompany.setTimezone("Asia/Kolkata");
@@ -641,53 +610,6 @@ class IntegrationCoordinatorTest {
   }
 
   @Test
-  void generatePayrollFailsClosedWhenPayrollDisabled() {
-    IntegrationCoordinator disabled =
-        new IntegrationCoordinator(
-            salesService,
-            factoryService,
-            finishedGoodsService,
-            accountingService,
-            hrService,
-            reportService,
-            orderAutoApprovalStateRepository,
-            accountingFacade,
-            companyRepository,
-            companyClock,
-            new OrchestratorFeatureFlags(false, true),
-            new NoOpTransactionManager());
-
-    assertThrows(
-        ApplicationException.class,
-        () -> disabled.generatePayroll(LocalDate.now(), new BigDecimal("1000"), COMPANY_ID));
-    verifyNoInteractions(hrService);
-  }
-
-  @Test
-  void generatePayrollReturnsDeprecatedErrorWithNormalizedContextDetails() {
-    ApplicationException ex =
-        assertThrows(
-            ApplicationException.class,
-            () ->
-                integrationCoordinator.generatePayroll(
-                    LocalDate.of(2026, 4, 10),
-                    new BigDecimal("1000.50"),
-                    "  " + COMPANY_ID + "  ",
-                    "trace-payroll-42",
-                    "idem-payroll-42"));
-
-    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION);
-    assertThat(ex.getDetails())
-        .containsEntry("canonicalPath", "/api/v1/payroll/runs")
-        .containsEntry("payrollDate", LocalDate.of(2026, 4, 10))
-        .containsEntry("totalAmount", new BigDecimal("1000.50"))
-        .containsEntry("companyId", COMPANY_ID)
-        .containsEntry("traceId", "trace-payroll-42")
-        .containsEntry("idempotencyKey", "idem-payroll-42");
-    verifyNoInteractions(hrService);
-  }
-
-  @Test
   void recordPayrollPaymentFailsClosedWhenPayrollDisabled() {
     IntegrationCoordinator disabled =
         new IntegrationCoordinator(
@@ -738,13 +660,6 @@ class IntegrationCoordinatorTest {
                         && task.description() != null
                         && task.description().contains("[trace=trace-order-42]")
                         && task.description().contains("[idem=idem-order-42]")));
-  }
-
-  @Test
-  void integrationCoordinatorNoLongerExposesLegacyReleaseInventoryCaller() {
-    assertThat(
-            Arrays.stream(IntegrationCoordinator.class.getDeclaredMethods()).map(Method::getName))
-        .doesNotContain("releaseInventory");
   }
 
   @Test

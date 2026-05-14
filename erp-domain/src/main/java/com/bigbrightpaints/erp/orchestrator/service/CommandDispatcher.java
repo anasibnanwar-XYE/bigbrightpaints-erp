@@ -4,52 +4,43 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.BooleanSupplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
-import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
-import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
-import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
-import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 
 @Service
 public class CommandDispatcher {
 
   private static final Logger log = LoggerFactory.getLogger(CommandDispatcher.class);
-  private final WorkflowService workflowService;
   private final IntegrationCoordinator integrationCoordinator;
   private final EventPublisherService eventPublisherService;
   private final TraceService traceService;
-  private final PolicyEnforcer policyEnforcer;
   private final OrchestratorIdempotencyService idempotencyService;
   private final OrchestratorFeatureFlags featureFlags;
   private final TenantRealActionUsageService realActionUsageService;
 
   public CommandDispatcher(
-      WorkflowService workflowService,
       IntegrationCoordinator integrationCoordinator,
       EventPublisherService eventPublisherService,
       TraceService traceService,
-      PolicyEnforcer policyEnforcer,
       OrchestratorIdempotencyService idempotencyService,
       OrchestratorFeatureFlags featureFlags,
       TenantRealActionUsageService realActionUsageService) {
-    this.workflowService = workflowService;
     this.integrationCoordinator = integrationCoordinator;
     this.eventPublisherService = eventPublisherService;
     this.traceService = traceService;
-    this.policyEnforcer = policyEnforcer;
     this.idempotencyService = idempotencyService;
     this.featureFlags = featureFlags;
     this.realActionUsageService = realActionUsageService;
@@ -62,9 +53,9 @@ public class CommandDispatcher {
       String requestId,
       String companyId,
       String userId) {
-    policyEnforcer.checkOrderApprovalPermissions(userId, companyId);
+    requireUserAndCompanyContext(userId, companyId);
     LeaseEnvelope leaseEnvelope =
-        startLease("ORCH.ORDER.APPROVE", idempotencyKey, request, "order-approval", requestId);
+        startLease("ORCH.ORDER.APPROVE", idempotencyKey, request, requestId);
     OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
     String normalizedRequestId = leaseEnvelope.normalizedRequestId();
     String canonicalIdempotencyKey = leaseEnvelope.canonicalIdempotencyKey();
@@ -125,7 +116,6 @@ public class CommandDispatcher {
             "ORCH.ORDER.AUTO_APPROVE",
             idempotencyKey,
             Map.of("orderId", orderId, "totalAmount", totalAmount),
-            "order-auto-approval",
             requestId);
     OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
     String normalizedRequestId = leaseEnvelope.normalizedRequestId();
@@ -179,13 +169,12 @@ public class CommandDispatcher {
       String requestId,
       String companyId,
       String userId) {
-    policyEnforcer.checkOrderApprovalPermissions(userId, companyId);
+    requireUserAndCompanyContext(userId, companyId);
     LeaseEnvelope leaseEnvelope =
         startLease(
             "ORCH.ORDER.FULFILLMENT.UPDATE",
             idempotencyKey,
             Map.of("orderId", orderId, "request", request),
-            "order-fulfillment",
             requestId);
     OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
     String normalizedRequestId = leaseEnvelope.normalizedRequestId();
@@ -230,79 +219,6 @@ public class CommandDispatcher {
         });
   }
 
-  @Transactional(noRollbackFor = OrchestratorFeatureDisabledException.class)
-  public String runPayroll(
-      PayrollRunRequest request,
-      String idempotencyKey,
-      String requestId,
-      String companyId,
-      String userId) {
-    policyEnforcer.checkPayrollPermissions(userId, companyId);
-    LeaseEnvelope leaseEnvelope =
-        startLease("ORCH.PAYROLL.RUN", idempotencyKey, request, "payroll", requestId);
-    OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
-    String normalizedRequestId = leaseEnvelope.normalizedRequestId();
-    String canonicalIdempotencyKey = leaseEnvelope.canonicalIdempotencyKey();
-    return executeFeatureGuardedCommand(
-        leaseEnvelope,
-        "ORCH.PAYROLL.RUN",
-        companyId,
-        userId,
-        "/api/v1/payroll/runs",
-        "Orchestrator payroll run is disabled (CODE-RED).",
-        "Payroll",
-        request != null && request.payrollDate() != null ? request.payrollDate().toString() : null,
-        request != null ? request.postingAmount() : null,
-        "payroll",
-        featureFlags::isPayrollEnabled,
-        () -> {
-          String traceId = lease.traceId();
-          integrationCoordinator.syncEmployees(companyId, traceId, canonicalIdempotencyKey);
-          var payrollRun =
-              integrationCoordinator.generatePayroll(
-                  request.payrollDate(),
-                  request.postingAmount(),
-                  companyId,
-                  traceId,
-                  canonicalIdempotencyKey);
-          integrationCoordinator.recordPayrollPayment(
-              payrollRun.id(),
-              request.postingAmount(),
-              request.debitAccountId(),
-              request.creditAccountId(),
-              companyId,
-              traceId,
-              canonicalIdempotencyKey);
-          DomainEvent event =
-              DomainEvent.of(
-                  "PayrollCompletedEvent",
-                  companyId,
-                  userId,
-                  "Payroll",
-                  request.payrollDate().toString(),
-                  Map.of(
-                      "initiatedBy",
-                      request.initiatedBy(),
-                      "traceId",
-                      traceId,
-                      "idempotencyKey",
-                      canonicalIdempotencyKey),
-                  traceId,
-                  normalizedRequestId,
-                  canonicalIdempotencyKey);
-          eventPublisherService.enqueue(event);
-          traceService.record(
-              traceId,
-              "PAYROLL_COMPLETED",
-              companyId,
-              Map.of(
-                  "payrollDate", request.payrollDate(), "idempotencyKey", canonicalIdempotencyKey),
-              normalizedRequestId,
-              canonicalIdempotencyKey);
-          return traceId;
-        });
-  }
-
   public Map<String, Object> integrationHealth() {
     return integrationCoordinator.health();
   }
@@ -320,71 +236,19 @@ public class CommandDispatcher {
     return UUID.randomUUID().toString();
   }
 
-  private void recordDeniedCommand(
-      OrchestratorIdempotencyService.CommandLease lease,
-      String commandName,
-      String companyId,
-      String userId,
-      String idempotencyKey,
-      String requestId,
-      String canonicalPath,
-      String message,
-      String entity,
-      String entityId) {
-    RuntimeException denied = new RuntimeException(message);
-    try {
-      String traceId = lease.traceId();
-      Map<String, Object> payload = new HashMap<>();
-      payload.put("commandName", commandName);
-      payload.put("reason", message);
-      payload.put("canonicalPath", canonicalPath);
-      payload.put("idempotencyKey", idempotencyKey);
-      payload.put("traceId", traceId);
-      DomainEvent event =
-          DomainEvent.of(
-              "OrchestratorCommandDenied",
-              companyId,
-              userId,
-              entity,
-              entityId != null ? entityId : commandName,
-              payload,
-              traceId,
-              requestId,
-              idempotencyKey);
-      eventPublisherService.enqueue(event);
-      traceService.record(
-          traceId,
-          "ORCH_COMMAND_DENIED",
-          companyId,
-          Map.of(
-              "commandName", commandName,
-              "reason", message,
-              "canonicalPath", canonicalPath,
-              "idempotencyKey", idempotencyKey,
-              "entity", entity,
-              "entityId", entityId),
-          requestId,
-          idempotencyKey);
-    } finally {
-      idempotencyService.markFailed(lease.command(), denied);
-    }
-  }
-
   private LeaseEnvelope startLease(
-      String commandName,
-      String idempotencyKey,
-      Object payload,
-      String workflowName,
-      String requestId) {
+      String commandName, String idempotencyKey, Object payload, String requestId) {
     String normalizedRequestId = normalizeRequestId(requestId);
     OrchestratorIdempotencyService.CommandLease lease =
-        idempotencyService.start(
-            commandName,
-            idempotencyKey,
-            payload,
-            () -> workflowService.startWorkflow(workflowName));
+        idempotencyService.start(commandName, idempotencyKey, payload, this::generateTraceId);
     String canonicalIdempotencyKey = canonicalIdempotencyKey(lease);
     return new LeaseEnvelope(lease, normalizedRequestId, canonicalIdempotencyKey);
+  }
+
+  private void requireUserAndCompanyContext(String userId, String companyId) {
+    if (!StringUtils.hasText(userId) || !StringUtils.hasText(companyId)) {
+      throw new AccessDeniedException("Missing user or company context");
+    }
   }
 
   private String normalizeRequestId(String requestId) {
@@ -416,41 +280,6 @@ public class CommandDispatcher {
       idempotencyService.markFailed(lease.command(), ex);
       throw ex;
     }
-  }
-
-  private String executeFeatureGuardedCommand(
-      LeaseEnvelope leaseEnvelope,
-      String commandName,
-      String companyId,
-      String userId,
-      String canonicalPath,
-      String disabledMessage,
-      String entity,
-      String entityId,
-      BigDecimal postingAmount,
-      String operation,
-      BooleanSupplier featureEnabled,
-      CommandExecution execution) {
-    OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
-    if (!lease.shouldExecute()) {
-      return lease.traceId();
-    }
-    if (!featureEnabled.getAsBoolean()) {
-      recordDeniedCommand(
-          lease,
-          commandName,
-          companyId,
-          userId,
-          leaseEnvelope.canonicalIdempotencyKey(),
-          leaseEnvelope.normalizedRequestId(),
-          canonicalPath,
-          disabledMessage,
-          entity,
-          entityId);
-      throw new OrchestratorFeatureDisabledException(disabledMessage, canonicalPath);
-    }
-    ensurePositivePostingAmount(lease.command(), postingAmount, operation);
-    return executeWithLease(lease, companyId, execution);
   }
 
   private void ensurePositivePostingAmount(

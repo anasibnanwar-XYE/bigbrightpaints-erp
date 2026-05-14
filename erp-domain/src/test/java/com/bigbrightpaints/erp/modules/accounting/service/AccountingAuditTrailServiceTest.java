@@ -728,7 +728,7 @@ class AccountingAuditTrailServiceTest {
   }
 
   @Test
-  void transactionDetail_omitsSingleLegacyDispatchWhenOrderHasMultipleInvoices() {
+  void transactionDetail_omitsDispatchWhenOrderHasMultipleInvoices() {
     Company company = new Company();
     company.setCode("BBP");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -761,11 +761,11 @@ class AccountingAuditTrailServiceTest {
     otherInvoice.setStatus("ISSUED");
     otherInvoice.setSalesOrder(order);
 
-    PackagingSlip legacySlip = new PackagingSlip();
-    setField(legacySlip, "id", 695L);
-    legacySlip.setSalesOrder(order);
-    legacySlip.setSlipNumber("PS-695");
-    legacySlip.setStatus("DISPATCHED");
+    PackagingSlip unlinkedSlip = new PackagingSlip();
+    setField(unlinkedSlip, "id", 695L);
+    unlinkedSlip.setSalesOrder(order);
+    unlinkedSlip.setSlipNumber("PS-695");
+    unlinkedSlip.setStatus("DISPATCHED");
 
     when(journalEntryRepository.findByCompanyAndId(company, 194L)).thenReturn(Optional.of(entry));
     when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(
@@ -776,7 +776,7 @@ class AccountingAuditTrailServiceTest {
     when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, entry))
         .thenReturn(Optional.empty());
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 394L))
-        .thenReturn(List.of(legacySlip));
+        .thenReturn(List.of(unlinkedSlip));
     when(settlementAllocationRepository.findByCompanyAndInvoiceOrderByCreatedAtDesc(
             company, invoice))
         .thenReturn(List.of());
@@ -850,7 +850,7 @@ class AccountingAuditTrailServiceTest {
   }
 
   @Test
-  void transactionDetail_omitsLegacyDispatchWhenOnlyHistoricalFallbackWouldMatch() {
+  void transactionDetail_omitsDispatchWhenOnlyHistoricalInvoiceStateWouldMatch() {
     Company company = new Company();
     company.setCode("BBP");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -876,11 +876,11 @@ class AccountingAuditTrailServiceTest {
     invoice.setSalesOrder(order);
     invoice.setJournalEntry(entry);
 
-    PackagingSlip legacySlip = new PackagingSlip();
-    setField(legacySlip, "id", 696L);
-    legacySlip.setSalesOrder(order);
-    legacySlip.setSlipNumber("PS-696");
-    legacySlip.setStatus("DISPATCHED");
+    PackagingSlip unlinkedSlip = new PackagingSlip();
+    setField(unlinkedSlip, "id", 696L);
+    unlinkedSlip.setSalesOrder(order);
+    unlinkedSlip.setSlipNumber("PS-696");
+    unlinkedSlip.setStatus("DISPATCHED");
 
     when(journalEntryRepository.findByCompanyAndId(company, 195L)).thenReturn(Optional.of(entry));
     when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(
@@ -891,7 +891,7 @@ class AccountingAuditTrailServiceTest {
     when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, entry))
         .thenReturn(Optional.empty());
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 395L))
-        .thenReturn(List.of(legacySlip));
+        .thenReturn(List.of(unlinkedSlip));
     when(settlementAllocationRepository.findByCompanyAndInvoiceOrderByCreatedAtDesc(
             company, invoice))
         .thenReturn(List.of());

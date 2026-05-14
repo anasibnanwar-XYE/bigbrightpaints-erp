@@ -25,7 +25,6 @@ import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextFilter;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
-import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -33,7 +32,7 @@ import jakarta.servlet.ServletException;
 @ExtendWith(MockitoExtension.class)
 class CompanyContextFilterPasswordResetBypassTest {
 
-  @Mock private TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
+  @Mock private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
 
   @Mock private CompanyService companyService;
 
@@ -47,7 +46,7 @@ class CompanyContextFilterPasswordResetBypassTest {
   void setUp() {
     filter =
         new CompanyContextFilter(
-            tenantRuntimeRequestAdmissionService,
+            tenantRuntimeEnforcementService,
             companyService,
             authScopeService,
             new ObjectMapper().findAndRegisterModules());
@@ -99,11 +98,11 @@ class CompanyContextFilterPasswordResetBypassTest {
     assertThat(response.getStatus()).isEqualTo(200);
     verify(filterChain).doFilter(request, response);
     verifyNoInteractions(companyService);
-    verify(tenantRuntimeRequestAdmissionService)
-        .completeRequest(
+    verify(tenantRuntimeEnforcementService)
+        .completeRequestAdmission(
             any(TenantRuntimeEnforcementService.TenantRequestAdmission.class), eq(200));
-    verify(tenantRuntimeRequestAdmissionService, never())
-        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    verify(tenantRuntimeEnforcementService, never())
+        .admitRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
   }
 
   private void assertRequestRejectedByCompanyHeader(String method, String path)
@@ -119,11 +118,11 @@ class CompanyContextFilterPasswordResetBypassTest {
     assertThat(response.getStatus()).isEqualTo(403);
     verify(filterChain, never()).doFilter(request, response);
     verifyNoInteractions(companyService);
-    verify(tenantRuntimeRequestAdmissionService)
-        .completeRequest(
+    verify(tenantRuntimeEnforcementService)
+        .completeRequestAdmission(
             any(TenantRuntimeEnforcementService.TenantRequestAdmission.class), eq(403));
-    verify(tenantRuntimeRequestAdmissionService, never())
-        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    verify(tenantRuntimeEnforcementService, never())
+        .admitRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
   }
 
   private void assertRequestRejectedByLegacyCompanyIdHeader(String method, String path)
@@ -139,10 +138,10 @@ class CompanyContextFilterPasswordResetBypassTest {
     assertThat(response.getStatus()).isEqualTo(403);
     verify(filterChain, never()).doFilter(request, response);
     verifyNoInteractions(companyService);
-    verify(tenantRuntimeRequestAdmissionService)
-        .completeRequest(
+    verify(tenantRuntimeEnforcementService)
+        .completeRequestAdmission(
             any(TenantRuntimeEnforcementService.TenantRequestAdmission.class), eq(403));
-    verify(tenantRuntimeRequestAdmissionService, never())
-        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    verify(tenantRuntimeEnforcementService, never())
+        .admitRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
   }
 }

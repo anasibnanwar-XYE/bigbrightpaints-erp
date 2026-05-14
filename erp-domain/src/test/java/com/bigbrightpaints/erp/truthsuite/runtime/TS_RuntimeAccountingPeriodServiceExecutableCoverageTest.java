@@ -43,7 +43,6 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodServic
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodSnapshotService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
-import com.bigbrightpaints.erp.modules.accounting.service.PeriodCloseHook;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -88,7 +87,6 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
     @SuppressWarnings("unchecked")
     ObjectProvider<JournalEntryService> journalEntryServiceProvider = mock(ObjectProvider.class);
     when(journalEntryServiceProvider.getObject()).thenReturn(journalEntryService);
-    PeriodCloseHook periodCloseHook = mock(PeriodCloseHook.class);
     AccountingPeriodSnapshotService snapshotService = mock(AccountingPeriodSnapshotService.class);
 
     AccountingPeriodService service =
@@ -109,7 +107,6 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
             reconciliationDiscrepancyRepository,
             periodCloseRequestRepository,
             journalEntryServiceProvider,
-            periodCloseHook,
             snapshotService);
 
     Company company = company(42L, "TRUTH");
@@ -228,7 +225,6 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
     @SuppressWarnings("unchecked")
     ObjectProvider<JournalEntryService> journalEntryServiceProvider = mock(ObjectProvider.class);
     when(journalEntryServiceProvider.getObject()).thenReturn(journalEntryService);
-    PeriodCloseHook periodCloseHook = mock(PeriodCloseHook.class);
     AccountingPeriodSnapshotService snapshotService = mock(AccountingPeriodSnapshotService.class);
 
     AccountingPeriodService service =
@@ -249,7 +245,6 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
             reconciliationDiscrepancyRepository,
             periodCloseRequestRepository,
             journalEntryServiceProvider,
-            periodCloseHook,
             snapshotService);
 
     Company company = company(99L, "TRUTH");

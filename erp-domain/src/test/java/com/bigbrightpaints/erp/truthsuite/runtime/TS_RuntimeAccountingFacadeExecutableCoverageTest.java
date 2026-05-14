@@ -90,7 +90,7 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
   }
 
   @Test
-  void postPurchaseJournal_ignoresLegacyPrefixedEntriesWithoutBaseReplay() {
+  void postPurchaseJournal_createsCanonicalReferenceWithoutPrefixReplayScan() {
     Long supplierId = 88L;
     Supplier supplier = new Supplier();
     supplier.setStatus(SupplierStatus.ACTIVE);
@@ -156,7 +156,7 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
             supplierId,
             "INV-100",
             LocalDate.of(2026, 1, 10),
-            "legacy replay",
+            "canonical replay",
             Map.of(inventoryAccountId, new BigDecimal("100.00")),
             null,
             new BigDecimal("100.00"),

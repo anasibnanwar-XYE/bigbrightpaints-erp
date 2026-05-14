@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -141,12 +140,12 @@ public class InvoiceService {
   }
 
   private SalesOrder requireOrderForUpdate(Company company, Long salesOrderId) {
-    Optional<SalesOrder> lockedOrder =
-        salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, salesOrderId);
-    if (lockedOrder != null && lockedOrder.isPresent()) {
-      return lockedOrder.get();
-    }
-    return salesOrderCrudService.getOrderWithItems(salesOrderId);
+    return salesOrderRepository
+        .findWithItemsByCompanyAndIdForUpdate(company, salesOrderId)
+        .orElseThrow(
+            () ->
+                new ApplicationException(
+                    ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Sales order not found: " + salesOrderId));
   }
 
   private List<PackagingSlip> findOrderSlips(

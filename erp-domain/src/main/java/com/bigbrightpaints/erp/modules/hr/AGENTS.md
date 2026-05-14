@@ -56,17 +56,12 @@ For the full architecture reference, see:
 - Payroll posting requires specific payroll accounts to be configured in the chart of accounts.
 - The accounting-host payment seam is a cross-module boundary — payroll is not fully self-contained.
 - Payroll module is currently paused by default for new tenants (ERP-33).
-- Some legacy payroll endpoints may exist as compatibility aliases.
 
-## Deprecated and Non-Canonical Surfaces
+## Current Payroll Surfaces
 
-### Legacy Payroll Endpoints
-
-Some legacy payroll endpoints may exist as compatibility aliases for older frontend versions. These are:
-
-- **Legacy endpoint pattern**: Any `/api/v1/hr/**` endpoints (non-standard) that may exist alongside the canonical `/api/v1/payroll/**` endpoints
-- **Canonical replacement**: Use `HrPayrollController` at `/api/v1/payroll/**` for all payroll operations
-- **Idempotency**: The canonical path uses `Idempotency-Key` header for duplicate request protection
+- Use `HrPayrollController` at `/api/v1/payroll/**` for all payroll operations.
+- The canonical path uses the `Idempotency-Key` header for duplicate request protection.
+- Do not add compatibility aliases under `/api/v1/hr/**`.
 
 ### Payroll Module Paused by Default
 
@@ -83,7 +78,7 @@ Payroll is not fully self-contained - it depends on the accounting module for:
 
 There is no replacement for this seam - this is the canonical design. The HR module calculates payroll, but accounting owns the financial truth.
 
-### Deprecated: Direct HR Endpoints
+### Payroll Endpoints
 
-Any legacy direct HR endpoints (outside the standard payroll flow) should be considered deprecated. The canonical paths are:
+The canonical paths are:
 - Payroll run lifecycle: `POST /api/v1/payroll/runs`, `POST /api/v1/payroll/runs/{id}/calculate`, `POST /api/v1/payroll/runs/{id}/approve`, `POST /api/v1/payroll/runs/{id}/post`, `POST /api/v1/payroll/runs/{id}/mark-paid`

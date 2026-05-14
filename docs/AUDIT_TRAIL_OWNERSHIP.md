@@ -1,11 +1,8 @@
 # Audit Trail Ownership and De-dup Contract
 
-> ⚠️ **NON-CANONICAL / REFERENCE ONLY**
->
-> This retained audit de-dup/change-control contract is outside the canonical docs spine.
-> Use [docs/modules/core-audit-runtime-settings.md](modules/core-audit-runtime-settings.md) for the canonical audit ownership overview.
->
-> Status: reference only — retained audit de-dup/change-control contract. If this file conflicts with the canonical audit module packet, the canonical module packet wins.
+Last reviewed: 2026-05-04
+
+Status: mandatory guard contract, do not remove.
 
 ## Goal
 Keep audit coverage complete without running duplicate audit-processing paths for the same accounting workflow event.
@@ -22,13 +19,13 @@ Keep audit coverage complete without running duplicate audit-processing paths fo
 
 ## De-dup Policy
 - Accounting journal/reversal/settlement summary events are captured by AccountingEventStore as the structured source of truth.
-- Legacy summary success writes for these events in `AuditService` are fully decommissioned (not toggle-controlled).
-- No profile may re-enable legacy summary success writes for `JOURNAL_ENTRY_POSTED`, `JOURNAL_ENTRY_REVERSED`, or `SETTLEMENT_RECORDED`.
+- Retired summary success writes for these events in `AuditService` are fully decommissioned (not toggle-controlled).
+- No profile may re-enable retired summary success writes for `JOURNAL_ENTRY_POSTED`, `JOURNAL_ENTRY_REVERSED`, or `SETTLEMENT_RECORDED`.
 - `AuditService` remains active for failure and security/admin signal paths.
 
 ## Change-Control Rule
 - Any change to this ownership split must update, in the same commit:
   - this file,
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`,
-  - runtime/test config contract in `application*.yml` (legacy summary toggle block must remain absent),
+  - runtime/test config contract in `application*.yml` (retired summary toggle block must remain absent),
   - guard script `scripts/guard_audit_trail_ownership_contract.sh`.

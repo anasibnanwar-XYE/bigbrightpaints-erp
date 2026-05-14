@@ -163,7 +163,7 @@ class AccountingEventStoreMetricsTest {
   }
 
   @Test
-  void recordJournalEntryPosted_usesFlowCorrelationFallbackFromSourceFields() {
+  void recordJournalEntryPosted_usesFlowCorrelationCandidatesFromSourceFields() {
     AccountingEventStore store =
         new AccountingEventStore(
             eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);
@@ -211,7 +211,7 @@ class AccountingEventStoreMetricsTest {
   }
 
   @Test
-  void recordSettlementAllocated_keepsCorrelationNullWhenAllFallbackCandidatesAreBlank() {
+  void recordSettlementAllocated_keepsCorrelationNullWhenAllCandidatesAreBlank() {
     AccountingEventStore store =
         new AccountingEventStore(
             eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);

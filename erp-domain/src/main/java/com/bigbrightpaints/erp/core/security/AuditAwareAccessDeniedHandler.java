@@ -66,7 +66,7 @@ public class AuditAwareAccessDeniedHandler implements AccessDeniedHandler {
       } else {
         metadata.put("reason", ACCESS_DENIED_AUDIT_REASON);
       }
-      String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+      String actor = SecurityActorResolver.resolveAuditActor();
       metadata.put("actor", actor);
       String tenantScope = AccessDeniedAuditMarker.resolveTenantScope(request);
       if (StringUtils.hasText(tenantScope)) {

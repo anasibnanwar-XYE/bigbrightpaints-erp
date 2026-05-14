@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the catalog, setup, and readiness surfaces in the `production` module. It covers brands, items, import, SKU readiness evaluation, packaging-material definitions, payload families, and setup prerequisites that affect downstream flows.
+This document describes the catalog, setup, and readiness surfaces in the `production` module. It covers brands, items, import, SKU readiness evaluation, packaging-material definitions, payload families, and setup prerequisites that affect downstream flows.
 
-The catalog/setup surface owns **structural product truth** — what products exist, how they are classified, and whether they are ready for downstream operations. Execution truth (production logs, packing, dispatch) is documented separately in the factory/manufacturing and inventory packets.
+The catalog/setup surface owns **structural product truth** — what products exist, how they are classified, and whether they are ready for downstream operations. Execution truth (production logs, packing, dispatch) is documented separately in the factory/manufacturing and inventory documents.
 
 ---
 
@@ -71,16 +71,6 @@ All catalog/setup endpoints live under a single host prefix:
 | `logoUrl` | String | Brand logo URL |
 | `description` | String | Brand description |
 | `active` | boolean | Whether brand is active |
-
-**ProductionBrandDto** (extended brand listing with product count):
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | Long | Internal ID |
-| `publicId` | UUID | External-facing ID |
-| `name` | String | Brand name |
-| `code` | String | Auto-generated brand code |
-| `productCount` | long | Number of products under this brand |
 
 ### 3.2 Item Payloads
 
@@ -171,7 +161,7 @@ Each `VariantItem` contains: `sku`, `reason`, `productName`, `color`, `size`. Re
 
 ### 3.4 Import Payloads
 
-**Import request:** multipart form with `file` (CSV) plus optional `Idempotency-Key` or `X-Idempotency-Key` header.
+**Import request:** multipart form with `file` (CSV) plus optional `Idempotency-Key` header.
 
 **CatalogImportResponse**:
 
@@ -325,7 +315,7 @@ The catalog import surface accepts CSV file uploads and performs multi-row brand
 ### 7.1 Import Mechanics
 
 1. **File validation:** Accepts CSV files only (`text/csv`, `application/csv`, `application/vnd.ms-excel`)
-2. **Idempotency:** Uses `Idempotency-Key` header (or `X-Idempotency-Key` legacy header). If no key is provided, a SHA-256 hash of the file content is used. Duplicate requests with matching keys return the original result.
+2. **Idempotency:** Uses the canonical `Idempotency-Key` header. If no key is provided, a SHA-256 hash of the file content is used. Duplicate requests with matching keys return the original result.
 3. **Row processing:** Each CSV row is processed in a separate `REQUIRES_NEW` transaction for isolation
 4. **Retry:** Retryable failures (optimistic lock, data integrity violations) are retried once with cache eviction
 5. **Outcome tracking:** A `CatalogImport` entity records the import with outcome counters and error details
@@ -459,19 +449,18 @@ To change any of these, create a new product and deactivate the old one.
 
 ---
 
-## 12. Deprecated and Non-Canonical Surfaces
+## 12. Catalog Route Notes
 
-No deprecated or non-canonical catalog/setup endpoints have been identified in the current implementation. All catalog operations are served through the single `CatalogController` at `/api/v1/catalog/**`.
-
-The `ProductionCatalogService` includes internal listing methods (`listBrands()`, `listBrandProducts()`, `listProducts()`) that return `ProductionProductDto` records. These are not exposed through the controller and are used internally by other services. They are not deprecated but are also not the canonical public API for catalog browsing — use `CatalogService.searchItems()` instead.
+All catalog operations are served through `CatalogController` at `/api/v1/catalog/**`.
+`ProductionCatalogService` also has internal listing methods (`listBrands()`, `listBrandProducts()`, `listProducts()`) that return `ProductionProductDto` records for service-to-service use.
 
 ---
 
 ## Cross-References
 
 - [docs/INDEX.md](../INDEX.md) — canonical documentation index
-- [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — module inventory (production entry)
-- [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory (Catalog/Setup Readiness flow)
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/flows/catalog-setup-readiness.md](../flows/catalog-setup-readiness.md) — canonical catalog/setup readiness flow (behavioral entrypoint)
 - [docs/modules/core-idempotency.md](core-idempotency.md) — shared idempotency infrastructure used by catalog import
 - [docs/platform/db-migration.md](../platform/db-migration.md) — persistence and migration posture

@@ -24,7 +24,6 @@ The orchestrator-erp backend uses an internal orchestrator for background coordi
 | Source Module | Event | Listener | Target Module |
 | --- | --- | --- | --- |
 | Inventory | `InventoryMovementEvent` | `InventoryAccountingEventListener` | Accounting |
-| Factory | Slip lifecycle events | `FactorySlipEventListener` | Factory/Inventory |
 | Admin | Support ticket events | `SupportTicketGitHubSyncService` | GitHub integration |
 
 ### Known Limitations

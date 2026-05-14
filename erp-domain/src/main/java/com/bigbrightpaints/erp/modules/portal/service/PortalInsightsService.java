@@ -26,8 +26,8 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.company.service.ModuleGatingService;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTask;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTaskRepository;
-import com.bigbrightpaints.erp.modules.factory.domain.ProductionBatch;
-import com.bigbrightpaints.erp.modules.factory.domain.ProductionBatchRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionPlan;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionPlanRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.Employee;
@@ -77,7 +77,7 @@ public class PortalInsightsService {
   private final PackagingSlipRepository packagingSlipRepository;
   private final EmployeeRepository employeeRepository;
   private final ProductionPlanRepository productionPlanRepository;
-  private final ProductionBatchRepository productionBatchRepository;
+  private final ProductionLogRepository productionLogRepository;
   private final FactoryTaskRepository factoryTaskRepository;
   private final RawMaterialRepository rawMaterialRepository;
   private final FinishedGoodRepository finishedGoodRepository;
@@ -95,7 +95,7 @@ public class PortalInsightsService {
       PackagingSlipRepository packagingSlipRepository,
       EmployeeRepository employeeRepository,
       ProductionPlanRepository productionPlanRepository,
-      ProductionBatchRepository productionBatchRepository,
+      ProductionLogRepository productionLogRepository,
       FactoryTaskRepository factoryTaskRepository,
       RawMaterialRepository rawMaterialRepository,
       FinishedGoodRepository finishedGoodRepository,
@@ -111,7 +111,7 @@ public class PortalInsightsService {
     this.packagingSlipRepository = packagingSlipRepository;
     this.employeeRepository = employeeRepository;
     this.productionPlanRepository = productionPlanRepository;
-    this.productionBatchRepository = productionBatchRepository;
+    this.productionLogRepository = productionLogRepository;
     this.factoryTaskRepository = factoryTaskRepository;
     this.rawMaterialRepository = rawMaterialRepository;
     this.finishedGoodRepository = finishedGoodRepository;
@@ -187,8 +187,8 @@ public class PortalInsightsService {
               .filter(request -> "APPROVED".equalsIgnoreCase(request.getStatus()))
               .count();
       long payrollDrafts =
-          payrollRunRepository.findByCompanyOrderByRunDateDesc(company).stream()
-              .filter(run -> "DRAFT".equalsIgnoreCase(run.getStatusString()))
+          payrollRunRepository.findByCompanyOrderByCreatedAtDesc(company).stream()
+              .filter(run -> run.getStatus() == PayrollRun.PayrollStatus.DRAFT)
               .count();
       hrPulse =
           List.of(
@@ -215,8 +215,8 @@ public class PortalInsightsService {
     List<FactoryTask> tasks = factoryTaskRepository.findByCompanyOrderByCreatedAtDesc(company);
     List<ProductionPlan> plans =
         productionPlanRepository.findByCompanyOrderByPlannedDateDesc(company);
-    List<ProductionBatch> batches =
-        productionBatchRepository.findByCompanyOrderByProducedAtDesc(company);
+    List<ProductionLog> productionLogs =
+        productionLogRepository.findTop25ByCompanyOrderByProducedAtDesc(company);
     List<PackagingSlip> slips = packagingSlipRepository.findByCompanyOrderByCreatedAtDesc(company);
     List<FinishedGood> finishedGoods =
         finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company);
@@ -225,8 +225,8 @@ public class PortalInsightsService {
     Instant now = companyClock.now(company);
     double productionVelocity =
         ratio(
-                batches.stream()
-                    .filter(batch -> batch.getProducedAt().isAfter(now.minus(7, ChronoUnit.DAYS)))
+                productionLogs.stream()
+                    .filter(log -> log.getProducedAt().isAfter(now.minus(7, ChronoUnit.DAYS)))
                     .count(),
                 Math.max(plans.size(), 1))
             * 100;
@@ -284,7 +284,7 @@ public class PortalInsightsService {
     List<Employee> employees = employeeRepository.findByCompanyOrderByFirstNameAsc(company);
     List<LeaveRequest> leaveRequests =
         leaveRequestRepository.findByCompanyOrderByCreatedAtDesc(company);
-    List<PayrollRun> payrollRuns = payrollRunRepository.findByCompanyOrderByRunDateDesc(company);
+    List<PayrollRun> payrollRuns = payrollRunRepository.findByCompanyOrderByCreatedAtDesc(company);
 
     Map<String, Long> byRole =
         employees.stream()

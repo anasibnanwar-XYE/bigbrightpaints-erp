@@ -347,7 +347,7 @@ class TS_O2CListenerProformaInvoiceBoundaryTest extends AbstractIntegrationTest 
                 quantity,
                 unitPrice,
                 BigDecimal.ZERO)),
-        "EXCLUSIVE",
+        "NONE",
         null,
         null,
         UUID.randomUUID().toString());

@@ -28,7 +28,7 @@ public final class SecurityActorResolver {
     return currentAuthenticationName().orElse(UNKNOWN_AUTH_ACTOR);
   }
 
-  public static String resolveActorWithSystemProcessFallback() {
+  public static String resolveAuditActor() {
     return currentAuthenticationName()
         .orElseGet(() -> isBackgroundExecutionThread() ? SYSTEM_PROCESS_ACTOR : UNKNOWN_AUTH_ACTOR);
   }

@@ -22,9 +22,9 @@ Changes under any of the following paths are classified as high-risk and subject
 
 ### R2 Escalation
 
-- High-risk packets must ship with an updated `docs/approvals/R2-CHECKPOINT.md`.
+- High-risk changes must ship with an updated `docs/approvals/R2-CHECKPOINT.md`.
 - The checkpoint must declare: scope, risk trigger, approval mode, escalation decision, rollback owner, expiry, and verification evidence.
-- Compatibility-preserving remediation packets may use orchestrator approval.
+- Narrow high-risk remediation changes that keep current canonical behavior intact may use orchestrator approval.
 - Widen-scope or destructive-risk changes require human escalation.
 
 ### Migration Guards
@@ -39,19 +39,19 @@ Changes under any of the following paths are classified as high-risk and subject
 
 ### Review Requirements
 
-- High-risk packets must pass the PR ship-safety lane before review.
-- High-risk packets must also pass `bash ci/check-high-risk-changes.sh`.
+- High-risk changes must pass the PR ship-safety lane before review.
+- High-risk changes must also pass `bash ci/check-high-risk-changes.sh`.
 
 ## Approval Modes
 
 | Mode | When to Use | Who Approves |
 | --- | --- | --- |
-| Orchestrator | Compatibility-preserving remediation packets | Orchestrator agent |
-| Human | Widen-scope, tenant boundary, or destructive migration risk | Human reviewer |
+| Orchestrator | Narrow remediation changes that keep current canonical behavior intact | Orchestrator agent |
+| Human | Widen-scope, tenant boundary, compatibility shim, or destructive migration risk | Human reviewer |
 
 ## Cross-references
 
-- [docs/SECURITY.md](../SECURITY.md) — security review policy
+- [docs/SECURITY.md](../SECURITY.md) — security controls
 - [docs/approvals/R2-CHECKPOINT.md](../approvals/R2-CHECKPOINT.md) — active R2 evidence
 - [docs/approvals/R2-CHECKPOINT-TEMPLATE.md](../approvals/R2-CHECKPOINT-TEMPLATE.md) — R2 template
 - [docs/agents/PERMISSIONS.md](PERMISSIONS.md) — agent permissions

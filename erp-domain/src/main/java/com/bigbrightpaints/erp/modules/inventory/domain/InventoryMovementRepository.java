@@ -31,10 +31,6 @@ public interface InventoryMovementRepository extends JpaRepository<InventoryMove
       findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
           Company company, Long packingSlipId, String movementType);
 
-  List<InventoryMovement>
-      findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdAndPackingSlipIdIsNullAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
-          Company company, String referenceType, String referenceId, String movementType);
-
   List<InventoryMovement> findByFinishedGood_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
       Company company, Long journalEntryId, String referenceType);
 

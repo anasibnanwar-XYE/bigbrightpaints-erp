@@ -1,8 +1,9 @@
 {
   "contract_version": 1,
   "authoritative_surfaces": {
-    "packet": "docs/code-review/executable-specs/08-lane-quality-governance/01-confidence-lanes-and-deployability-contract.md",
-    "library": ".factory/library/local-testing-confidence.md",
+    "document": "docs/ci-cd-contract.md",
+    "ci_contract": "docs/ci-cd-contract.md",
+    "library": "docs/INDEX.md",
     "quarantine": "scripts/test_quarantine.txt"
   },
   "risk_model": {
@@ -20,15 +21,15 @@
   "lanes": {
     "local": {
       "decision_point": "safe to continue coding",
-      "goal": "Protect the normal edit/run loop with fast, deterministic, business-critical proof instead of a giant undifferentiated suite.",
+      "goal": "Protect the normal edit/run loop with targeted active-slice proof and the canonical fast gate instead of stale local manifest aliases or a giant undifferentiated suite.",
       "prove": [
-        "The active slice still passes the curated dev-smoke/local-guard truthsuite manifests.",
-        "Fast-lane manifests remain fail-closed and still cover every stable critical non-flaky truthsuite test expected for local work.",
+        "The active slice still passes the smallest meaningful Maven test selector for the files being changed.",
+        "The canonical fast gate stays available for broader local confidence before handoff.",
         "No deployability claim is made from local-only evidence."
       ],
       "primary_commands": [
-        "test-dev-smoke",
-        "test-local-guard"
+        "cd erp-domain && mvn -B -ntp -q -Dtest=<active-slice-tests> test",
+        "bash scripts/gate_fast.sh"
       ],
       "allowed_test_classes": [
         "stable",
@@ -37,7 +38,7 @@
       ],
       "disallowed_proof": [
         "infra-heavy suites used as the default coding loop",
-        "broad CODE-RED or nightly-quality suites treated as mandatory for every edit",
+        "broad risk or nightly-quality suites treated as mandatory for every edit",
         "staging/deployability sign-off from local-only success"
       ]
     },

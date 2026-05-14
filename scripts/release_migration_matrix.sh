@@ -16,8 +16,8 @@ Usage: bash scripts/release_migration_matrix.sh [--migration-set <v2>] [--artifa
 Environment:
   MIGRATION_SET (must be unset or v2)
   PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
-  SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD (used as fallback when PGUSER/PGPASSWORD are unset)
-  RELEASE_DB_PREFIX (default: codered_release)
+  SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD (used when PGUSER/PGPASSWORD are unset)
+  RELEASE_DB_PREFIX (default: risk_release)
   KEEP_RELEASE_DBS=true to skip cleanup
 USAGE
 }
@@ -97,7 +97,7 @@ expected_prev_count="$((expected_count - 1))"
 
 suffix_raw="${GITHUB_RUN_ID:-local_$(date +%s)}"
 suffix="$(printf '%s' "$suffix_raw" | tr -cd '[:alnum:]_')"
-prefix="${RELEASE_DB_PREFIX:-codered_release}"
+prefix="${RELEASE_DB_PREFIX:-risk_release}"
 
 fresh_db="${prefix}_fresh_${suffix}"
 upgrade_db="${prefix}_upgrade_${suffix}"

@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **auth/identity flow**: the canonical authentication and identity lifecycle from credential entry through session termination. It covers login, token refresh, logout, MFA, password management, session revocation, and tenant-scoping behavior.
+This document describes the **auth/identity flow**: the canonical authentication and identity lifecycle from credential entry through session termination. It covers login, token refresh, logout, MFA, password management, session revocation, and tenant-scoping behavior.
 
-This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, the packet explicitly states the current limitation instead of presenting partial behavior as complete.
+This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, this document explicitly states the current limitation instead of presenting partial behavior as complete.
 
 ---
 
@@ -151,19 +151,15 @@ The flow is complete when:
 
 ### Current Limitations
 
-1. **MFA table unused** — A dedicated `mfa_recovery_codes` table exists but the live service uses the legacy comma-delimited `app_users.mfa_recovery_codes` column instead. The relational model is bypassed.
+1. **Refresh burns token before validation** — The refresh token is consumed (deleted) before company/user validation. A caller using the wrong company code or hitting a tenant denial still loses their refresh token.
 
-2. **Refresh burns token before validation** — The refresh token is consumed (deleted) before company/user validation. A caller using the wrong company code or hitting a tenant denial still loses their refresh token.
+2. **Lockout not enforced on existing tokens** — When an account is locked (`lockedUntil` set), existing bearer tokens are not invalidated. `JwtAuthenticationFilter` checks `enabled` but not `lockedUntil`.
 
-3. **Lockout not enforced on existing tokens** — When an account is locked (`lockedUntil` set), existing bearer tokens are not invalidated. `JwtAuthenticationFilter` checks `enabled` but not `lockedUntil`.
-
-4. **Brute-force monitoring not active** — `SecurityMonitoringService` exists but has no production callers. Brute-force monitoring and token-revocation analytics are architectural dead weight.
+3. **Token lockout boundary** — `SecurityMonitoringService` participates in password-reset rate limiting and alerting, but existing bearer tokens are not revoked automatically when an account is locked.
 
 ---
 
-## 6. Canonical vs Non-Canonical Paths
-
-### Canonical Paths
+## 6. Current API Paths
 
 | Path | Owner | Notes |
 | --- | --- | --- |
@@ -174,16 +170,6 @@ The flow is complete when:
 | `POST /api/v1/auth/password/reset` | `AuthController` / `PasswordResetService` | Public reset completion |
 | `POST /api/v1/auth/mfa/setup` | `MfaController` / `MfaService` | MFA enrollment |
 | `POST /api/v1/admin/users/{userId}/force-reset-password` | `AdminUserController` | Admin password reset |
-
-### Non-Canonical / Deprecated Paths
-
-| Path | Status | Replacement |
-| --- | --- | --- |
-| Platform-issued Super Admin support reset | Removed from current API contract | Use activation or scoped auth password recovery |
-| Email-only recovery identity | Deprecated | Require `email + companyCode` |
-| `companyId` auth alias | Deprecated | Use `companyCode` claim in JWT |
-
----
 
 ## 7. Cross-Module Dependencies
 
@@ -208,10 +194,10 @@ The flow is complete when:
 
 ## 9. Related Documentation
 
-- [docs/modules/auth.md](../modules/auth.md) — Auth module canonical packet
+- [docs/modules/auth.md](../modules/auth.md) — Auth module doc
 - [docs/modules/company.md](../modules/company.md) — Tenant lifecycle and runtime enforcement
 - [docs/modules/admin-portal-rbac.md](../modules/admin-portal-rbac.md) — Admin and RBAC boundaries
-- [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 
 ---
 
@@ -221,5 +207,5 @@ The flow is complete when:
 
 | Decision | Notes |
 | --- | --- |
-| MFA recovery code table unused | Live service uses column, not relational table. Table exists for potential future enhancement. |
-| Brute-force monitoring | Service exists but has no production callers. |
+| MFA recovery-code storage | Runtime uses the `mfa_recovery_codes` table; V190 removes the old `app_users.mfa_recovery_codes` column. |
+| Brute-force monitoring | Password reset uses `SecurityMonitoringService`; primary login lockout remains database-backed on the user account. |

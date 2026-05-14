@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **catalog/setup readiness flow**: the canonical lifecycle for creating and maintaining product catalog data, evaluating SKU readiness for downstream operations, and managing packaging material definitions. It covers brand management, item CRUD, CSV import, SKU readiness evaluation, and packaging mapping setup.
+This document describes the **catalog/setup readiness flow**: the canonical lifecycle for creating and maintaining product catalog data, evaluating SKU readiness for downstream operations, and managing packaging material definitions. It covers brand management, item CRUD, CSV import, SKU readiness evaluation, and packaging mapping setup.
 
-This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, the packet explicitly states the current limitation instead of presenting partial behavior as complete.
+This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, this document explicitly states the current limitation instead of presenting partial behavior as complete.
 
 ---
 
@@ -178,9 +178,7 @@ The flow is complete when:
 
 ---
 
-## 6. Canonical vs Non-Canonical Paths
-
-### Canonical Paths
+## 6. Current API Paths
 
 | Path | Owner | Notes |
 | --- | --- | --- |
@@ -188,16 +186,6 @@ The flow is complete when:
 | `POST /api/v1/catalog/import` | `CatalogController` | Bulk CSV import |
 | `POST /api/v1/factory/packaging-mappings` | `PackagingMappingController` | Packaging size mapping setup |
 | `GET /api/v1/catalog/items?includeReadiness=true` | `CatalogController` | SKU readiness evaluation |
-
-### Non-Canonical / Deprecated Paths
-
-| Path | Status | Replacement |
-| --- | --- | --- |
-| `POST /api/v1/catalog/products` | Retired (hard cut) | Use `POST /api/v1/catalog/items` |
-| `POST /api/v1/accounting/catalog/products` | Retired (hard cut) | Use `POST /api/v1/catalog/items` |
-| `GET /api/v1/catalog/products` | Retired (hard cut) | Use `GET /api/v1/catalog/items` |
-
----
 
 ## 7. Cross-Module Dependencies
 
@@ -219,12 +207,11 @@ The flow is complete when:
 
 ## 9. Related Documentation
 
-- [docs/modules/catalog-setup.md](../modules/catalog-setup.md) — Catalog module canonical packet
-- [docs/modules/inventory.md](../modules/inventory.md) — Inventory module for stock truth
+- [docs/modules/catalog-setup.md](../modules/catalog-setup.md) — Catalog module doc
+- [docs/modules/inventory-stock-control.md](../modules/inventory-stock-control.md) — Inventory module for stock truth
 - [docs/modules/factory.md](../modules/factory.md) — Factory module for manufacturing truth
-- [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/frontend-portals/factory/README.md](../frontend-portals/factory/README.md) — Factory frontend handoff (catalog and setup payloads, RBAC)
-- [docs/deprecated/INDEX.md](../deprecated/INDEX.md) — Deprecated surfaces registry (legacy product endpoints)
 
 ---
 

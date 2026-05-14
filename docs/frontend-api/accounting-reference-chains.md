@@ -159,8 +159,8 @@ UI implication:
 - reconciliation and checklist completion
 - close request
 - approval inbox item in `GET /api/v1/admin/approvals`
-- `POST /api/v1/accounting/periods/{periodId}/approve-close` or
-  `POST /api/v1/accounting/periods/{periodId}/reject-close`
+- tenant-admin decision through
+  `POST /api/v1/admin/approvals/PERIOD_CLOSE_REQUEST/{id}/decisions`
 - closed period
 
 UI implication:
@@ -168,8 +168,9 @@ UI implication:
 - Direct close is not a supported frontend action. Render period close as a
   maker-checker flow with approval state, approver identity, and rejection
   reason tracking.
-- Use `PeriodCloseRequestActionRequest` for request-close, approve-close, and
-  reject-close. Use `AccountingPeriodReopenRequest` only on the reopen route.
+- Use `PeriodCloseRequestActionRequest` for accounting request-close only.
+  Normal approval and rejection are tenant-admin approval decisions. Use
+  `AccountingPeriodReopenRequest` only on the superadmin reopen route.
 
 ## AR settlement and dealer finance reads
 

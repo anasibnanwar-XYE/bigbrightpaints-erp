@@ -13,7 +13,6 @@ public final class SalesOrderCreditExposurePolicy {
 
   private static final Set<String> PENDING_CREDIT_EXPOSURE_STATUSES =
       Set.of(
-          "BOOKED",
           "RESERVED",
           "PENDING_PRODUCTION",
           "PENDING_INVENTORY",

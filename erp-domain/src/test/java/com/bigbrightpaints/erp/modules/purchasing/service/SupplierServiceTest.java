@@ -365,7 +365,7 @@ class SupplierServiceTest {
   @Test
   void updateSupplier_defaultsMissingCreditLimitAndKeepsExistingCodeWhenRequestCodeIsBlank() {
     Supplier supplier = supplierWithEncryptedBankDetails();
-    supplier.setCode("LEGACY");
+    supplier.setCode("EXISTING");
     when(purchasingLookupService.requireSupplier(company, 77L)).thenReturn(supplier);
 
     SupplierResponse response =
@@ -374,7 +374,7 @@ class SupplierServiceTest {
             new SupplierRequest(
                 "Skeina Updated", "   ", "skeina@example.com", "9999999999", "Main Street", null));
 
-    assertThat(supplier.getCode()).isEqualTo("LEGACY");
+    assertThat(supplier.getCode()).isEqualTo("EXISTING");
     assertThat(supplier.getCreditLimit()).isEqualByComparingTo(BigDecimal.ZERO);
     assertThat(response.payableAccountCode()).isEqualTo("AP-SKEINA");
   }

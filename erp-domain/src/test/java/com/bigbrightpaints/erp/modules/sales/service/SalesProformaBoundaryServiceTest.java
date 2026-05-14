@@ -85,22 +85,20 @@ class SalesProformaBoundaryServiceTest {
   }
 
   @Test
-  void normalizePaymentMode_mapsLegacyHybridAndRejectsUnsupportedValues() {
+  void normalizePaymentMode_defaultsBlankAndRejectsUnsupportedValues() {
     assertThat(service.normalizePaymentMode(null)).isEqualTo("CREDIT");
-    assertThat(service.normalizePaymentMode(" split ")).isEqualTo("HYBRID");
     assertThat(service.requiresCreditCheck("CASH")).isTrue();
     assertThat(service.requiresCreditCheck("HYBRID")).isTrue();
 
-    assertThatThrownBy(() -> service.normalizePaymentMode("WIRE"))
+    assertThatThrownBy(() -> service.normalizePaymentMode("SPLIT"))
         .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Unsupported sales order payment mode: WIRE")
+        .hasMessageContaining("Unsupported sales order payment mode: SPLIT")
         .extracting(ex -> ((ApplicationException) ex).getDetails())
         .satisfies(
             details ->
                 assertThat(details)
-                    .containsEntry("paymentMode", "WIRE")
-                    .containsKey("allowedPaymentModes")
-                    .containsKey("legacyAliases"));
+                    .containsEntry("paymentMode", "SPLIT")
+                    .containsKey("allowedPaymentModes"));
   }
 
   @Test

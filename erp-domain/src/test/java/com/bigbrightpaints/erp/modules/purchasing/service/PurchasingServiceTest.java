@@ -89,7 +89,7 @@ class PurchasingServiceTest {
   @Mock private ReferenceNumberService referenceNumberService;
   @Mock private CompanyClock companyClock;
   @Mock private AccountingPeriodService accountingPeriodService;
-  @Mock private GstService gstService;
+  private final GstService gstService = new GstService();
   @Mock private PurchaseOrderStatusHistoryRepository purchaseOrderStatusHistoryRepository;
   @Mock private PlatformTransactionManager transactionManager;
 
@@ -127,6 +127,7 @@ class PurchasingServiceTest {
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 1L);
     company.setName("Test Company");
+    company.setStateCode("MH");
 
     payableAccount = new Account();
     ReflectionTestUtils.setField(payableAccount, "id", 100L);
@@ -138,6 +139,7 @@ class PurchasingServiceTest {
     supplier.setCompany(company);
     supplier.setStatus("ACTIVE");
     supplier.setPayableAccount(payableAccount);
+    supplier.setStateCode("MH");
 
     rawMaterial = new RawMaterial();
     ReflectionTestUtils.setField(rawMaterial, "id", 20L);

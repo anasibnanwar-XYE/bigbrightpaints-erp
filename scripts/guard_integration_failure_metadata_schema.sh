@@ -52,13 +52,19 @@ has_pattern() {
 
 [[ -d "$SOURCE_ROOT" ]] || fail "missing source root: $SOURCE_ROOT"
 
-mapfile -t producer_files < <(search_matching_files "$LOG_FAILURE_PATTERN" "$SOURCE_ROOT")
+producer_files=()
+while IFS= read -r producer_file; do
+  producer_files+=("$producer_file")
+done < <(search_matching_files "$LOG_FAILURE_PATTERN" "$SOURCE_ROOT")
 
 [[ "${#producer_files[@]}" -gt 0 ]] || fail "no files with logFailure calls found under $SOURCE_ROOT"
 
 processed_producers=0
 for file in "${producer_files[@]}"; do
-  mapfile -t log_lines < <(
+  log_lines=()
+  while IFS= read -r log_line; do
+    log_lines+=("$log_line")
+  done < <(
     awk '
       function sanitize_line(raw, cleaned, block_start, block_tail, block_end) {
         cleaned = raw
@@ -144,8 +150,14 @@ for file in "${producer_files[@]}"; do
     fail "producer $file still writes required metadata keys manually; use IntegrationFailureMetadataSchema only"
   fi
 
-  mapfile -t helper_lines < <(search_line_numbers "$SCHEMA_PATTERN" "$file")
-  mapfile -t builder_lines < <(search_line_numbers "$SCHEMA_BUILDER_PATTERN" "$file")
+  helper_lines=()
+  while IFS= read -r helper_line; do
+    helper_lines+=("$helper_line")
+  done < <(search_line_numbers "$SCHEMA_PATTERN" "$file")
+  builder_lines=()
+  while IFS= read -r builder_line; do
+    builder_lines+=("$builder_line")
+  done < <(search_line_numbers "$SCHEMA_BUILDER_PATTERN" "$file")
   if [[ "${#helper_lines[@]}" -eq 0 && "${#builder_lines[@]}" -eq 0 ]]; then
     fail "producer $file does not call IntegrationFailureMetadataSchema.applyRequiredFields or a validated metadata builder"
   fi

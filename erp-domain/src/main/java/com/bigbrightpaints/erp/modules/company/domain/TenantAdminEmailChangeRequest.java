@@ -160,9 +160,9 @@ public class TenantAdminEmailChangeRequest extends VersionedEntity {
     return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
   }
 
-  private String normalizeTrimmed(String value, String fallback) {
+  private String normalizeTrimmed(String value, String defaultValue) {
     if (value == null || value.isBlank()) {
-      return fallback;
+      return defaultValue;
     }
     return value.trim();
   }

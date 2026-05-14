@@ -86,7 +86,7 @@ The `reports` module provides financial and operational reporting surfaces for t
 - **No date-window discipline** — does not support the same date/period parameters as other financial reports
 - **No snapshot branch** — always reads live data
 - **Heuristic classification** may miscategorize transactions — no explicit cash flow tagging exists in journal lines
-- This is the most non-canonical path in the reporting module
+- Cash-flow output is less precise than period-aware financial reports until journal lines carry explicit cash-flow tags
 
 ---
 
@@ -109,7 +109,7 @@ The `reports` module provides financial and operational reporting surfaces for t
 
 **Current limitations:**
 - Only available for GST-configured companies (non-GST companies will fail)
-- Depends on line-level GST component tracking — legacy entries without component breakdown use estimation
+- Depends on line-level GST component tracking — historical entries without component breakdown use estimation
 - No snapshot branch — always computes from live journal data
 
 ---
@@ -264,27 +264,19 @@ The following areas have known correctness or consistency concerns:
 
 ---
 
-## Deprecated and Non-Canonical Surfaces
+## Reporting Caveats
 
-### Deprecated: Audit Digest CSV Export
+### Cash Flow Report
 
-The audit digest CSV export functionality is **deprecated** and is not part of
-the current frontend export contract:
-
-- **Replacement**: Use the standard export workflow (`POST /api/v1/exports/request` → `GET /api/v1/exports/{requestId}/download`) with appropriate report types
-- **No replacement**: The audit digest CSV specifically is not being actively maintained; use alternative audit trails for compliance needs
-
-### Non-Canonical: Cash Flow Report
-
-The cash flow report (`GET /api/v1/reports/cash-flow`) is the **most non-canonical path** in the reporting module because:
+The cash flow report (`GET /api/v1/reports/cash-flow`) has narrower behavior than the other financial reports:
 
 - **No date filtering**: Does not support the same date/period parameters as other financial reports
 - **No snapshot branch**: Always reads live data, never from closed-period snapshots
 - **Heuristic classification**: Relies on pattern matching to categorize transactions rather than explicit cash flow tagging in journal lines
 
-**Recommendation**: Be aware that cash flow data may include transactions outside the intended period and may miscategorize transactions. For accurate cash flow reporting, explicit cash flow tagging in journal lines would be needed.
+Cash flow data may include transactions outside the intended period and may miscategorize transactions until explicit cash-flow tagging exists in journal lines.
 
-### Non-Canonical: Aging Report Split
+### Aging Report Split
 
 Aging reports split across **two different ownership paths**:
 
@@ -293,20 +285,17 @@ Aging reports split across **two different ownership paths**:
 | `GET /api/v1/reports/aged-debtors` | `AgedDebtorsReportQueryService` | Dealer-centric |
 | `GET /api/v1/reports/aging/receivables` | `AgingReportService` | Account-centric |
 
-**Issue**: These may return inconsistent data due to different underlying queries
-- **Canonical replacement**: Choose one path and migrate; currently both are maintained
-- **No immediate replacement**: Either endpoint may be used, but be aware of potential inconsistencies
+These may return inconsistent data because they use different underlying queries.
 
 ---
 
 ## Related Documentation
 
-- [docs/developer/accounting-flows/07-reports-truth-sources.md](../developer/accounting-flows/07-reports-truth-sources.md) — detailed truth-source mapping
-- [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory (period close workflow reference)
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/flows/reporting-export.md](../flows/reporting-export.md) — canonical reporting/export flow (behavioral entrypoint)
 - [docs/flows/accounting-period-close.md](../flows/accounting-period-close.md) — accounting period close flow
 - [erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md) — accounting module (source of journal truth)
-- [docs/modules/inventory.md](./inventory.md) — inventory module (stock data source)
+- [docs/modules/inventory-stock-control.md](./inventory-stock-control.md) — inventory module (stock data source)
 - [docs/modules/factory.md](./factory.md) — factory module (production data source)
 - [docs/adrs/INDEX.md](../adrs/INDEX.md) — ADR index for architectural decisions
 

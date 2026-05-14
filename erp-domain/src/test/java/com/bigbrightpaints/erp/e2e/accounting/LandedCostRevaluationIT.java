@@ -21,8 +21,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
-import com.bigbrightpaints.erp.codered.support.CoderedConcurrencyHarness;
-import com.bigbrightpaints.erp.codered.support.CoderedRetry;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -47,6 +45,8 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import com.bigbrightpaints.erp.risk.support.RiskConcurrencyHarness;
+import com.bigbrightpaints.erp.risk.support.RiskRetry;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 import jakarta.persistence.EntityManager;
@@ -434,8 +434,8 @@ public class LandedCostRevaluationIT extends AbstractIntegrationTest {
   @SuppressWarnings("unchecked")
   private List<ResponseEntity<Map>> runConcurrentPosts(
       String path, Map<String, Object> request, int threads) {
-    CoderedConcurrencyHarness.RunResult<ResponseEntity<Map>> result =
-        CoderedConcurrencyHarness.run(
+    RiskConcurrencyHarness.RunResult<ResponseEntity<Map>> result =
+        RiskConcurrencyHarness.run(
             threads,
             3,
             Duration.ofSeconds(30),
@@ -448,14 +448,14 @@ public class LandedCostRevaluationIT extends AbstractIntegrationTest {
                       new org.springframework.http.HttpEntity<>(request, requestHeaders),
                       Map.class);
                 },
-            CoderedRetry::isRetryable);
+            RiskRetry::isRetryable);
 
     assertThat(result.outcomes())
-        .allMatch(outcome -> outcome instanceof CoderedConcurrencyHarness.Outcome.Success<?>);
+        .allMatch(outcome -> outcome instanceof RiskConcurrencyHarness.Outcome.Success<?>);
     return result.outcomes().stream()
         .map(
             outcome ->
-                ((CoderedConcurrencyHarness.Outcome.Success<ResponseEntity<Map>>) outcome).value())
+                ((RiskConcurrencyHarness.Outcome.Success<ResponseEntity<Map>>) outcome).value())
         .toList();
   }
 

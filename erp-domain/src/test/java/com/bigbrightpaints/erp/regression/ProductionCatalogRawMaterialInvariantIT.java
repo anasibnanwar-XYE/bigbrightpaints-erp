@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.regression;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -211,7 +212,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
         rawMaterialRepository.findByCompanyAndSku(company, "RM-TIO2-COST-DRIFT").orElseThrow();
     assertThat(afterFirstImport.getCostingMethod()).isEqualTo("WAC");
 
-    afterFirstImport.setCostingMethod("weighted-average");
+    afterFirstImport.setCostingMethod("weighted_average");
     rawMaterialRepository.save(afterFirstImport);
 
     CatalogImportResponse replayImport =
@@ -220,65 +221,6 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
     RawMaterial afterReplayImport =
         rawMaterialRepository.findByCompanyAndSku(company, "RM-TIO2-COST-DRIFT").orElseThrow();
     assertThat(afterReplayImport.getCostingMethod()).isEqualTo("WAC");
-  }
-
-  @Test
-  void importCatalog_preservesUnsupportedRawMaterialCostingMethod_onSync() {
-    RawMaterial legacy = new RawMaterial();
-    legacy.setCompany(company);
-    legacy.setName("Titanium Dioxide");
-    legacy.setSku("RM-TIO2-COST-LEGACY");
-    legacy.setUnitType("KG");
-    legacy.setCurrentStock(BigDecimal.ZERO);
-    legacy.setInventoryAccountId(inventoryAccount.getId());
-    legacy.setGstRate(BigDecimal.ZERO);
-    legacy.setCostingMethod("CUSTOM_METHOD");
-    rawMaterialRepository.save(legacy);
-
-    CatalogImportResponse response =
-        productionCatalogService.importCatalog(
-            rawMaterialCsv("RM-TIO2-COST-LEGACY", "12.00"), "RM-CAT-IDEMP-19");
-
-    assertThat(response.errors()).isEmpty();
-    RawMaterial synced =
-        rawMaterialRepository.findByCompanyAndSku(company, "RM-TIO2-COST-LEGACY").orElseThrow();
-    assertThat(synced.getCostingMethod()).isEqualTo("CUSTOM_METHOD");
-    assertThat(synced.getGstRate()).isEqualByComparingTo("12.00");
-  }
-
-  @Test
-  void importCatalog_preservesUnsupportedFinishedGoodCostingMethod_onSync() {
-    configureFinishedGoodDefaultAccounts();
-
-    FinishedGood legacy = new FinishedGood();
-    legacy.setCompany(company);
-    legacy.setProductCode("FG-COST-LEGACY-IMPORT-01");
-    legacy.setName("Legacy Unsupported FG");
-    legacy.setUnit("LTR");
-    legacy.setCurrentStock(BigDecimal.ZERO);
-    legacy.setReservedStock(BigDecimal.ZERO);
-    legacy.setValuationAccountId(inventoryAccount.getId());
-    legacy.setCogsAccountId(company.getDefaultCogsAccountId());
-    legacy.setRevenueAccountId(company.getDefaultRevenueAccountId());
-    legacy.setTaxAccountId(company.getDefaultTaxAccountId());
-    legacy.setCostingMethod("CUSTOM_METHOD");
-    finishedGoodRepository.save(legacy);
-
-    CatalogImportResponse response =
-        productionCatalogService.importCatalog(
-            finishedGoodCsvWithAccount(
-                "FG-COST-LEGACY-IMPORT-01",
-                "18.00",
-                inventoryAccount.getId(),
-                "fg_valuation_account_id"),
-            "RM-CAT-IDEMP-20");
-
-    assertThat(response.errors()).isEmpty();
-    FinishedGood synced =
-        finishedGoodRepository
-            .findByCompanyAndProductCode(company, "FG-COST-LEGACY-IMPORT-01")
-            .orElseThrow();
-    assertThat(synced.getCostingMethod()).isEqualTo("CUSTOM_METHOD");
   }
 
   @Test
@@ -350,7 +292,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
     FinishedGood drifted = new FinishedGood();
     drifted.setCompany(company);
     drifted.setProductCode("FG-COST-DRIFT-01");
-    drifted.setName("Legacy Drifted FG");
+    drifted.setName("Canonical Drifted FG");
     drifted.setUnit("LTR");
     drifted.setCurrentStock(BigDecimal.ZERO);
     drifted.setReservedStock(BigDecimal.ZERO);
@@ -374,7 +316,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
             .orElseThrow();
     assertThat(afterFirstImport.getCostingMethod()).isEqualTo("WAC");
 
-    afterFirstImport.setCostingMethod("weighted-average");
+    afterFirstImport.setCostingMethod("weighted_average");
     finishedGoodRepository.save(afterFirstImport);
 
     CatalogImportResponse replayImport =
@@ -395,7 +337,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
     FinishedGood drifted = new FinishedGood();
     drifted.setCompany(company);
     drifted.setProductCode(sku);
-    drifted.setName("Legacy Drifted Create/Update FG");
+    drifted.setName("Canonical Drifted Create/Update FG");
     drifted.setUnit("LTR");
     drifted.setCurrentStock(BigDecimal.ZERO);
     drifted.setReservedStock(BigDecimal.ZERO);
@@ -436,7 +378,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
         finishedGoodRepository.findByCompanyAndProductCode(company, sku).orElseThrow();
     assertThat(afterCreate.getCostingMethod()).isEqualTo("WAC");
 
-    afterCreate.setCostingMethod("weighted-average");
+    afterCreate.setCostingMethod("weighted_average");
     finishedGoodRepository.save(afterCreate);
 
     productionCatalogService.updateCatalogItem(
@@ -450,23 +392,23 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void createAndUpdateProduct_preserveUnsupportedCostingMethods() {
+  void createProduct_rejectsUnsupportedExistingCostingMethods() {
     configureFinishedGoodDefaultAccounts();
 
-    String fgSku = "FG-COST-LEGACY-SYNC-01";
-    FinishedGood legacyFg = new FinishedGood();
-    legacyFg.setCompany(company);
-    legacyFg.setProductCode(fgSku);
-    legacyFg.setName("Legacy Unsupported Sync FG");
-    legacyFg.setUnit("LTR");
-    legacyFg.setCurrentStock(BigDecimal.ZERO);
-    legacyFg.setReservedStock(BigDecimal.ZERO);
-    legacyFg.setValuationAccountId(inventoryAccount.getId());
-    legacyFg.setCogsAccountId(company.getDefaultCogsAccountId());
-    legacyFg.setRevenueAccountId(company.getDefaultRevenueAccountId());
-    legacyFg.setTaxAccountId(company.getDefaultTaxAccountId());
-    legacyFg.setCostingMethod("CUSTOM_METHOD");
-    finishedGoodRepository.save(legacyFg);
+    String fgSku = "FG-COST-INVALID-SYNC-01";
+    FinishedGood invalidFg = new FinishedGood();
+    invalidFg.setCompany(company);
+    invalidFg.setProductCode(fgSku);
+    invalidFg.setName("Invalid Unsupported Sync FG");
+    invalidFg.setUnit("LTR");
+    invalidFg.setCurrentStock(BigDecimal.ZERO);
+    invalidFg.setReservedStock(BigDecimal.ZERO);
+    invalidFg.setValuationAccountId(inventoryAccount.getId());
+    invalidFg.setCogsAccountId(company.getDefaultCogsAccountId());
+    invalidFg.setRevenueAccountId(company.getDefaultRevenueAccountId());
+    invalidFg.setTaxAccountId(company.getDefaultTaxAccountId());
+    invalidFg.setCostingMethod("CUSTOM_METHOD");
+    finishedGoodRepository.save(invalidFg);
 
     Map<String, Object> fgMetadata = new HashMap<>();
     fgMetadata.put("fgValuationAccountId", inventoryAccount.getId());
@@ -474,86 +416,66 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
     fgMetadata.put("fgRevenueAccountId", company.getDefaultRevenueAccountId());
     fgMetadata.put("fgTaxAccountId", company.getDefaultTaxAccountId());
 
-    ProductionProductDto createdFinishedGood =
-        productionCatalogService.createCatalogItem(
-            new CatalogItemCreateCommand(
-                null,
-                "FG Unsupported Brand",
-                null,
-                "FG Unsupported Product",
-                "FINISHED_GOOD",
-                "FINISHED_GOOD",
-                "WHITE",
-                "1L",
-                "LTR",
-                null,
-                fgSku,
-                BigDecimal.ZERO,
-                new BigDecimal("18.00"),
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                fgMetadata));
+    assertThatThrownBy(
+            () ->
+                productionCatalogService.createCatalogItem(
+                    new CatalogItemCreateCommand(
+                        null,
+                        "FG Unsupported Brand",
+                        null,
+                        "FG Unsupported Product",
+                        "FINISHED_GOOD",
+                        "FINISHED_GOOD",
+                        "WHITE",
+                        "1L",
+                        "LTR",
+                        null,
+                        fgSku,
+                        BigDecimal.ZERO,
+                        new BigDecimal("18.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        fgMetadata)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Unsupported costing method CUSTOM_METHOD");
 
-    FinishedGood afterFgCreate =
-        finishedGoodRepository.findByCompanyAndProductCode(company, fgSku).orElseThrow();
-    assertThat(afterFgCreate.getCostingMethod()).isEqualTo("CUSTOM_METHOD");
-
-    productionCatalogService.updateCatalogItem(
-        createdFinishedGood.id(),
-        new CatalogItemUpdateCommand(
-            null, null, null, null, null, null, null, null, null, null, null, null, null));
-
-    FinishedGood afterFgUpdate =
-        finishedGoodRepository.findByCompanyAndProductCode(company, fgSku).orElseThrow();
-    assertThat(afterFgUpdate.getCostingMethod()).isEqualTo("CUSTOM_METHOD");
-
-    String rmSku = "RM-COST-LEGACY-SYNC-01";
-    RawMaterial legacyRawMaterial = new RawMaterial();
-    legacyRawMaterial.setCompany(company);
-    legacyRawMaterial.setName("Legacy Unsupported Sync RM");
-    legacyRawMaterial.setSku(rmSku);
-    legacyRawMaterial.setUnitType("KG");
-    legacyRawMaterial.setCurrentStock(BigDecimal.ZERO);
-    legacyRawMaterial.setInventoryAccountId(inventoryAccount.getId());
-    legacyRawMaterial.setGstRate(BigDecimal.ZERO);
-    legacyRawMaterial.setCostingMethod("CUSTOM_METHOD");
-    rawMaterialRepository.save(legacyRawMaterial);
+    String rmSku = "RM-COST-INVALID-SYNC-01";
+    RawMaterial invalidRawMaterial = new RawMaterial();
+    invalidRawMaterial.setCompany(company);
+    invalidRawMaterial.setName("Invalid Unsupported Sync RM");
+    invalidRawMaterial.setSku(rmSku);
+    invalidRawMaterial.setUnitType("KG");
+    invalidRawMaterial.setCurrentStock(BigDecimal.ZERO);
+    invalidRawMaterial.setInventoryAccountId(inventoryAccount.getId());
+    invalidRawMaterial.setGstRate(BigDecimal.ZERO);
+    invalidRawMaterial.setCostingMethod("CUSTOM_METHOD");
+    rawMaterialRepository.save(invalidRawMaterial);
 
     Map<String, Object> rmMetadata = new HashMap<>();
     rmMetadata.put("inventoryAccountId", inventoryAccount.getId());
 
-    ProductionProductDto createdRawMaterial =
-        productionCatalogService.createCatalogItem(
-            new CatalogItemCreateCommand(
-                null,
-                "RM Unsupported Brand",
-                null,
-                "RM Unsupported Product",
-                "RAW_MATERIAL",
-                "RAW_MATERIAL",
-                "STANDARD",
-                null,
-                "KG",
-                null,
-                rmSku,
-                BigDecimal.ZERO,
-                new BigDecimal("12.00"),
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                rmMetadata));
-
-    RawMaterial afterRmCreate =
-        rawMaterialRepository.findByCompanyAndSku(company, rmSku).orElseThrow();
-    assertThat(afterRmCreate.getCostingMethod()).isEqualTo("CUSTOM_METHOD");
-
-    productionCatalogService.updateCatalogItem(
-        createdRawMaterial.id(),
-        new CatalogItemUpdateCommand(
-            null, null, null, null, null, null, null, null, null, null, null, null, null));
-
-    RawMaterial afterRmUpdate =
-        rawMaterialRepository.findByCompanyAndSku(company, rmSku).orElseThrow();
-    assertThat(afterRmUpdate.getCostingMethod()).isEqualTo("CUSTOM_METHOD");
+    assertThatThrownBy(
+            () ->
+                productionCatalogService.createCatalogItem(
+                    new CatalogItemCreateCommand(
+                        null,
+                        "RM Unsupported Brand",
+                        null,
+                        "RM Unsupported Product",
+                        "RAW_MATERIAL",
+                        "RAW_MATERIAL",
+                        "STANDARD",
+                        null,
+                        "KG",
+                        null,
+                        rmSku,
+                        BigDecimal.ZERO,
+                        new BigDecimal("12.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        rmMetadata)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Unsupported costing method CUSTOM_METHOD");
   }
 
   @Test

@@ -8,7 +8,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -198,7 +197,6 @@ public class SalesReturnService {
     Map<Long, BigDecimal> requestedReturnQtyByLine = new LinkedHashMap<>();
     Map<Long, BigDecimal> requestedReturnQtyByFg = new LinkedHashMap<>();
     Map<Long, BigDecimal> invoicedQtyByFg = new LinkedHashMap<>();
-    Map<Long, List<Long>> invoiceLineIdsByFg = new LinkedHashMap<>();
     Map<String, FinishedGood> finishedGoodsByCode = new HashMap<>();
     Map<Long, FinishedGood> finishedGoodsById = new HashMap<>();
     Set<String> returnProductCodes = new HashSet<>();
@@ -235,11 +233,6 @@ public class SalesReturnService {
       BigDecimal invoicedQty =
           invoiceLine.getQuantity() != null ? invoiceLine.getQuantity() : BigDecimal.ZERO;
       invoicedQtyByFg.merge(finishedGood.getId(), invoicedQty, BigDecimal::add);
-      if (invoiceLine.getId() != null) {
-        invoiceLineIdsByFg
-            .computeIfAbsent(finishedGood.getId(), id -> new java.util.ArrayList<>())
-            .add(invoiceLine.getId());
-      }
     }
 
     boolean returnAlreadyProcessed = false;
@@ -254,57 +247,7 @@ public class SalesReturnService {
       ReturnMovementSummary existingReturns =
           loadReturnMovements(company, invoice.getInvoiceNumber());
       Map<Long, BigDecimal> existingReturnsByLine = existingReturns.byInvoiceLineId();
-      Map<Long, BigDecimal> legacyReturnsByLine = new LinkedHashMap<>();
-      Map<Long, BigDecimal> legacyReturnsByFg = new LinkedHashMap<>();
       Map<Long, BigDecimal> existingReturnsByFg = existingReturns.byFinishedGoodId();
-      existingReturnsByFg.forEach(legacyReturnsByFg::put);
-      for (Map.Entry<Long, BigDecimal> entry : existingReturnsByLine.entrySet()) {
-        InvoiceLine invoiceLine = invoiceLines.get(entry.getKey());
-        if (invoiceLine == null || invoiceLine.getProductCode() == null) {
-          continue;
-        }
-        if (!returnProductCodes.contains(invoiceLine.getProductCode())) {
-          continue;
-        }
-        FinishedGood finishedGood = finishedGoodsByCode.get(invoiceLine.getProductCode());
-        if (finishedGood == null || finishedGood.getId() == null) {
-          continue;
-        }
-        legacyReturnsByFg.merge(finishedGood.getId(), entry.getValue().negate(), BigDecimal::add);
-      }
-      for (Map.Entry<Long, BigDecimal> entry : legacyReturnsByFg.entrySet()) {
-        BigDecimal remainingLegacy = entry.getValue();
-        if (remainingLegacy == null || remainingLegacy.compareTo(BigDecimal.ZERO) <= 0) {
-          continue;
-        }
-        List<Long> lineIds = invoiceLineIdsByFg.getOrDefault(entry.getKey(), List.of());
-        if (lineIds.isEmpty()) {
-          continue;
-        }
-        java.util.List<Long> orderedLineIds = new java.util.ArrayList<>(lineIds);
-        orderedLineIds.sort(java.util.Comparator.naturalOrder());
-        for (Long lineId : orderedLineIds) {
-          InvoiceLine invoiceLine = invoiceLines.get(lineId);
-          if (invoiceLine == null) {
-            continue;
-          }
-          BigDecimal lineQty =
-              invoiceLine.getQuantity() != null ? invoiceLine.getQuantity() : BigDecimal.ZERO;
-          BigDecimal lineReturned = existingReturnsByLine.getOrDefault(lineId, BigDecimal.ZERO);
-          BigDecimal lineRemaining = lineQty.subtract(lineReturned);
-          if (lineRemaining.compareTo(BigDecimal.ZERO) <= 0) {
-            continue;
-          }
-          BigDecimal allocate = remainingLegacy.min(lineRemaining);
-          if (allocate.compareTo(BigDecimal.ZERO) > 0) {
-            legacyReturnsByLine.merge(lineId, allocate, BigDecimal::add);
-            remainingLegacy = remainingLegacy.subtract(allocate);
-          }
-          if (remainingLegacy.compareTo(BigDecimal.ZERO) <= 0) {
-            break;
-          }
-        }
-      }
       for (Map.Entry<Long, BigDecimal> entry : requestedReturnQtyByLine.entrySet()) {
         InvoiceLine invoiceLine = invoiceLines.get(entry.getKey());
         if (invoiceLine == null) {
@@ -314,11 +257,6 @@ public class SalesReturnService {
             invoiceLine.getQuantity() != null ? invoiceLine.getQuantity() : BigDecimal.ZERO;
         BigDecimal priorReturnedQty =
             existingReturnsByLine.getOrDefault(entry.getKey(), BigDecimal.ZERO);
-        BigDecimal legacyReturnedQty =
-            legacyReturnsByLine.getOrDefault(entry.getKey(), BigDecimal.ZERO);
-        if (legacyReturnedQty.compareTo(BigDecimal.ZERO) > 0) {
-          priorReturnedQty = priorReturnedQty.add(legacyReturnedQty);
-        }
         if (priorReturnedQty.add(entry.getValue()).compareTo(invoicedQty) > 0) {
           throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
               "Return quantity exceeds remaining invoiced amount for "
@@ -582,7 +520,6 @@ public class SalesReturnService {
     Map<Long, BigDecimal> requestedReturnQtyByLine = new LinkedHashMap<>();
     Map<Long, BigDecimal> requestedReturnQtyByFg = new LinkedHashMap<>();
     Map<Long, BigDecimal> invoicedQtyByFg = new LinkedHashMap<>();
-    Map<Long, List<Long>> invoiceLineIdsByFg = new LinkedHashMap<>();
     Map<Long, FinishedGood> finishedGoodsById = new HashMap<>();
     Set<String> returnProductCodes = new HashSet<>();
 
@@ -617,66 +554,12 @@ public class SalesReturnService {
       finishedGoodsById.putIfAbsent(finishedGood.getId(), finishedGood);
       BigDecimal invoicedQty = quantityValue(invoiceLine.getQuantity());
       invoicedQtyByFg.merge(finishedGood.getId(), invoicedQty, BigDecimal::add);
-      if (invoiceLine.getId() != null) {
-        invoiceLineIdsByFg
-            .computeIfAbsent(finishedGood.getId(), id -> new java.util.ArrayList<>())
-            .add(invoiceLine.getId());
-      }
     }
 
     ReturnMovementSummary existingReturns =
         loadReturnMovements(company, invoice.getInvoiceNumber());
     Map<Long, BigDecimal> existingReturnsByLine = existingReturns.byInvoiceLineId();
-    Map<Long, BigDecimal> legacyReturnsByLine = new LinkedHashMap<>();
-    Map<Long, BigDecimal> legacyReturnsByFg = new LinkedHashMap<>();
     Map<Long, BigDecimal> existingReturnsByFg = existingReturns.byFinishedGoodId();
-    existingReturnsByFg.forEach(legacyReturnsByFg::put);
-    for (Map.Entry<Long, BigDecimal> entry : existingReturnsByLine.entrySet()) {
-      InvoiceLine invoiceLine = invoiceLines.get(entry.getKey());
-      if (invoiceLine == null || invoiceLine.getProductCode() == null) {
-        continue;
-      }
-      if (!returnProductCodes.contains(invoiceLine.getProductCode())) {
-        continue;
-      }
-      FinishedGood finishedGood = finishedGoodsByCode.get(invoiceLine.getProductCode());
-      if (finishedGood == null || finishedGood.getId() == null) {
-        continue;
-      }
-      legacyReturnsByFg.merge(finishedGood.getId(), entry.getValue().negate(), BigDecimal::add);
-    }
-    for (Map.Entry<Long, BigDecimal> entry : legacyReturnsByFg.entrySet()) {
-      BigDecimal remainingLegacy = entry.getValue();
-      if (remainingLegacy == null || remainingLegacy.compareTo(BigDecimal.ZERO) <= 0) {
-        continue;
-      }
-      List<Long> lineIds = invoiceLineIdsByFg.getOrDefault(entry.getKey(), List.of());
-      if (lineIds.isEmpty()) {
-        continue;
-      }
-      java.util.List<Long> orderedLineIds = new java.util.ArrayList<>(lineIds);
-      orderedLineIds.sort(java.util.Comparator.naturalOrder());
-      for (Long lineId : orderedLineIds) {
-        InvoiceLine invoiceLine = invoiceLines.get(lineId);
-        if (invoiceLine == null) {
-          continue;
-        }
-        BigDecimal lineQty = quantityValue(invoiceLine.getQuantity());
-        BigDecimal lineReturned = existingReturnsByLine.getOrDefault(lineId, BigDecimal.ZERO);
-        BigDecimal lineRemaining = lineQty.subtract(lineReturned);
-        if (lineRemaining.compareTo(BigDecimal.ZERO) <= 0) {
-          continue;
-        }
-        BigDecimal allocate = remainingLegacy.min(lineRemaining);
-        if (allocate.compareTo(BigDecimal.ZERO) > 0) {
-          legacyReturnsByLine.merge(lineId, allocate, BigDecimal::add);
-          remainingLegacy = remainingLegacy.subtract(allocate);
-        }
-        if (remainingLegacy.compareTo(BigDecimal.ZERO) <= 0) {
-          break;
-        }
-      }
-    }
     for (Map.Entry<Long, BigDecimal> entry : requestedReturnQtyByLine.entrySet()) {
       InvoiceLine invoiceLine = invoiceLines.get(entry.getKey());
       if (invoiceLine == null) {
@@ -685,11 +568,6 @@ public class SalesReturnService {
       BigDecimal invoicedQty = quantityValue(invoiceLine.getQuantity());
       BigDecimal priorReturnedQty =
           existingReturnsByLine.getOrDefault(entry.getKey(), BigDecimal.ZERO);
-      BigDecimal legacyReturnedQty =
-          legacyReturnsByLine.getOrDefault(entry.getKey(), BigDecimal.ZERO);
-      if (legacyReturnedQty.compareTo(BigDecimal.ZERO) > 0) {
-        priorReturnedQty = priorReturnedQty.add(legacyReturnedQty);
-      }
       if (priorReturnedQty.add(entry.getValue()).compareTo(invoicedQty) > 0) {
         throw ValidationUtils.invalidInput(
             "Return quantity exceeds remaining invoiced amount for "
@@ -773,16 +651,8 @@ public class SalesReturnService {
     if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
       return BigDecimal.ZERO;
     }
-    BigDecimal storedTax = line.getTaxAmount();
-    if (storedTax != null) {
-      return MoneyUtils.safeDivide(storedTax, quantity, 4, RoundingMode.HALF_UP);
-    }
-    BigDecimal total = Optional.ofNullable(line.getLineTotal()).orElse(BigDecimal.ZERO);
-    BigDecimal gross = MoneyUtils.safeMultiply(line.getUnitPrice(), quantity);
-    BigDecimal discount = MoneyUtils.zeroIfNull(line.getDiscountAmount());
-    BigDecimal net = gross.subtract(discount);
-    BigDecimal taxTotal = total.subtract(net);
-    return MoneyUtils.safeDivide(taxTotal, quantity, 4, RoundingMode.HALF_UP);
+    BigDecimal taxAmount = requireInvoiceLineAmount(line, "taxAmount");
+    return MoneyUtils.safeDivide(taxAmount, quantity, 4, RoundingMode.HALF_UP);
   }
 
   private BigDecimal perUnitBase(InvoiceLine line) {
@@ -790,14 +660,8 @@ public class SalesReturnService {
     if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
       return BigDecimal.ZERO;
     }
-    BigDecimal taxableAmount = line.getTaxableAmount();
-    if (taxableAmount != null) {
-      return MoneyUtils.safeDivide(taxableAmount, quantity, 4, RoundingMode.HALF_UP);
-    }
-    BigDecimal gross = MoneyUtils.safeMultiply(line.getUnitPrice(), quantity);
-    BigDecimal discount = MoneyUtils.zeroIfNull(line.getDiscountAmount());
-    BigDecimal net = gross.subtract(discount);
-    return MoneyUtils.safeDivide(net, quantity, 4, RoundingMode.HALF_UP);
+    BigDecimal taxableAmount = requireInvoiceLineAmount(line, "taxableAmount");
+    return MoneyUtils.safeDivide(taxableAmount, quantity, 4, RoundingMode.HALF_UP);
   }
 
   private BigDecimal perUnitDiscount(InvoiceLine line, boolean discountTaxInclusive) {
@@ -836,15 +700,24 @@ public class SalesReturnService {
     if (gross.compareTo(BigDecimal.ZERO) <= 0) {
       return orderGstInclusive;
     }
-    BigDecimal lineTotal = line.getLineTotal();
-    if (lineTotal == null) {
-      lineTotal = MoneyUtils.safeAdd(line.getTaxableAmount(), line.getTaxAmount());
-    }
-    if (lineTotal == null) {
-      return orderGstInclusive;
-    }
+    BigDecimal lineTotal = requireInvoiceLineAmount(line, "lineTotal");
     BigDecimal expectedNetRaw = gross.subtract(discount);
     return MoneyUtils.withinTolerance(lineTotal, expectedNetRaw, DISCOUNT_TOLERANCE);
+  }
+
+  private BigDecimal requireInvoiceLineAmount(InvoiceLine line, String fieldName) {
+    BigDecimal value =
+        switch (fieldName) {
+          case "taxAmount" -> line.getTaxAmount();
+          case "taxableAmount" -> line.getTaxableAmount();
+          case "lineTotal" -> line.getLineTotal();
+          default ->
+              throw new IllegalArgumentException("Unsupported invoice line amount: " + fieldName);
+        };
+    if (value == null) {
+      throw ValidationUtils.invalidState("Invoice line missing canonical " + fieldName);
+    }
+    return value;
   }
 
   private BigDecimal currency(BigDecimal value) {
@@ -922,19 +795,12 @@ public class SalesReturnService {
     if (normalized == null || normalized.isEmpty()) {
       return ReturnMovementSummary.empty();
     }
-    List<InventoryMovement> movements = new java.util.ArrayList<>();
-    List<InventoryMovement> legacyMovements =
-        inventoryMovementRepository
-            .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
-                company, SALES_RETURN_REFERENCE, normalized);
-    if (legacyMovements != null && !legacyMovements.isEmpty()) {
-      movements.addAll(legacyMovements);
-    }
     String prefix = normalized + SALES_RETURN_LINE_SEPARATOR;
     List<InventoryMovement> lineMovements =
         inventoryMovementRepository
             .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
                 company, SALES_RETURN_REFERENCE, prefix);
+    List<InventoryMovement> movements = new java.util.ArrayList<>();
     if (lineMovements != null && !lineMovements.isEmpty()) {
       movements.addAll(lineMovements);
     }
@@ -955,15 +821,12 @@ public class SalesReturnService {
       if (referenceId == null || referenceId.isEmpty()) {
         continue;
       }
-      if (!referenceId.equals(normalized) && !referenceId.startsWith(prefix)) {
+      if (!referenceId.startsWith(prefix)) {
         continue;
       }
       BigDecimal quantity =
           movement.getQuantity() != null ? movement.getQuantity() : BigDecimal.ZERO;
       totalsByFinishedGood.merge(finishedGood.getId(), quantity, BigDecimal::add);
-      if (referenceId.equals(normalized)) {
-        continue;
-      }
       String lineRemainder = referenceId.substring(prefix.length()).trim();
       int delimiter = lineRemainder.indexOf(SALES_RETURN_LINE_SEPARATOR);
       String lineIdText =
@@ -980,10 +843,6 @@ public class SalesReturnService {
       totalsByLine.merge(lineId, quantity, BigDecimal::add);
     }
     return new ReturnMovementSummary(totalsByLine, totalsByFinishedGood);
-  }
-
-  private String buildReturnReference(String invoiceNumber, Long invoiceLineId) {
-    return buildReturnReference(invoiceNumber, invoiceLineId, null);
   }
 
   private String buildReturnReference(String invoiceNumber, Long invoiceLineId, String returnKey) {

@@ -49,29 +49,24 @@ Install these before running locally:
    - `ERP_SECURITY_ENCRYPTION_KEY` (32+ byte key)
    - `ERP_SECURITY_AUDIT_PRIVATE_KEY`
 
-3. **Run the repository bootstrap**
-   ```bash
-   bash .factory/init.sh
-   ```
-
-4. **Start local dependencies**
+3. **Start local dependencies**
    ```bash
    DB_PORT=5433 docker compose up -d db rabbitmq mailhog
    ```
    > Mission/local validation is **Flyway v2 only** and reserves host PostgreSQL port `5433`. Do not use `5432` for this repo's compose-backed runtime.
 
-5. **Compile**
+4. **Compile**
    ```bash
    cd erp-domain
    MIGRATION_SET=v2 mvn compile -q
    ```
 
-6. **Run tests**
+5. **Run tests**
    ```bash
    MIGRATION_SET=v2 mvn test -Pgate-fast -Djacoco.skip=true
    ```
 
-8. **Format code (optional)**
+6. **Format code (optional)**
    ```bash
    cd erp-domain
    # Check formatting without making changes
@@ -81,7 +76,7 @@ Install these before running locally:
    MIGRATION_SET=v2 mvn spotless:apply
    ```
 
-9. **Set up pre-commit hooks (optional)**
+7. **Set up pre-commit hooks (optional)**
    ```bash
    # Install pre-commit (requires Python)
    pip install pre-commit
@@ -93,7 +88,7 @@ Install these before running locally:
    pre-commit run --all-files
    ```
 
-7. **(Optional) Run the compose-backed app with the same Flyway v2 profile used by the mission**
+8. **(Optional) Run the compose-backed app with the same Flyway v2 profile used by the mission**
    ```bash
    SPRING_PROFILES_ACTIVE='prod,flyway-v2' \
    SPRING_DATASOURCE_URL='jdbc:postgresql://db:5432/erp_domain' \
@@ -251,8 +246,6 @@ Notes:
 - Canonical docs entrypoint: [`docs/INDEX.md`](docs/INDEX.md)
 - Runtime architecture reference: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Frontend portal and shared API contracts: [`docs/frontend-portals/README.md`](docs/frontend-portals/README.md) and [`docs/frontend-api/README.md`](docs/frontend-api/README.md)
-- Retirement registry for non-canonical and reference-only surfaces: [`docs/deprecated/INDEX.md`](docs/deprecated/INDEX.md)
-- `.factory/library/*` is internal worker guidance, not part of the public docs spine.
 
 Key backend patterns used across modules:
 - **Facade pattern:** module entry services centralize validation/routing (for example, accounting facade flows)

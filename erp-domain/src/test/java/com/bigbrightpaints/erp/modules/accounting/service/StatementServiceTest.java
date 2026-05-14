@@ -147,7 +147,7 @@ class StatementServiceTest {
   }
 
   @Test
-  void supplierAging_allowsLegacyTouchingBoundaryBuckets() {
+  void supplierAging_allowsBoundaryTouchingBuckets() {
     Supplier supplier = new Supplier();
     supplier.setName("Supplier");
     ReflectionFieldAccess.setField(supplier, "id", 14L);

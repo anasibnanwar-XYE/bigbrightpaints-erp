@@ -236,7 +236,7 @@ class TS_RuntimeSupportTicketSyncExecutableCoverageTest {
     ticket.setGithubIssueNumber(4567L);
     ticket.setStatus(SupportTicketStatus.OPEN);
 
-    UserAccount requester = new UserAccount("requester@acme.com", "hash", "Requester");
+    UserAccount requester = new UserAccount("requester@acme.com", "TEST", "hash", "Requester");
     ReflectionTestUtils.setField(requester, "id", 72L);
 
     when(gitHubIssueClient.isEnabledAndConfigured()).thenReturn(true);

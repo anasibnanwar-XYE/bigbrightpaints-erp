@@ -125,7 +125,7 @@ class CreditLimitOverrideServiceTest {
   }
 
   @Test
-  void approveRequest_allowsMissingDecisionReasonWithLegacyFallback() {
+  void approveRequest_requiresDecisionReason() {
     CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
     request.setCompany(company);
     request.setStatus("PENDING");
@@ -135,17 +135,19 @@ class CreditLimitOverrideServiceTest {
     when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 12L))
         .thenReturn(Optional.of(request));
 
-    CreditLimitOverrideRequestDto response =
-        service.approveRequest(
-            12L, new CreditLimitOverrideDecisionRequest(null, null), "checker@bbp.com");
+    ApplicationException ex =
+        assertThrows(
+            ApplicationException.class,
+            () ->
+                service.approveRequest(
+                    12L, new CreditLimitOverrideDecisionRequest(null, null), "checker@bbp.com"));
 
-    assertThat(response.status()).isEqualTo("APPROVED");
-    assertThat(request.getReason()).contains("[CREDIT_LIMIT_EXCEPTION_APPROVED]");
-    assertThat(request.getReason()).contains("Need urgent dispatch headroom");
+    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+    assertThat(ex.getMessage()).contains("Decision reason is required to approve override");
   }
 
   @Test
-  void rejectRequest_allowsMissingDecisionReasonWithDefaultFallback() {
+  void rejectRequest_requiresDecisionReason() {
     CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
     request.setCompany(company);
     request.setStatus("PENDING");
@@ -154,13 +156,15 @@ class CreditLimitOverrideServiceTest {
     when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 13L))
         .thenReturn(Optional.of(request));
 
-    CreditLimitOverrideRequestDto response =
-        service.rejectRequest(
-            13L, new CreditLimitOverrideDecisionRequest(null, null), "checker@bbp.com");
+    ApplicationException ex =
+        assertThrows(
+            ApplicationException.class,
+            () ->
+                service.rejectRequest(
+                    13L, new CreditLimitOverrideDecisionRequest(null, null), "checker@bbp.com"));
 
-    assertThat(response.status()).isEqualTo("REJECTED");
-    assertThat(request.getReason()).contains("[CREDIT_LIMIT_EXCEPTION_REJECTED]");
-    assertThat(request.getReason()).contains("Rejected via legacy decision payload");
+    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+    assertThat(ex.getMessage()).contains("Decision reason is required to reject override");
   }
 
   @Test
@@ -186,14 +190,12 @@ class CreditLimitOverrideServiceTest {
                 null,
                 null,
                 new BigDecimal("200.00"),
-                null,
                 "Large order requires temporary headroom",
                 null),
             "sales@bbp.com");
 
     assertThat(response.status()).isEqualTo("PENDING");
     assertThat(response.requestedAmount()).isEqualByComparingTo("200.00");
-    assertThat(response.dispatchAmount()).isEqualByComparingTo("200.00");
     assertThat(response.currentExposure()).isEqualByComparingTo("1150.00");
     assertThat(response.requiredHeadroom()).isEqualByComparingTo("350.00");
   }
@@ -305,7 +307,7 @@ class CreditLimitOverrideServiceTest {
   }
 
   @Test
-  void isOverrideApproved_allowsLegacyApprovedRecordWithoutReasonCodePrefix() {
+  void isOverrideApproved_rejectsApprovedRecordWithoutReasonCodePrefix() {
     CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
     request.setCompany(company);
     request.setStatus("APPROVED");
@@ -322,12 +324,10 @@ class CreditLimitOverrideServiceTest {
 
     when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 25L))
         .thenReturn(Optional.of(request));
-    when(dealerLedgerService.currentBalance(42L)).thenReturn(new BigDecimal("100.00"));
-
     boolean approved =
         service.isOverrideApproved(25L, company, dealer, null, null, new BigDecimal("120.00"));
 
-    assertThat(approved).isTrue();
+    assertThat(approved).isFalse();
   }
 
   @Test

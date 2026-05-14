@@ -9,15 +9,17 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 @Tag("reconciliation")
 class TS_P2PPurchaseJournalLinkageTest {
 
-  private static final String PURCHASING_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java";
+  private static final String PURCHASE_INVOICE_ENGINE =
+      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseInvoiceEngine.java";
+  private static final String PURCHASE_TAX_POLICY =
+      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseTaxPolicy.java";
 
   @Test
   void purchaseInvoicePostsJournalBeforePersistence() {
     TruthSuiteFileAssert.assertContainsInOrder(
-        PURCHASING_SERVICE,
-        "// Post journal FIRST to avoid orphan purchases if journal fails",
-        "JournalEntryDto entry = postPurchaseEntry(",
+        PURCHASE_INVOICE_ENGINE,
+        "JournalEntryDto entry =",
+        "postPurchaseEntry(",
         "request,",
         "supplier,",
         "inventoryDebits,",
@@ -32,17 +34,17 @@ class TS_P2PPurchaseJournalLinkageTest {
   @Test
   void purchaseFlowLinksInventoryMovementsAndClosesGrn() {
     TruthSuiteFileAssert.assertContains(
-        PURCHASING_SERVICE,
-        "movement.setJournalEntryId(entryId);",
-        "goodsReceipt.setStatus(\"INVOICED\");",
+        PURCHASE_INVOICE_ENGINE,
+        "movement.setJournalEntryId(journalEntryId);",
+        "goodsReceipt.setStatus(GoodsReceiptStatus.INVOICED);",
         "goodsReceiptRepository.save(goodsReceipt);",
-        "PurchaseOrderStatus.CLOSED");
+        "PurchaseOrderStatus.INVOICED");
   }
 
   @Test
   void purchaseTaxComputationUsesDeterministicHalfUpRounding() {
     TruthSuiteFileAssert.assertContains(
-        PURCHASING_SERVICE,
+        PURCHASE_INVOICE_ENGINE,
         "lineTax = currency(lineNet.multiply(effectiveTaxRate)",
         ".divide(new BigDecimal(\"100\"), 6, RoundingMode.HALF_UP));",
         "BigDecimal allocatedTax = (i == computedLines.size() - 1)",
@@ -52,11 +54,11 @@ class TS_P2PPurchaseJournalLinkageTest {
   @Test
   void purchaseFlowEnforcesSingleTaxModeContractForDownstreamSettlement() {
     TruthSuiteFileAssert.assertContains(
-        PURCHASING_SERVICE,
-        "PurchaseTaxMode purchaseTaxMode = resolvePurchaseTaxMode(sortedLines, lockedMaterials);",
-        "BigDecimal effectiveTaxRate = resolveLineTaxRateForMode(lineRequest, rawMaterial, company,"
-            + " purchaseTaxMode);",
-        "enforcePurchaseTaxContract(purchaseTaxMode, providedTaxAmount, hasTaxableLines);",
-        "\"Purchase invoice cannot mix GST and non-GST materials\"");
+        PURCHASE_INVOICE_ENGINE,
+        "purchaseTaxPolicy.resolvePurchaseTaxMode(sortedLines, lockedMaterials);",
+        "purchaseTaxPolicy.resolveLineTaxRateForMode(",
+        "purchaseTaxPolicy.enforcePurchaseTaxContract(");
+    TruthSuiteFileAssert.assertContains(
+        PURCHASE_TAX_POLICY, "\"Purchase invoice cannot mix GST and non-GST materials\"");
   }
 }

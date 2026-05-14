@@ -1,7 +1,7 @@
 # Accounting API Contracts
 
 This file is the accounting portal API truth. Frontend should not infer
-alternate routes from retired docs, test fixtures, or legacy controllers.
+alternate routes from retired docs, test fixtures, or retired controllers.
 
 All tenant-scoped calls in this portal still use `companyCode` and
 `X-Company-Code` from `docs/frontend-api/auth-and-company-scope.md`. Do not
@@ -45,7 +45,7 @@ Rules:
   bindings are cleared at the company level; frontend must not assume older GST
   account links survive a `defaultGstRate=0` configuration change.
 - Missing required defaults are blocking setup failures, not warnings.
-- Treat default accounts as the fallback mapping layer below item metadata and
+- Treat default accounts as the account mapping layer below item metadata and
   above any downstream stock, sales, or accounting workflow.
 
 Blocking frontend state:
@@ -154,14 +154,16 @@ Request and response rules:
 - `GET /api/v1/accounting/month-end/checklist`
 - `POST /api/v1/accounting/month-end/checklist/{periodId}`
 - `POST /api/v1/accounting/periods/{periodId}/request-close`
-- `POST /api/v1/accounting/periods/{periodId}/approve-close`
-- `POST /api/v1/accounting/periods/{periodId}/reject-close`
 - `POST /api/v1/accounting/periods/{periodId}/reopen`
 
 Rules:
 
 - Direct `POST /api/v1/accounting/periods/{periodId}/close` is not a supported
   frontend action.
+- Normal frontend approval/rejection is tenant-admin owned through
+  `POST /api/v1/admin/approvals/PERIOD_CLOSE_REQUEST/{id}/decisions`.
+- The accounting approve/reject service routes remain backend operational
+  surfaces and should not be wired into accounting portal chrome.
 - Reopen is not part of normal accounting navigation and should appear only in
   the superadmin experience.
 - Frontend should treat closed-period write rejection as a blocked state, not as

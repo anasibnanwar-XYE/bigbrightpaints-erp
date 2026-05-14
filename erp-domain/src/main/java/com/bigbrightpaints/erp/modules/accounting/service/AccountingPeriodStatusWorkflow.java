@@ -47,7 +47,6 @@ final class AccountingPeriodStatusWorkflow {
   private final AccountRepository accountRepository;
   private final CompanyClock companyClock;
   private final ObjectProvider<JournalEntryService> journalEntryServiceProvider;
-  private final PeriodCloseHook periodCloseHook;
   private final AccountingPeriodSnapshotService snapshotService;
   private final AccountingPeriodLifecycleService lifecycleService;
   private final AccountingPeriodChecklistService checklistService;
@@ -60,7 +59,6 @@ final class AccountingPeriodStatusWorkflow {
       AccountRepository accountRepository,
       CompanyClock companyClock,
       ObjectProvider<JournalEntryService> journalEntryServiceProvider,
-      PeriodCloseHook periodCloseHook,
       AccountingPeriodSnapshotService snapshotService,
       AccountingPeriodLifecycleService lifecycleService,
       AccountingPeriodChecklistService checklistService) {
@@ -71,7 +69,6 @@ final class AccountingPeriodStatusWorkflow {
     this.accountRepository = accountRepository;
     this.companyClock = companyClock;
     this.journalEntryServiceProvider = journalEntryServiceProvider;
-    this.periodCloseHook = periodCloseHook;
     this.snapshotService = snapshotService;
     this.lifecycleService = lifecycleService;
     this.checklistService = checklistService;
@@ -115,7 +112,6 @@ final class AccountingPeriodStatusWorkflow {
       throw ValidationUtils.invalidState(
           "Approved period close request is required before closing period");
     }
-    periodCloseHook.onPeriodCloseLocked(company, period);
     boolean force = request != null && Boolean.TRUE.equals(request.force());
     assertNoUninvoicedReceipts(company, period);
     if (!force) {
@@ -383,6 +379,6 @@ final class AccountingPeriodStatusWorkflow {
   }
 
   private String resolveCurrentUsername() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 }

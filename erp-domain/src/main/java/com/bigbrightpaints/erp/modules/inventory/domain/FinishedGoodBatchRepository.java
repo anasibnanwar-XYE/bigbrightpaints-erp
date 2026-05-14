@@ -117,7 +117,7 @@ public interface FinishedGoodBatchRepository extends JpaRepository<FinishedGoodB
   @EntityGraph(attributePaths = "finishedGood")
   java.util.Optional<FinishedGoodBatch> findByFinishedGood_CompanyAndId(Company company, Long id);
 
-  // Used to ensure idempotency when creating batches (e.g. Tally sync, fixture seeding)
+  // Used to ensure idempotency when creating batches (for example fixture seeding).
   boolean existsByFinishedGoodAndBatchCodeIgnoreCase(FinishedGood finishedGood, String batchCode);
 
   java.util.Optional<FinishedGoodBatch> findByFinishedGoodAndBatchCode(

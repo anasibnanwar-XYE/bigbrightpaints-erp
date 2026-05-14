@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **manufacturing/packing flow**: the canonical lifecycle for production execution, from production planning through material consumption, packing operations, finished-good batch creation, and cost allocation. It covers production logs, packing records, batch status progression, and the dispatch handoff boundary.
+This document describes the **manufacturing/packing flow**: the canonical lifecycle for production execution, from production planning through material consumption, packing operations, finished-good batch creation, and cost allocation. It covers production logs, packing records, batch status progression, and the dispatch handoff boundary.
 
-This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, the packet explicitly states the current limitation instead of presenting partial behavior as complete.
+This flow is **behavior-first** and **code-grounded**. Where the backend is incomplete, blocked, or intentionally partial, this document explicitly states the current limitation instead of presenting partial behavior as complete.
 
 ---
 
@@ -61,7 +61,7 @@ This flow is **behavior-first** and **code-grounded**. Where the backend is inco
 2. **Packaging mapping exists** — Mapping for the product's size label must exist
 3. **Packaging material stock sufficient** — Packaging material has sufficient quantity
 4. **Semi-finished batch exists** — Batch created during production log
-5. **Idempotency key provided** — Header `Idempotency-Key` required (or `X-Idempotency-Key` legacy)
+5. **Idempotency key provided** — Header `Idempotency-Key` required; `X-Idempotency-Key` is rejected
 
 ### Cost Allocation Preconditions
 
@@ -173,17 +173,15 @@ The flow is complete when:
 
 3. **Wastage reason limited** — Only `PROCESS_LOSS` or `NONE`
 
-4. **Idempotency key required** — Packing without idempotency key fails; no fallback behavior
+4. **Idempotency key required** — Packing without idempotency key fails closed
 
 5. **Batch number generation per month** — Batch codes include month, so same SKU can have multiple batches per month
 
-6. **Packaging mapping mandatory** — No fallback if mapping missing; packing fails
+6. **Packaging mapping mandatory** — Missing mappings fail closed
 
 ---
 
-## 6. Canonical vs Non-Canonical Paths
-
-### Canonical Paths
+## 6. Current API Paths
 
 | Path | Owner | Notes |
 | --- | --- | --- |
@@ -191,17 +189,6 @@ The flow is complete when:
 | `POST /api/v1/factory/packing-records` | `PackingController` | Packing with idempotency |
 | `POST /api/v1/factory/cost-allocation` | `FactoryController` | Monthly variance allocation |
 | `POST /api/v1/factory/packaging-mappings` | `PackagingMappingController` | Packaging size setup |
-
-### Non-Canonical / Deprecated Paths
-
-| Path | Status | Replacement |
-| --- | --- | --- |
-| `POST /api/v1/factory/production-batches` | Retired (hard cut) | Use `POST /api/v1/factory/production/logs` |
-| `GET /api/v1/factory/production-batches` | Retired (hard cut) | Use `GET /api/v1/factory/production/logs` |
-| `POST /api/v1/factory/pack` | Retired (hard cut) | Use `POST /api/v1/factory/packing-records` |
-| Packing completion seam (PackingCompletionService) | Partially retired | Completion semantics removed, service survives |
-
----
 
 ## 7. Cross-Module Dependencies
 
@@ -219,10 +206,10 @@ The manufacturing/packing flow intersects with inventory events that trigger acc
 
 | Event | Listener | Phase | Effect on Manufacturing |
 | --- | --- | --- | --- |
-| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | When packing consumes raw materials and creates finished-good batches, this event triggers automatic inventory valuation journal entries in accounting if `erp.inventory.accounting.events.enabled=true` (default: true). This is a material coupling: raw material consumption posts DR WIP / CR raw material inventory, and FG receipt posts DR FG valuation / CR WIP. If the toggle is disabled, packing silently skips accounting side effects. |
+| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Packing posts canonical accounting entries through the owning manufacturing flow. `InventoryAccountingEventListener` only runs when `erp.inventory.accounting.events.enabled=true` and is not the default posting path. |
 | `InventoryValuationChangedEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Triggers accounting entries for raw material and finished goods valuation changes during packing. |
 
-**Key boundary note:** The packing operation is the transition point from factory to inventory. The `InventoryAccountingEventListener` bridges packing operations to accounting journals. This bridge is conditional on the feature flag `erp.inventory.accounting.events.enabled`. See [orchestrator.md](../modules/orchestrator.md) for the full event bridge map and configuration-guarded risks.
+**Key boundary note:** The packing operation is the transition point from factory to inventory. Packing owns its accounting postings directly; the listener is opt-in automation for standalone inventory movements. See [orchestrator.md](../modules/orchestrator.md) for the full event map.
 
 ---
 
@@ -236,10 +223,10 @@ The manufacturing/packing flow intersects with inventory events that trigger acc
 
 ## 10. Related Documentation
 
-- [docs/modules/factory.md](../modules/factory.md) — Factory module canonical packet
-- [docs/modules/inventory.md](../modules/inventory.md) — Inventory module for stock truth
+- [docs/modules/factory.md](../modules/factory.md) — Factory module doc
+- [docs/modules/inventory-stock-control.md](../modules/inventory-stock-control.md) — Inventory module for stock truth
 - [docs/modules/catalog-setup.md](../modules/catalog-setup.md) — Catalog for product truth
-- [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 
 ---
 
@@ -251,4 +238,4 @@ The manufacturing/packing flow intersects with inventory events that trigger acc
 | --- | --- |
 | Production plan usage | Optional. Production plans are not enforced before creating production logs. |
 | Cost integration | Not automated. Manual entry is required for cost allocation. |
-| Packing idempotency fallback | Idempotency key is required with no graceful degradation if omitted. |
+| Packing idempotency contract | Idempotency key is required with no graceful degradation if omitted. |

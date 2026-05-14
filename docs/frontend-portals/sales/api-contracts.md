@@ -19,7 +19,6 @@ Response contract (`ApiResponse<SalesDashboardDto>.data`):
 ## Dealer Master
 
 - `GET /api/v1/dealers?status=&page=&size=`
-- alias: `GET /api/v1/sales/dealers?status=&page=&size=`
 - `GET /api/v1/dealers/{dealerId}`
 - `POST /api/v1/dealers`
 - `POST /api/v1/dealers/{dealerId}/dunning/hold`
@@ -57,20 +56,17 @@ Rules:
 - Order create and confirm happen in sales.
 - `POST /api/v1/sales/orders` returns `201 Created` when the request opts into the
   draft lifecycle contract (`paymentTerms` present and/or any item includes
-  `finishedGoodId`); legacy payloads continue to receive `200 OK`.
+  `finishedGoodId`); otherwise it returns `200 OK`.
 - `POST /api/v1/sales/orders` returns `422 Unprocessable Entity` when dealer
   credit posture would be exceeded and no approved override headroom can cover
   the request.
 - `SalesOrderRequest` now accepts `paymentTerms` and
   `SalesOrderItemRequest.finishedGoodId`.
 - Order search treats `orderNumber` as a case-insensitive contains filter.
-- Order search normalizes legacy stored statuses:
-  - `DRAFT` also matches `BOOKED`
-  - `DISPATCHED` also matches `SHIPPED` and `FULFILLED`
-  - `SETTLED` also matches `COMPLETED`
+- Order search accepts the canonical order lifecycle statuses only.
 - Confirm should be treated as commercial confirmation and reservation intent.
-- Order timeline rows expose canonical + alias fields:
-  `toStatus`/`status`, `changedBy`/`actor`, and `changedAt`/`timestamp`.
+- Order timeline rows expose canonical lifecycle fields:
+  `toStatus`, `changedBy`, and `changedAt`.
 - Do not infer invoice generation from order confirmation alone.
 
 ## Dispatch And Invoice Reads
@@ -109,8 +105,6 @@ Rules:
   resolution context.
 - `requestedBy` is server-derived from the authenticated principal; clients must
   not send requester identity fields.
-- `dispatchAmount` is a legacy alias for `requestedAmount` and should not be
-  used by new clients.
 - Override `requiredHeadroom` is computed using the same exposure posture as
   order creation (`outstandingBalance + pendingOrderExposure + requestedAmount - creditLimit`).
 - Approved override headroom contributes to effective dealer credit posture in

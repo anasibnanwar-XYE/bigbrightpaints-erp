@@ -51,7 +51,7 @@ class AccountingPortalScopeGuardScriptTest {
   void guardFailsWhenEndpointInventoryMethodTokenIsMalformed() throws Exception {
     FixturePaths fixturePaths = writeFixture(13);
     replaceInFile(
-        fixturePaths.endpointInventoryDoc(),
+        fixturePaths.openapiEndpointContractDoc(),
         "- `GET, POST` `/api/v1/hr/employees`\n",
         "- `,` `/api/v1/hr/employees`\n");
 
@@ -120,7 +120,8 @@ class AccountingPortalScopeGuardScriptTest {
     env.put("ACCOUNTING_PORTAL_PORTAL_DOC", fixturePaths.portalDoc().toString());
     env.put("ACCOUNTING_PORTAL_FRONTEND_API_DOC", fixturePaths.frontendApiDoc().toString());
     env.put(
-        "ACCOUNTING_PORTAL_ENDPOINT_INVENTORY_DOC", fixturePaths.endpointInventoryDoc().toString());
+        "ACCOUNTING_PORTAL_OPENAPI_ENDPOINT_CONTRACT_DOC",
+        fixturePaths.openapiEndpointContractDoc().toString());
     if (pathOverride != null) {
       env.put("PATH", pathOverride);
     }
@@ -163,7 +164,7 @@ class AccountingPortalScopeGuardScriptTest {
     Path guardrailDoc = tempDir.resolve("ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md");
     Path portalDoc = tempDir.resolve("accounting-portal-README.md");
     Path frontendApiDoc = tempDir.resolve("frontend-api-README.md");
-    Path endpointInventoryDoc = tempDir.resolve("endpoint-inventory.md");
+    Path openapiEndpointContractDoc = tempDir.resolve("openapi-endpoint-contract.md");
 
     Files.writeString(
         guardrailDoc,
@@ -172,7 +173,7 @@ class AccountingPortalScopeGuardScriptTest {
         HR, PURCHASING, INVENTORY, and REPORTS come under the Accounting portal in frontend scope.
         ## Change-Control Rule
         Updated canonical portal and frontend API docs for every affected portal.
-        Updated `docs/endpoint-inventory.md` module mapping and examples.
+        Updated `docs/openapi-endpoint-contract.md` module mapping and examples.
         """);
 
     Files.writeString(
@@ -193,9 +194,9 @@ class AccountingPortalScopeGuardScriptTest {
 """);
 
     Files.writeString(
-        endpointInventoryDoc,
+        openapiEndpointContractDoc,
         """
-        # Endpoint Inventory
+        # OpenAPI Endpoint Contract
         HR, PURCHASING, INVENTORY, and REPORTS come under the Accounting portal in frontend scope.
         docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md
         | Module | Path count | Examples |
@@ -216,7 +217,7 @@ class AccountingPortalScopeGuardScriptTest {
         """
             .formatted(reportsCount));
 
-    return new FixturePaths(guardrailDoc, portalDoc, frontendApiDoc, endpointInventoryDoc);
+    return new FixturePaths(guardrailDoc, portalDoc, frontendApiDoc, openapiEndpointContractDoc);
   }
 
   private Path repoRoot() {
@@ -231,7 +232,7 @@ class AccountingPortalScopeGuardScriptTest {
   }
 
   private record FixturePaths(
-      Path guardrailDoc, Path portalDoc, Path frontendApiDoc, Path endpointInventoryDoc) {}
+      Path guardrailDoc, Path portalDoc, Path frontendApiDoc, Path openapiEndpointContractDoc) {}
 
   private record ProcessResult(int exitCode, String stdout, String stderr) {}
 }

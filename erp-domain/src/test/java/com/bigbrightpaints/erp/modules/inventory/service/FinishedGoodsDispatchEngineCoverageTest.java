@@ -76,27 +76,6 @@ class FinishedGoodsDispatchEngineCoverageTest {
   }
 
   @Test
-  void findLegacyDispatchMovements_returnsEmptyWhenCompanyIsMissing() throws Exception {
-    Method method =
-        FinishedGoodsDispatchEngine.class.getDeclaredMethod(
-            "findLegacyDispatchMovements", Company.class, Long.class);
-    method.setAccessible(true);
-
-    assertThat(method.invoke(engine, null, 10L)).isEqualTo(List.of());
-  }
-
-  @Test
-  void findLegacyDispatchMovements_returnsEmptyWhenPackagingSlipIdIsMissing() throws Exception {
-    Method method =
-        FinishedGoodsDispatchEngine.class.getDeclaredMethod(
-            "findLegacyDispatchMovements", Company.class, Long.class);
-    method.setAccessible(true);
-
-    Company company = new Company();
-    assertThat(method.invoke(engine, company, null)).isEqualTo(List.of());
-  }
-
-  @Test
   void applyDispatchLogistics_ignoresNullSlipAndRequest() throws Exception {
     Method method =
         FinishedGoodsDispatchEngine.class.getDeclaredMethod(

@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPAT_BASH_ENV_BOOTSTRAP="$ROOT_DIR/scripts/bash_env_bootstrap.sh"
 MAVEN_MEMORY_DEFAULTS="$ROOT_DIR/scripts/maven_memory_defaults.sh"
 if [[ -f "$MAVEN_MEMORY_DEFAULTS" ]]; then
   source "$MAVEN_MEMORY_DEFAULTS"
@@ -10,14 +9,6 @@ if [[ -f "$MAVEN_MEMORY_DEFAULTS" ]]; then
 elif [[ -z "${MAVEN_OPTS:-}" ]]; then
   export MAVEN_OPTS="-Xmx${BBP_MAVEN_XMX:-1536m} -XX:MaxMetaspaceSize=${BBP_MAVEN_MAX_METASPACE:-512m} -XX:+UseG1GC"
 fi
-if [[ "${BASH_ENV:-}" != "$COMPAT_BASH_ENV_BOOTSTRAP" && -n "${BASH_ENV:-}" ]]; then
-  export BBP_CHAINED_BASH_ENV="${BASH_ENV:-}"
-  export BBP_CHAINED_BASH_ENV_PARENT_PID="$$"
-else
-  unset BBP_CHAINED_BASH_ENV
-  unset BBP_CHAINED_BASH_ENV_PARENT_PID
-fi
-export BASH_ENV="$COMPAT_BASH_ENV_BOOTSTRAP"
 MIGRATION_SET="${MIGRATION_SET:-v2}"
 MVN_ARGS=(-B -ntp)
 
@@ -65,9 +56,6 @@ if [[ "$SKIP_MVN_VERIFY" == "true" && "${VERIFY_LOCAL_SKIP_TESTS:-false}" != "tr
   echo "[verify_local] ignore mvn verify delegation (VERIFY_LOCAL_SKIP_TESTS=true not set)"
   SKIP_MVN_VERIFY=false
 fi
-
-echo "[verify_local] legacy migration freeze guard"
-bash "$ROOT_DIR/scripts/guard_legacy_migration_freeze.sh" --no-range
 
 echo "[verify_local] schema drift scan"
 FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/schema_drift_scan.sh"

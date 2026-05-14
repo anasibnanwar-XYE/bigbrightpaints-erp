@@ -15,7 +15,7 @@ TAGGED_TRUTH = {"critical", "concurrency", "reconciliation", "flaky"}
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Validate confidence-suite test catalog")
-    p.add_argument("--catalog", default="docs/CODE-RED/confidence-suite/TEST_CATALOG.json")
+    p.add_argument("--catalog", default="testing/confidence-suite/test-catalog.json")
     p.add_argument("--quarantine", default="scripts/test_quarantine.txt")
     p.add_argument(
         "--tests-root",
@@ -85,6 +85,7 @@ def main() -> int:
     args = parse_args()
     if not os.path.exists(args.catalog):
         discovered = discover_tagged_truth_tests(args.tests_root)
+        errors = [f"catalog file missing: {args.catalog}"]
         summary = {
             "catalog_path": args.catalog,
             "tests_root": args.tests_root,
@@ -92,17 +93,17 @@ def main() -> int:
             "catalog_missing": True,
             "discovered_tagged_tests": len(discovered),
             "discovered_test_paths": discovered,
-            "errors": [],
-            "passes": True,
+            "errors": errors,
+            "passes": False,
         }
-        print("[validate_test_catalog] WARN: catalog file missing; running in compatibility mode")
+        print("[validate_test_catalog] FAIL: catalog file missing")
         print("[validate_test_catalog] summary:")
         print(json.dumps(summary, indent=2))
         if args.output:
             os.makedirs(os.path.dirname(args.output), exist_ok=True)
             with open(args.output, "w", encoding="utf-8") as fh:
                 json.dump(summary, fh, indent=2)
-        return 0
+        return 1
 
     catalog = read_json(args.catalog)
     tests = catalog.get("tests", [])

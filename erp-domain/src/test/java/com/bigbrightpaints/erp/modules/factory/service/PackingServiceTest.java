@@ -73,7 +73,7 @@ class PackingServiceTest {
   @Mock private PackingInventoryService packingInventoryService;
   @Mock private PackingBatchService packingBatchService;
   @Mock private PackingJournalBuilder packingJournalBuilder;
-  @Mock private PackingJournalLinkHelper packingJournalLinkHelper;
+  @Mock private PackingJournalLinkService packingJournalLinkService;
   @Mock private PackingReadService packingReadService;
 
   private PackingService packingService;
@@ -98,7 +98,7 @@ class PackingServiceTest {
             packingInventoryService,
             packingBatchService,
             packingJournalBuilder,
-            packingJournalLinkHelper,
+            packingJournalLinkService,
             packingReadService);
 
     company = new Company();
@@ -488,7 +488,7 @@ class PackingServiceTest {
   }
 
   @Test
-  void closeResidualWastage_usesMaterialCostFallbackWhenUnitCostMissing() {
+  void closeResidualWastage_usesMaterialCostWhenUnitCostMissing() {
     ProductionProduct product = new ProductionProduct();
     product.setSkuCode("SKU-1");
     product.setProductName("Primer");
@@ -703,7 +703,7 @@ class PackingServiceTest {
             new ApplicationException(
                 ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
                 "Packing reference PROD-001-PACK-88 already linked to journal 999"))
-        .when(packingJournalLinkHelper)
+        .when(packingJournalLinkService)
         .linkPackagingMovementsToJournal(company, "PROD-001-PACK-88", 55L);
 
     PackingRequest request =

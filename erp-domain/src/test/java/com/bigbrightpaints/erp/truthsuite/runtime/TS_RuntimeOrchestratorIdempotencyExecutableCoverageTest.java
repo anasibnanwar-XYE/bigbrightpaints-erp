@@ -163,8 +163,8 @@ class TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest {
 
     OrchestratorCommand mismatched =
         new OrchestratorCommand(
-            401L, "ORCH.PAYROLL.RUN", "idem-payroll", "different-hash", "trace-payroll");
-    when(commandRepository.lockByScope(401L, "ORCH.PAYROLL.RUN", "idem-payroll"))
+            401L, "ORCH.ORDER.APPROVE", "idem-order", "different-hash", "trace-order");
+    when(commandRepository.lockByScope(401L, "ORCH.ORDER.APPROVE", "idem-order"))
         .thenReturn(Optional.of(mismatched));
 
     OrchestratorIdempotencyService service =
@@ -177,27 +177,27 @@ class TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest {
     assertThatThrownBy(
             () ->
                 service.start(
-                    "ORCH.PAYROLL.RUN",
-                    "idem-payroll",
-                    Map.of("period", "2026-02"),
+                    "ORCH.ORDER.APPROVE",
+                    "idem-order",
+                    Map.of("orderId", "SO-1"),
                     () -> "trace-ignored"))
         .isInstanceOf(ApplicationException.class)
         .satisfies(
             ex -> {
               ApplicationException appEx = (ApplicationException) ex;
               assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
-              assertThat(appEx.getDetails()).containsEntry("commandName", "ORCH.PAYROLL.RUN");
-              assertThat(appEx.getDetails()).containsEntry("idempotencyKey", "idem-payroll");
+              assertThat(appEx.getDetails()).containsEntry("commandName", "ORCH.ORDER.APPROVE");
+              assertThat(appEx.getDetails()).containsEntry("idempotencyKey", "idem-order");
             });
 
-    when(commandRepository.lockByScope(401L, "ORCH.PAYROLL.RUN", "idem-missing"))
+    when(commandRepository.lockByScope(401L, "ORCH.ORDER.APPROVE", "idem-missing"))
         .thenReturn(Optional.empty());
     assertThatThrownBy(
             () ->
                 service.start(
-                    "ORCH.PAYROLL.RUN",
+                    "ORCH.ORDER.APPROVE",
                     "idem-missing",
-                    Map.of("period", "2026-02"),
+                    Map.of("orderId", "SO-1"),
                     () -> "trace-ignored"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("command row not found");

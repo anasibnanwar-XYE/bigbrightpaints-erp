@@ -53,7 +53,7 @@ class OrchestratorIdempotencyServiceTest {
   }
 
   @Test
-  void startReservesNewScopeWithoutDuplicateKeyFallback() {
+  void startReservesNewScopeWithoutDuplicateKeyInsertPath() {
     Map<String, Object> payload = Map.of("orderId", "101", "amount", "5000");
     String requestHash =
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(

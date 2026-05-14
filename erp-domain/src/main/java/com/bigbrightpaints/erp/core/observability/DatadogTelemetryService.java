@@ -271,8 +271,8 @@ public class DatadogTelemetryService {
     return TelemetryPrivacySanitizer.pseudonymousHash("tenant", companyCode);
   }
 
-  private String safe(String value, String fallback) {
-    return TelemetryPrivacySanitizer.safeTagValue(value, fallback);
+  private String safe(String value, String defaultValue) {
+    return TelemetryPrivacySanitizer.safeTagValue(value, defaultValue);
   }
 
   public record DatadogTelemetryStatus(

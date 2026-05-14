@@ -656,8 +656,8 @@ public class EnterpriseAuditTrailService {
     return request == null ? null : request.getHeader(name);
   }
 
-  private String firstNonBlank(String first, String fallback) {
-    return StringUtils.hasText(first) ? first : fallback;
+  private String firstNonBlank(String first, String defaultValue) {
+    return StringUtils.hasText(first) ? first : defaultValue;
   }
 
   private String getClientIpAddress(HttpServletRequest request) {
@@ -675,9 +675,9 @@ public class EnterpriseAuditTrailService {
     return request.getRemoteAddr();
   }
 
-  private String trim(String value, int max, String fallback) {
+  private String trim(String value, int max, String defaultValue) {
     if (!StringUtils.hasText(value)) {
-      return fallback;
+      return defaultValue;
     }
     String trimmed = value.trim();
     if (trimmed.length() <= max) {

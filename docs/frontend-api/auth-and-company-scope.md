@@ -86,9 +86,8 @@ GET /api/v1/auth/me/security-events?type=&page=0&size=50
 
 Returns `ApiResponse<PageResponse<SelfSecurityEvent>>` with `content`,
 `page`, `size`, `totalElements`, and `totalPages`. The backend clamps
-`size` to `1..100` and keeps legacy `limit` as a size alias when `size` is
-omitted. Type filtering is applied before ordering and paging; ordering is
-stable by `occurredAt desc, id desc`. Self-history rows are scoped to the
+`size` to `1..100`. Type filtering is applied before ordering and paging;
+ordering is stable by `occurredAt desc, id desc`. Self-history rows are scoped to the
 authenticated stable account/company scope and expose only privacy-safe fields:
 `type`, `eventType`, `companyCode`, `authScopeCode`, `outcome`, `reason`,
 `createdAt`, and allowlisted `metadata` (`operation`, `reason`, `outcome`,
@@ -103,7 +102,6 @@ Tenant-admin self/settings UX uses:
 - `GET /api/v1/admin/self/settings` for self settings read model
 - auth APIs for password and MFA mutations
 
-Do not use `/api/v1/auth/profile`; it is non-canonical for frontend identity bootstrap.
 Do not use `/api/v1/auth/password/forgot/superadmin`; password recovery is always the scoped
 `POST /api/v1/auth/password/forgot` route with `{ email, companyCode }`.
 

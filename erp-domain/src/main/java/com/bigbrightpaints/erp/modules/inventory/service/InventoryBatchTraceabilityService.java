@@ -176,7 +176,7 @@ public class InventoryBatchTraceabilityService {
   }
 
   private String resolveMovementSource(
-      String referenceType, String movementType, InventoryBatchSource fallbackSource) {
+      String referenceType, String movementType, InventoryBatchSource batchSource) {
     if (StringUtils.hasText(referenceType)) {
       String normalized = referenceType.trim().toUpperCase(Locale.ROOT);
       return switch (normalized) {
@@ -191,13 +191,13 @@ public class InventoryBatchTraceabilityService {
                 "ADJUSTMENT",
                 "SALES_RETURN" ->
             "adjustment";
-        default -> resolveFromMovementType(movementType, fallbackSource);
+        default -> resolveFromMovementType(movementType, batchSource);
       };
     }
-    return resolveFromMovementType(movementType, fallbackSource);
+    return resolveFromMovementType(movementType, batchSource);
   }
 
-  private String resolveFromMovementType(String movementType, InventoryBatchSource fallbackSource) {
+  private String resolveFromMovementType(String movementType, InventoryBatchSource batchSource) {
     if (StringUtils.hasText(movementType)) {
       String normalizedMovementType = movementType.trim().toUpperCase(Locale.ROOT);
       if (normalizedMovementType.contains("ADJUST")
@@ -206,7 +206,7 @@ public class InventoryBatchTraceabilityService {
         return "adjustment";
       }
     }
-    return normalizeSource(fallbackSource);
+    return normalizeSource(batchSource);
   }
 
   private String normalizeSource(InventoryBatchSource source) {

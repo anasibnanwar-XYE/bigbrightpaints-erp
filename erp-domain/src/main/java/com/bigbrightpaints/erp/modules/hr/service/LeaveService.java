@@ -389,7 +389,7 @@ public class LeaveService {
   }
 
   private String currentUsername() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 
   private enum LeaveStatus {

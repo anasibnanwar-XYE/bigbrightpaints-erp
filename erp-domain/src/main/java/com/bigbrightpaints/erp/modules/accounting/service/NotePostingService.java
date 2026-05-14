@@ -35,7 +35,6 @@ class NotePostingService {
 
   private static final BigDecimal NOTE_AMOUNT_TOLERANCE = new BigDecimal("0.01");
   private static final String CREDIT_NOTE_REFERENCE_PREFIX = "CRN-";
-  private static final String LEGACY_CREDIT_NOTE_REFERENCE_PREFIX = "CN-";
 
   private final CompanyContextService companyContextService;
   private final InvoiceRepository invoiceRepository;
@@ -525,19 +524,6 @@ class NotePostingService {
     if (normalized.regionMatches(
         true, 0, CREDIT_NOTE_REFERENCE_PREFIX, 0, CREDIT_NOTE_REFERENCE_PREFIX.length())) {
       String suffix = normalized.substring(CREDIT_NOTE_REFERENCE_PREFIX.length()).trim();
-      if (!StringUtils.hasText(suffix)) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "Credit note reference must include a CRN suffix");
-      }
-      return CREDIT_NOTE_REFERENCE_PREFIX + suffix;
-    }
-    if (normalized.regionMatches(
-        true,
-        0,
-        LEGACY_CREDIT_NOTE_REFERENCE_PREFIX,
-        0,
-        LEGACY_CREDIT_NOTE_REFERENCE_PREFIX.length())) {
-      String suffix = normalized.substring(LEGACY_CREDIT_NOTE_REFERENCE_PREFIX.length()).trim();
       if (!StringUtils.hasText(suffix)) {
         throw new ApplicationException(
             ErrorCode.VALIDATION_INVALID_INPUT, "Credit note reference must include a CRN suffix");

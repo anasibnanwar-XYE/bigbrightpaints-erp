@@ -1,7 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -17,11 +15,8 @@ import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
-import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
-import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunDto;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
@@ -36,8 +31,6 @@ public class IntegrationCoordinator {
   private final OrderIntegrationCoordinator orderIntegrationCoordinator;
   private final PayrollIntegrationCoordinator payrollIntegrationCoordinator;
   private final DashboardIntegrationCoordinator dashboardIntegrationCoordinator;
-  private final IntegrationCoordinatorSupportService supportService;
-  private final SalesService legacySalesService;
 
   @Autowired
   public IntegrationCoordinator(
@@ -47,8 +40,6 @@ public class IntegrationCoordinator {
     this.orderIntegrationCoordinator = orderIntegrationCoordinator;
     this.payrollIntegrationCoordinator = payrollIntegrationCoordinator;
     this.dashboardIntegrationCoordinator = dashboardIntegrationCoordinator;
-    this.supportService = null;
-    this.legacySalesService = null;
   }
 
   public IntegrationCoordinator(
@@ -64,8 +55,8 @@ public class IntegrationCoordinator {
       CompanyClock companyClock,
       OrchestratorFeatureFlags featureFlags,
       PlatformTransactionManager txManager) {
-    this.supportService = new IntegrationCoordinatorSupportService(companyRepository);
-    this.legacySalesService = salesService;
+    IntegrationCoordinatorSupportService supportService =
+        new IntegrationCoordinatorSupportService(companyRepository);
     OrderSupportCoordinator orderSupportCoordinator =
         new OrderSupportCoordinator(
             salesService,
@@ -184,23 +175,6 @@ public class IntegrationCoordinator {
   }
 
   @Transactional
-  public PayrollRunDto generatePayroll(
-      LocalDate payrollDate, BigDecimal totalAmount, String companyId) {
-    return generatePayroll(payrollDate, totalAmount, companyId, null, null);
-  }
-
-  @Transactional
-  public PayrollRunDto generatePayroll(
-      LocalDate payrollDate,
-      BigDecimal totalAmount,
-      String companyId,
-      String traceId,
-      String idempotencyKey) {
-    return payrollIntegrationCoordinator.generatePayroll(
-        payrollDate, totalAmount, companyId, traceId, idempotencyKey);
-  }
-
-  @Transactional
   public JournalEntryDto recordPayrollPayment(
       Long payrollRunId,
       BigDecimal amount,
@@ -242,57 +216,6 @@ public class IntegrationCoordinator {
   @Transactional(readOnly = true)
   public Map<String, Object> fetchFinanceDashboard(String companyId) {
     return dashboardIntegrationCoordinator.fetchFinanceDashboard(companyId);
-  }
-
-  private String correlationMemo(String baseMemo, String traceId, String idempotencyKey) {
-    if (supportService != null) {
-      return supportService.correlationMemo(baseMemo, traceId, idempotencyKey);
-    }
-    StringBuilder builder = new StringBuilder(baseMemo != null ? baseMemo : "");
-    String sanitizedTraceId = CorrelationIdentifierSanitizer.sanitizeOptionalTraceId(traceId);
-    String sanitizedIdempotencyKey =
-        CorrelationIdentifierSanitizer.sanitizeOptionalIdempotencyKey(idempotencyKey);
-    if (StringUtils.hasText(sanitizedTraceId)) {
-      builder.append(" [trace=").append(sanitizedTraceId).append("]");
-    }
-    if (StringUtils.hasText(sanitizedIdempotencyKey)) {
-      builder.append(" [idem=").append(sanitizedIdempotencyKey).append("]");
-    }
-    return builder.toString();
-  }
-
-  private String correlationSuffix(String traceId, String idempotencyKey) {
-    if (supportService != null) {
-      return supportService.correlationSuffix(traceId, idempotencyKey);
-    }
-    StringBuilder builder = new StringBuilder();
-    String safeTraceId = CorrelationIdentifierSanitizer.safeTraceForLog(traceId);
-    String safeIdempotencyKey =
-        CorrelationIdentifierSanitizer.safeIdempotencyForLog(idempotencyKey);
-    if (StringUtils.hasText(safeTraceId)) {
-      builder.append(" [trace=").append(safeTraceId).append("]");
-    }
-    if (StringUtils.hasText(safeIdempotencyKey)) {
-      builder.append(" [idem=").append(safeIdempotencyKey).append("]");
-    }
-    return builder.toString();
-  }
-
-  private void attachOrderTrace(Long orderId, String traceId) {
-    if (legacySalesService == null || orderId == null) {
-      return;
-    }
-    String sanitizedTraceId = CorrelationIdentifierSanitizer.sanitizeOptionalTraceId(traceId);
-    if (!StringUtils.hasText(sanitizedTraceId)) {
-      return;
-    }
-    legacySalesService.attachTraceId(orderId, sanitizedTraceId);
-  }
-
-  private boolean isHrPayrollEnabled(Company company) {
-    return company != null
-        && company.getEnabledModules() != null
-        && company.getEnabledModules().contains(CompanyModule.HR_PAYROLL.name());
   }
 
   public record AutoApprovalResult(String orderStatus, boolean awaitingProduction) {}

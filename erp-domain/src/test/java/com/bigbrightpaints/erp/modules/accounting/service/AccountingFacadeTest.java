@@ -28,7 +28,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -74,7 +73,6 @@ class AccountingFacadeTest {
   @Mock private DealerRepository dealerRepository;
   @Mock private SupplierRepository supplierRepository;
   @Mock private CompanyClock companyClock;
-  @Mock private CompanyEntityLookup companyEntityLookup;
   @Mock private CompanyScopedSalesLookupService salesLookupService;
   @Mock private CompanyScopedAccountingLookupService accountingLookupService;
   @Mock private CompanyAccountingSettingsService companyAccountingSettingsService;
@@ -109,30 +107,6 @@ class AccountingFacadeTest {
     company.setBaseCurrency("INR");
     lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
     lenient().when(companyClock.today(company)).thenReturn(LocalDate.of(2024, 4, 9));
-    lenient()
-        .when(salesLookupService.requireDealer(any(), any()))
-        .thenAnswer(
-            invocation ->
-                companyEntityLookup.requireDealer(
-                    invocation.getArgument(0), invocation.getArgument(1)));
-    lenient()
-        .when(salesLookupService.requireSalesOrder(any(), any()))
-        .thenAnswer(
-            invocation ->
-                companyEntityLookup.requireSalesOrder(
-                    invocation.getArgument(0), invocation.getArgument(1)));
-    lenient()
-        .when(accountingLookupService.requireJournalEntry(any(), any()))
-        .thenAnswer(
-            invocation ->
-                companyEntityLookup.requireJournalEntry(
-                    invocation.getArgument(0), invocation.getArgument(1)));
-    lenient()
-        .when(accountingLookupService.requireAccount(any(), any()))
-        .thenAnswer(
-            invocation ->
-                companyEntityLookup.requireAccount(
-                    invocation.getArgument(0), invocation.getArgument(1)));
   }
 
   @Test
@@ -144,7 +118,7 @@ class AccountingFacadeTest {
     Long dealerId = 10L;
     ReflectionFieldAccess.setField(dealer, "id", dealerId);
 
-    when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
+    when(salesLookupService.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
     String invoiceNumber = "INV-100";
     Map<Long, BigDecimal> returnLines = Map.of(101L, new BigDecimal("100.00"));
@@ -265,7 +239,7 @@ class AccountingFacadeTest {
   }
 
   @Test
-  void postPurchaseJournal_ignoresLegacyPrefixedEntriesWithoutBaseReplay() {
+  void postPurchaseJournal_createsCanonicalReferenceWithoutPrefixReplayScan() {
     Long supplierId = 88L;
     Supplier supplier = new Supplier();
     Account payable = new Account();
@@ -323,14 +297,14 @@ class AccountingFacadeTest {
     JournalEntry saved = new JournalEntry();
     ReflectionFieldAccess.setField(saved, "id", 915L);
     saved.setReferenceNumber(canonicalReference);
-    when(companyEntityLookup.requireJournalEntry(eq(company), eq(915L))).thenReturn(saved);
+    when(accountingLookupService.requireJournalEntry(eq(company), eq(915L))).thenReturn(saved);
 
     JournalEntryDto dto =
         accountingFacade.postPurchaseJournal(
             supplierId,
             "INV-100",
             LocalDate.of(2026, 1, 10),
-            "legacy replay",
+            "canonical replay",
             Map.of(inventoryAccountId, new BigDecimal("100.00")),
             null,
             new BigDecimal("100.00"),
@@ -501,7 +475,7 @@ class AccountingFacadeTest {
     JournalEntry saved = new JournalEntry();
     ReflectionFieldAccess.setField(saved, "id", 910L);
     saved.setReferenceNumber(canonicalReference);
-    when(companyEntityLookup.requireJournalEntry(eq(company), eq(910L))).thenReturn(saved);
+    when(accountingLookupService.requireJournalEntry(eq(company), eq(910L))).thenReturn(saved);
     when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
             eq(company), eq(baseReference)))
         .thenReturn(Optional.empty());
@@ -531,7 +505,7 @@ class AccountingFacadeTest {
     receivable.setName("Accounts Receivable");
     ReflectionFieldAccess.setField(receivable, "id", 701L);
     dealer.setReceivableAccount(receivable);
-    when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
+    when(salesLookupService.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
     String orderNumber = "SO-1001";
     String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
@@ -574,7 +548,7 @@ class AccountingFacadeTest {
     ArgumentCaptor<JournalCreationRequest> requestCaptor =
         ArgumentCaptor.forClass(JournalCreationRequest.class);
     when(accountingService.createStandardJournal(requestCaptor.capture())).thenReturn(replay);
-    when(companyEntityLookup.requireJournalEntry(eq(company), eq(777L))).thenReturn(existing);
+    when(accountingLookupService.requireJournalEntry(eq(company), eq(777L))).thenReturn(existing);
 
     JournalEntryDto dto =
         accountingFacade.postSalesJournal(
@@ -602,7 +576,7 @@ class AccountingFacadeTest {
     receivable.setName("Accounts Receivable");
     ReflectionFieldAccess.setField(receivable, "id", 702L);
     dealer.setReceivableAccount(receivable);
-    when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
+    when(salesLookupService.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
     String orderNumber = "SO-1002";
     String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
@@ -658,7 +632,7 @@ class AccountingFacadeTest {
 
     assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
     verify(accountingService).createStandardJournal(any());
-    verify(companyEntityLookup, never()).requireJournalEntry(eq(company), any(Long.class));
+    verify(accountingLookupService, never()).requireJournalEntry(eq(company), any(Long.class));
   }
 
   @Test
@@ -670,7 +644,7 @@ class AccountingFacadeTest {
     receivable.setName("Accounts Receivable");
     ReflectionFieldAccess.setField(receivable, "id", 703L);
     dealer.setReceivableAccount(receivable);
-    when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
+    when(salesLookupService.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
     String orderNumber = "SO-1003";
     String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
@@ -698,7 +672,7 @@ class AccountingFacadeTest {
 
     assertThat(replay).isNull();
     verify(accountingService).createStandardJournal(any());
-    verify(companyEntityLookup, never()).requireJournalEntry(eq(company), any(Long.class));
+    verify(accountingLookupService, never()).requireJournalEntry(eq(company), any(Long.class));
   }
 
   @Test

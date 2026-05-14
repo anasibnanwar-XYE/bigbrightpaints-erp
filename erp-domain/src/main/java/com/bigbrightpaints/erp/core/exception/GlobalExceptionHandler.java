@@ -13,11 +13,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.LockedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
@@ -35,10 +41,20 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.security.AccessDeniedAuditMarker;
+import com.bigbrightpaints.erp.core.security.AuditAwareAccessDeniedHandler;
+import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
+import com.bigbrightpaints.erp.core.security.RequestBodyCachingFilter;
+import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.web.RequestTraceContext;
+import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
+import com.bigbrightpaints.erp.modules.auth.exception.MfaRequiredException;
+import com.bigbrightpaints.erp.modules.auth.web.MfaChallengeResponse;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -58,6 +74,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       new SettlementExceptionHandler();
   private final AuditExceptionRoutingService auditExceptionRoutingService =
       new AuditExceptionRoutingService(settlementExceptionHandler);
+
+  @Autowired(required = false)
+  private ObjectMapper objectMapper = new ObjectMapper();
 
   @Autowired(required = false)
   private AuditService auditService;
@@ -130,6 +149,180 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     auditExceptionRoutingService.routeApplicationException(auditService, request, traceId, ex);
     return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
         .body(ApiResponse.failure(ex.getUserMessage(), data));
+  }
+
+  @ExceptionHandler(MfaRequiredException.class)
+  public ResponseEntity<ApiResponse<MfaChallengeResponse>> handleMfaRequired(
+      MfaRequiredException ex, HttpServletRequest request) {
+    logger.info("MFA required for current request");
+    ApiResponse<MfaChallengeResponse> body =
+        ApiResponse.failure(
+            ErrorCode.AUTH_MFA_REQUIRED.getDefaultMessage(), new MfaChallengeResponse(true));
+    return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).body(body);
+  }
+
+  @ExceptionHandler(InvalidMfaException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleInvalidMfa(
+      InvalidMfaException ex, HttpServletRequest request) {
+    String traceId = RequestTraceContext.traceId();
+    logger.warn("Invalid MFA attempt [{}]", traceId);
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", ErrorCode.AUTH_MFA_INVALID.getCode());
+    data.put("message", ErrorCode.AUTH_MFA_INVALID.getDefaultMessage());
+    data.put("reason", ErrorCode.AUTH_MFA_INVALID.getDefaultMessage());
+    data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+        .body(ApiResponse.failure("Authentication failed", data));
+  }
+
+  @ExceptionHandler(AuthenticationException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleAuthenticationException(
+      AuthenticationException ex, HttpServletRequest request) {
+    String traceId = RequestTraceContext.traceId();
+    logger.warn("Authentication failed [{}]", traceId);
+    ErrorCode errorCode;
+    String responseMessage = "Authentication failed";
+    if (ex instanceof LockedException) {
+      errorCode = ErrorCode.AUTH_ACCOUNT_LOCKED;
+      responseMessage = errorCode.getDefaultMessage();
+    } else if (ex instanceof BadCredentialsException) {
+      errorCode = ErrorCode.AUTH_INVALID_CREDENTIALS;
+    } else {
+      errorCode = ErrorCode.AUTH_TOKEN_INVALID;
+    }
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", errorCode.getCode());
+    data.put("message", errorCode.getDefaultMessage());
+    data.put("reason", errorCode.getDefaultMessage());
+    data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+        .body(ApiResponse.failure(responseMessage, data));
+  }
+
+  @ExceptionHandler(AuthSecurityContractException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleAuthSecurityContract(
+      AuthSecurityContractException ex, HttpServletRequest request) {
+    String traceId = RequestTraceContext.traceId();
+    logger.warn(
+        "Auth/security contract failure [{}] - status: {}, code: {}",
+        traceId,
+        ex.getHttpStatus().value(),
+        ex.getCode());
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", ex.getCode());
+    data.put("message", ex.getUserMessage());
+    data.put("reason", ex.getUserMessage());
+    data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
+    data.putAll(ex.getDetails());
+    return ResponseEntity.status(ex.getHttpStatus())
+        .body(ApiResponse.failure(ex.getUserMessage(), data));
+  }
+
+  @ExceptionHandler(AccessDeniedException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleAccessDenied(
+      AccessDeniedException ex, HttpServletRequest request) {
+    String traceId = RequestTraceContext.traceId();
+    logger.warn("Access denied [{}]", traceId);
+    auditAccessDeniedIfNeeded(request, traceId);
+    String userMessage =
+        PortalRoleActionMatrix.resolveAccessDeniedMessage(
+            SecurityContextHolder.getContext().getAuthentication(), request);
+    if (!StringUtils.hasText(userMessage)) {
+      userMessage = "Access denied";
+    }
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getCode());
+    data.put("message", userMessage);
+    data.put("reason", userMessage);
+    data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
+    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.failure(userMessage, data));
+  }
+
+  private void auditAccessDeniedIfNeeded(HttpServletRequest request, String traceId) {
+    if (auditService == null || AccessDeniedAuditMarker.isCurrentRequestAlreadyAudited(request)) {
+      return;
+    }
+    Map<String, String> metadata = new HashMap<>();
+    metadata.put("traceId", traceId);
+    metadata.put("deniedPath", request.getRequestURI());
+    metadata.put("deniedMethod", request.getMethod());
+    if (RequestBodyCachingFilter.isSuperadminRoleMutationRequest(request)) {
+      metadata.put("reason", AuditAwareAccessDeniedHandler.ROLE_MUTATION_DENIED_AUDIT_REASON);
+      RequestBodyCachingFilter.resolveRequestedRole(request, objectMapper)
+          .ifPresent(role -> metadata.put("targetRole", role));
+    } else {
+      metadata.put("reason", AuditAwareAccessDeniedHandler.ACCESS_DENIED_AUDIT_REASON);
+    }
+    String actor = SecurityActorResolver.resolveAuditActor();
+    metadata.put("actor", actor);
+    String tenantScope = AccessDeniedAuditMarker.resolveTenantScope(request);
+    if (StringUtils.hasText(tenantScope)) {
+      metadata.put("tenantScope", tenantScope);
+    }
+    auditService.logAuthFailure(AuditEvent.ACCESS_DENIED, actor, tenantScope, metadata);
+    AccessDeniedAuditMarker.markCurrentRequestAudited();
+  }
+
+  @ExceptionHandler(DataIntegrityViolationException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleDataIntegrityViolation(
+      DataIntegrityViolationException ex, HttpServletRequest request) {
+    String traceId = RequestTraceContext.traceId();
+    logger.error("Data integrity violation [{}]", traceId, ex);
+    ErrorCode errorCode = ErrorCode.BUSINESS_CONSTRAINT_VIOLATION;
+    String message = "Data constraint violation";
+    String rawMessage = ex.getMessage();
+    if (rawMessage != null) {
+      String normalized = rawMessage.toLowerCase(java.util.Locale.ROOT);
+      if (normalized.contains("duplicate") || normalized.contains("unique")) {
+        errorCode = ErrorCode.BUSINESS_DUPLICATE_ENTRY;
+        message = "Duplicate entry found";
+      } else if (normalized.contains("foreign key")) {
+        errorCode = ErrorCode.BUSINESS_DEPENDENCY_EXISTS;
+        message = "Referenced data exists";
+      }
+    }
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", errorCode.getCode());
+    data.put("message", message);
+    data.put("reason", message);
+    data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(ApiResponse.failure("Operation failed", data));
+  }
+
+  @ExceptionHandler(IllegalStateException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleIllegalState(
+      IllegalStateException ex, HttpServletRequest request) {
+    String traceId = RequestTraceContext.traceId();
+    logger.warn("Illegal state [{}]", traceId);
+    String userMessage = ErrorCode.BUSINESS_INVALID_STATE.getDefaultMessage();
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", ErrorCode.BUSINESS_INVALID_STATE.getCode());
+    data.put("message", userMessage);
+    data.put("reason", userMessage);
+    data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.failure(userMessage, data));
+  }
+
+  @ExceptionHandler(RuntimeException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleRuntime(
+      RuntimeException ex, HttpServletRequest request) {
+    String traceId = RequestTraceContext.traceId();
+    logger.error("Unexpected runtime error [{}]", traceId, ex);
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", ErrorCode.SYSTEM_INTERNAL_ERROR.getCode());
+    data.put("message", "An internal error occurred. Please try again later.");
+    data.put("reason", "An internal error occurred. Please try again later.");
+    data.put("traceId", traceId);
+    data.put("timestamp", LocalDateTime.now());
+    data.put("path", request.getRequestURI());
+    return ResponseEntity.internalServerError().body(ApiResponse.failure("Internal error", data));
   }
 
   @Override

@@ -24,6 +24,7 @@ import org.springframework.test.context.TestPropertySource;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
@@ -56,6 +57,7 @@ class PerformanceBudgetIT extends AbstractIntegrationTest {
   void seedFixtures() {
     dataSeeder.ensureUser(
         ADMIN_EMAIL, ADMIN_PASSWORD, "Perf Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+    enableModule(COMPANY_CODE, CompanyModule.REPORTS_ADVANCED);
   }
 
   @AfterEach
@@ -125,7 +127,7 @@ class PerformanceBudgetIT extends AbstractIntegrationTest {
       order.setCompany(company);
       order.setDealer(dealer);
       order.setOrderNumber("SO-Q-" + i + "-" + System.nanoTime());
-      order.setStatus("BOOKED");
+      order.setStatus("CONFIRMED");
       order.setTotalAmount(new BigDecimal("100.00"));
       order.setSubtotalAmount(new BigDecimal("100.00"));
       order.setGstTotal(BigDecimal.ZERO);

@@ -73,7 +73,7 @@ class RawMaterialControllerSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void admin_legacyIntakeRoute_isRetired_withoutPlatformOnlyInterference() {
+  void admin_retiredIntakeRoute_isRemoved_withoutPlatformOnlyInterference() {
     HttpHeaders headers = jsonHeaders(ADMIN_EMAIL);
     headers.set("Idempotency-Key", "rawmat-admin-intake-disabled");
 
@@ -86,7 +86,7 @@ class RawMaterialControllerSecurityIT extends AbstractIntegrationTest {
                     "rawMaterialId",
                     999999,
                     "batchCode",
-                    "LEGACY-INTAKE",
+                    "RETIRED-INTAKE",
                     "quantity",
                     3,
                     "unit",

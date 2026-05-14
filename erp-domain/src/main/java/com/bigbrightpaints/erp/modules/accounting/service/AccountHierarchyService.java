@@ -168,32 +168,7 @@ public class AccountHierarchyService {
       }
     }
 
-    // Calculate consolidated balances (bottom-up)
-    for (AccountNode root : roots) {
-      calculateConsolidatedBalance(root);
-    }
-
     return roots;
-  }
-
-  /**
-   * Recursively calculate consolidated balance for parent accounts
-   */
-  private BigDecimal calculateConsolidatedBalance(AccountNode node) {
-    if (node.children().isEmpty()) {
-      return node.balance();
-    }
-
-    BigDecimal childrenTotal = BigDecimal.ZERO;
-    for (AccountNode child : node.children()) {
-      childrenTotal = childrenTotal.add(calculateConsolidatedBalance(child));
-    }
-
-    // Update node with consolidated balance (own + children)
-    BigDecimal consolidated = node.balance().add(childrenTotal);
-    // Note: Since records are immutable, we return the calculated value
-    // The actual consolidatedBalance would need a mutable field or wrapper
-    return consolidated;
   }
 
   private BigDecimal sumNodes(List<AccountNode> nodes) {

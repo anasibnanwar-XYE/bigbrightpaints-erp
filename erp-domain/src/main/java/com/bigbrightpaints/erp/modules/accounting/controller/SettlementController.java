@@ -39,7 +39,7 @@ public class SettlementController {
       @Valid @RequestBody DealerReceiptRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKey) {
+          String retiredIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Receipt recorded",
@@ -48,7 +48,7 @@ public class SettlementController {
                     request,
                     SettlementRequestCopies::dealerReceipt,
                     idempotencyKey,
-                    legacyIdempotencyKey,
+                    retiredIdempotencyKey,
                     "dealer receipts",
                     "/api/v1/accounting/receipts/dealer"))));
   }
@@ -59,7 +59,7 @@ public class SettlementController {
       @Valid @RequestBody DealerReceiptSplitRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKey) {
+          String retiredIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Receipt recorded",
@@ -68,7 +68,7 @@ public class SettlementController {
                     request,
                     SettlementRequestCopies::dealerReceiptSplit,
                     idempotencyKey,
-                    legacyIdempotencyKey,
+                    retiredIdempotencyKey,
                     "dealer hybrid receipts",
                     "/api/v1/accounting/receipts/dealer/hybrid"))));
   }
@@ -79,7 +79,7 @@ public class SettlementController {
       @Valid @RequestBody PartnerSettlementRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKey) {
+          String retiredIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Settlement recorded",
@@ -88,7 +88,7 @@ public class SettlementController {
                     request,
                     SettlementRequestCopies::partnerSettlement,
                     idempotencyKey,
-                    legacyIdempotencyKey,
+                    retiredIdempotencyKey,
                     "dealer settlements",
                     "/api/v1/accounting/settlements/dealers"))));
   }
@@ -100,7 +100,7 @@ public class SettlementController {
       @Valid @RequestBody AutoSettlementRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKey) {
+          String retiredIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Auto-settlement recorded",
@@ -110,7 +110,7 @@ public class SettlementController {
                     request,
                     SettlementRequestCopies::autoSettlement,
                     idempotencyKey,
-                    legacyIdempotencyKey,
+                    retiredIdempotencyKey,
                     "dealer auto-settlements",
                     "/api/v1/accounting/dealers/{dealerId}/auto-settle"))));
   }
@@ -121,7 +121,7 @@ public class SettlementController {
       @Valid @RequestBody PartnerSettlementRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKey) {
+          String retiredIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Settlement recorded",
@@ -130,7 +130,7 @@ public class SettlementController {
                     request,
                     SettlementRequestCopies::partnerSettlement,
                     idempotencyKey,
-                    legacyIdempotencyKey,
+                    retiredIdempotencyKey,
                     "supplier settlements",
                     "/api/v1/accounting/settlements/suppliers"))));
   }
@@ -142,7 +142,7 @@ public class SettlementController {
       @Valid @RequestBody AutoSettlementRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKey) {
+          String retiredIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Auto-settlement recorded",
@@ -152,7 +152,7 @@ public class SettlementController {
                     request,
                     SettlementRequestCopies::autoSettlement,
                     idempotencyKey,
-                    legacyIdempotencyKey,
+                    retiredIdempotencyKey,
                     "supplier auto-settlements",
                     "/api/v1/accounting/suppliers/{supplierId}/auto-settle"))));
   }
@@ -161,10 +161,10 @@ public class SettlementController {
       T request,
       java.util.function.BiFunction<T, String, T> requestWithIdempotencyKey,
       String idempotencyKeyHeader,
-      String legacyIdempotencyKey,
+      String retiredIdempotencyKey,
       String resourceDescription,
       String canonicalPath) {
-    rejectLegacyHeader(legacyIdempotencyKey, resourceDescription, canonicalPath);
+    rejectRetiredHeader(retiredIdempotencyKey, resourceDescription, canonicalPath);
     if (request == null) {
       return null;
     }
@@ -175,10 +175,10 @@ public class SettlementController {
     return requestWithIdempotencyKey.apply(request, canonicalHeaderKey);
   }
 
-  private void rejectLegacyHeader(
-      String legacyIdempotencyKey, String resourceDescription, String canonicalPath) {
-    if (IdempotencyHeaderUtils.resolveHeaderKey(legacyIdempotencyKey) != null) {
-      throw IdempotencyHeaderUtils.unsupportedLegacyHeader(
+  private void rejectRetiredHeader(
+      String retiredIdempotencyKey, String resourceDescription, String canonicalPath) {
+    if (IdempotencyHeaderUtils.resolveHeaderKey(retiredIdempotencyKey) != null) {
+      throw IdempotencyHeaderUtils.unsupportedRetiredHeader(
           "X-Idempotency-Key", resourceDescription, canonicalPath);
     }
   }

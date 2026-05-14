@@ -77,7 +77,6 @@ public class PayrollRun {
   @Column(name = "journal_entry_id")
   private Long journalEntryId;
 
-  // Reference to accounting journal entry (for backward compatibility)
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "journal_entry_ref_id")
   private com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry journalEntry;
@@ -92,7 +91,6 @@ public class PayrollRun {
   @Column(name = "payment_date")
   private LocalDate paymentDate;
 
-  // Backward compatibility fields from old PayrollRun
   @Column(name = "run_date")
   private java.time.LocalDate runDate;
 
@@ -191,21 +189,6 @@ public class PayrollRun {
 
   public void setStatus(PayrollStatus status) {
     this.status = status;
-  }
-
-  // Backward compatibility: accept String status
-  public void setStatus(String status) {
-    try {
-      this.status = PayrollStatus.valueOf(status);
-    } catch (IllegalArgumentException e) {
-      // Map old statuses to new ones
-      this.status =
-          switch (status.toUpperCase()) {
-            case "PROCESSING" -> PayrollStatus.CALCULATED;
-            case "PAID" -> PayrollStatus.PAID;
-            default -> PayrollStatus.DRAFT;
-          };
-    }
   }
 
   public String getStatusString() {
@@ -352,7 +335,6 @@ public class PayrollRun {
     this.remarks = remarks;
   }
 
-  // Backward compatibility getters and setters
   public com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry getJournalEntry() {
     return journalEntry;
   }

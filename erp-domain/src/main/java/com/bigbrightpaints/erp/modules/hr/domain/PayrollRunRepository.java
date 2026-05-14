@@ -32,9 +32,6 @@ public interface PayrollRunRepository extends JpaRepository<PayrollRun, Long> {
 
   Optional<PayrollRun> findByCompanyAndRunNumber(Company company, String runNumber);
 
-  Optional<PayrollRun> findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
-      Company company, PayrollRun.RunType runType, LocalDate periodStart, LocalDate periodEnd);
-
   @Query(
       "SELECT pr FROM PayrollRun pr WHERE pr.company = :company "
           + "AND pr.periodStart <= :date AND pr.periodEnd >= :date")
@@ -75,11 +72,6 @@ public interface PayrollRunRepository extends JpaRepository<PayrollRun, Long> {
       @Param("start") LocalDate start,
       @Param("end") LocalDate end,
       @Param("statuses") Collection<PayrollRun.PayrollStatus> statuses);
-
-  // For backward compatibility with existing code
-  default List<PayrollRun> findByCompanyOrderByRunDateDesc(Company company) {
-    return findByCompanyOrderByCreatedAtDesc(company);
-  }
 
   Optional<PayrollRun> findByCompanyAndIdempotencyKey(Company company, String idempotencyKey);
 

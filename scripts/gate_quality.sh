@@ -17,7 +17,7 @@ ALLOW_SHORT_WINDOW="${ALLOW_SHORT_WINDOW:-false}"
 
 echo "[gate-quality] validate catalog"
 python3 "$ROOT_DIR/scripts/validate_test_catalog.py" \
-  --catalog "$ROOT_DIR/docs/CODE-RED/confidence-suite/TEST_CATALOG.json" \
+  --catalog "$ROOT_DIR/testing/confidence-suite/test-catalog.json" \
   --quarantine "$ROOT_DIR/scripts/test_quarantine.txt" \
   --tests-root "$TRUTH_TEST_ROOT" \
   --gate gate-quality \

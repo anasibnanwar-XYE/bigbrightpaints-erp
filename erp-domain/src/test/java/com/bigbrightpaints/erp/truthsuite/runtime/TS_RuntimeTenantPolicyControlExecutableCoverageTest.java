@@ -51,7 +51,6 @@ import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningServi
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
-import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
 import com.bigbrightpaints.erp.modules.company.service.TenantUsageRollupService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
@@ -242,81 +241,80 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
             100,
             100,
             15);
-    TenantRuntimeRequestAdmissionService admissionService =
-        new TenantRuntimeRequestAdmissionService(service);
+    TenantRuntimeEnforcementService admissionService = service;
 
     service.holdTenant("ACME", "manual-hold", "ops");
 
     // Hold rejects mutating requests without privileged control path.
     TenantRuntimeEnforcementService.TenantRequestAdmission rejectedMutation =
-        admissionService.beginRequest("ACME", "/api/v1/private", "POST", "actor");
+        admissionService.admitRequest("ACME", "/api/v1/private", "POST", "actor");
     assertThat(rejectedMutation.isAdmitted()).isFalse();
     assertThat(rejectedMutation.statusCode()).isEqualTo(423);
 
     // Hold allows reads.
     TenantRuntimeEnforcementService.TenantRequestAdmission readAllowed =
-        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor");
+        admissionService.admitRequest("ACME", "/api/v1/private", "GET", "actor");
     assertThat(readAllowed.isAdmitted()).isTrue();
-    admissionService.completeRequest(readAllowed, 200);
+    admissionService.completeRequestAdmission(readAllowed, 200);
     TenantRuntimeEnforcementService.TenantRequestAdmission nullMethodMutating =
-        admissionService.beginRequest("ACME", "/api/v1/private", null, "actor");
+        admissionService.admitRequest("ACME", "/api/v1/private", null, "actor");
     assertThat(nullMethodMutating.isAdmitted()).isFalse();
     TenantRuntimeEnforcementService.TenantRequestAdmission headAllowed =
-        admissionService.beginRequest("ACME", "/api/v1/private", "HEAD", "actor");
+        admissionService.admitRequest("ACME", "/api/v1/private", "HEAD", "actor");
     assertThat(headAllowed.isAdmitted()).isTrue();
-    admissionService.completeRequest(headAllowed, 200);
+    admissionService.completeRequestAdmission(headAllowed, 200);
     TenantRuntimeEnforcementService.TenantRequestAdmission optionsAllowed =
-        admissionService.beginRequest("ACME", "/api/v1/private", "OPTIONS", "actor");
+        admissionService.admitRequest("ACME", "/api/v1/private", "OPTIONS", "actor");
     assertThat(optionsAllowed.isAdmitted()).isTrue();
-    admissionService.completeRequest(optionsAllowed, 200);
+    admissionService.completeRequestAdmission(optionsAllowed, 200);
     TenantRuntimeEnforcementService.TenantRequestAdmission traceAllowed =
-        admissionService.beginRequest("ACME", "/api/v1/private", "TRACE", "actor");
+        admissionService.admitRequest("ACME", "/api/v1/private", "TRACE", "actor");
     assertThat(traceAllowed.isAdmitted()).isTrue();
-    admissionService.completeRequest(traceAllowed, 200);
+    admissionService.completeRequestAdmission(traceAllowed, 200);
 
-    TenantRuntimeEnforcementService.TenantRequestAdmission retiredAdminPolicyControl =
-        admissionService.beginRequest(
+    TenantRuntimeEnforcementService.TenantRequestAdmission nonCanonicalAdminPolicyControl =
+        admissionService.admitRequest(
             "ACME", "/api/v1/admin/tenant-runtime/policy", "PUT", "super", true);
-    assertThat(retiredAdminPolicyControl.isAdmitted()).isFalse();
+    assertThat(nonCanonicalAdminPolicyControl.isAdmitted()).isFalse();
     // Privileged canonical superadmin limits path bypasses hold/rate checks.
     TenantRuntimeEnforcementService.TenantRequestAdmission policyControl =
-        admissionService.beginRequest(
+        admissionService.admitRequest(
             "ACME", "/api/v1/superadmin/tenants/21/limits", "PUT", "super", true);
     assertThat(policyControl.isAdmitted()).isTrue();
-    admissionService.completeRequest(policyControl, 500);
+    admissionService.completeRequestAdmission(policyControl, 500);
     TenantRuntimeEnforcementService.TenantRequestAdmission nonPutPolicyControl =
-        admissionService.beginRequest(
+        admissionService.admitRequest(
             "ACME", "/api/v1/superadmin/tenants/21/limits", "PATCH", "super", true);
     assertThat(nonPutPolicyControl.isAdmitted()).isFalse();
     TenantRuntimeEnforcementService.TenantRequestAdmission nullPathPolicyControl =
-        admissionService.beginRequest("ACME", null, "PUT", "super", true);
+        admissionService.admitRequest("ACME", null, "PUT", "super", true);
     assertThat(nullPathPolicyControl.isAdmitted()).isFalse();
     TenantRuntimeEnforcementService.TenantRequestAdmission blankMethodPolicyControl =
-        admissionService.beginRequest(
+        admissionService.admitRequest(
             "ACME", "/api/v1/superadmin/tenants/21/limits", "   ", "super", true);
     assertThat(blankMethodPolicyControl.isAdmitted()).isFalse();
     TenantRuntimeEnforcementService.TenantRequestAdmission wrongSuffixPolicyControl =
-        admissionService.beginRequest(
+        admissionService.admitRequest(
             "ACME", "/api/v1/superadmin/tenants/21/not-limits", "PUT", "super", true);
     assertThat(wrongSuffixPolicyControl.isAdmitted()).isFalse();
     TenantRuntimeEnforcementService.TenantRequestAdmission emptyIdPolicyControl =
-        admissionService.beginRequest(
+        admissionService.admitRequest(
             "ACME", "/api/v1/superadmin/tenants//limits", "PUT", "super", true);
     assertThat(emptyIdPolicyControl.isAdmitted()).isFalse();
     TenantRuntimeEnforcementService.TenantRequestAdmission rootPathPolicyControl =
-        admissionService.beginRequest("ACME", "/", "PUT", "super", true);
+        admissionService.admitRequest("ACME", "/", "PUT", "super", true);
     assertThat(rootPathPolicyControl.isAdmitted()).isFalse();
 
     // Canonical superadmin limits path with trailing slash also passes.
     TenantRuntimeEnforcementService.TenantRequestAdmission canonicalPolicyControl =
-        admissionService.beginRequest(
+        admissionService.admitRequest(
             "ACME", "/api/v1/superadmin/tenants/21/limits/", "PUT", "super", true);
     assertThat(canonicalPolicyControl.isAdmitted()).isTrue();
-    admissionService.completeRequest(canonicalPolicyControl, 500);
+    admissionService.completeRequestAdmission(canonicalPolicyControl, 500);
 
     // Invalid canonical path falls back to normal hold rejection.
     TenantRuntimeEnforcementService.TenantRequestAdmission invalidCanonical =
-        admissionService.beginRequest(
+        admissionService.admitRequest(
             "ACME", "/api/v1/superadmin/tenants/21/x/limits", "PUT", "super", true);
     assertThat(invalidCanonical.isAdmitted()).isFalse();
 
@@ -343,7 +341,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
     assertThatThrownBy(() -> service.updatePolicy("UNKNOWN", null, "x", 1, null, null, "super"))
         .isInstanceOf(ApplicationException.class);
 
-    assertThatCode(() -> admissionService.enforceAuthOperationAllowed("ACME", "actor", "login"))
+    assertThatCode(() -> admissionService.enforceAuthOperation("ACME", "actor", "login"))
         .doesNotThrowAnyException();
   }
 
@@ -394,7 +392,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
   }
 
   @Test
-  void tenantAdminProvisioningService_provisionInitialAdmin_covers_guards_and_fallback_display() {
+  void tenantAdminProvisioningService_provisionInitialAdmin_covers_guards_and_default_display() {
     UserAccountRepository userAccountRepository = mock(UserAccountRepository.class);
     RoleService roleService = mock(RoleService.class);
     RoleRepository roleRepository = mock(RoleRepository.class);
@@ -474,7 +472,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
     Company target = company(55L, "SKE");
     Company other = company(56L, "OTH");
 
-    UserAccount outsider = new UserAccount("outsider@ske.com", "hash", "Out");
+    UserAccount outsider = new UserAccount("outsider@ske.com", "TEST", "hash", "Out");
     outsider.setCompany(other);
     Role outsiderRole = new Role();
     outsiderRole.setName("ROLE_ADMIN");
@@ -486,7 +484,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("not assigned to company");
 
-    UserAccount nonAdmin = new UserAccount("user@ske.com", "hash", "User");
+    UserAccount nonAdmin = new UserAccount("user@ske.com", "TEST", "hash", "User");
     nonAdmin.setCompany(target);
     Role userRole = new Role();
     userRole.setName("ROLE_USER");

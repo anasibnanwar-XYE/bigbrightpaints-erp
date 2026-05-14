@@ -73,7 +73,6 @@ assert_secret_scan() {
   local targets=()
   [[ -f "$ROOT/openapi.json" ]] && targets+=("$ROOT/openapi.json")
   [[ -d "$ROOT/artifacts" ]] && targets+=("$ROOT/artifacts")
-  [[ -d "$ROOT/.factory/validation" ]] && targets+=("$ROOT/.factory/validation")
   [[ -d "$ROOT/testing" ]] && targets+=("$ROOT/testing")
 
   python3 - "${targets[@]}" <<'PY'

@@ -54,7 +54,7 @@ class TS_OrchestratorExactlyOnceOutboxTest {
   }
 
   @Test
-  void retiredDispatchShortcutIsDeletedWhilePayrollStillUsesFeatureGuards() {
+  void retiredDispatchAndPayrollShortcutsAreDeleted() {
     String source = TruthSuiteFileAssert.read(COMMAND_DISPATCHER);
 
     assertFalse(
@@ -63,12 +63,10 @@ class TS_OrchestratorExactlyOnceOutboxTest {
     assertFalse(
         source.contains("DispatchRequest"),
         "CommandDispatcher must not reference the retired dispatch payload");
-    TruthSuiteFileAssert.assertContains(
-        COMMAND_DISPATCHER,
-        "\"ORCH.PAYROLL.RUN\",",
-        "featureFlags::isPayrollEnabled,",
-        "recordDeniedCommand(",
-        "throw new OrchestratorFeatureDisabledException(disabledMessage, canonicalPath);");
+    assertFalse(source.contains("runPayroll("), "CommandDispatcher must not retain payroll run");
+    assertFalse(
+        source.contains("ORCH.PAYROLL.RUN"),
+        "CommandDispatcher must not retain payroll command scope");
   }
 
   @Test
@@ -77,9 +75,7 @@ class TS_OrchestratorExactlyOnceOutboxTest {
         COMMAND_DISPATCHER,
         "integrationCoordinator.reserveInventory(",
         "integrationCoordinator.updateFulfillment(",
-        "integrationCoordinator.autoApproveOrder(",
-        "integrationCoordinator.syncEmployees(",
-        "integrationCoordinator.generatePayroll(");
+        "integrationCoordinator.autoApproveOrder(");
   }
 
   @Test

@@ -325,9 +325,7 @@ public class PurchaseOrderService {
         StringUtils.hasText(reasonCode) ? reasonCode.trim().toUpperCase(Locale.ROOT) : null);
     history.setReason(clean(reason));
     history.setChangedBy(
-        StringUtils.hasText(actor)
-            ? actor.trim()
-            : SecurityActorResolver.resolveActorWithSystemProcessFallback());
+        StringUtils.hasText(actor) ? actor.trim() : SecurityActorResolver.resolveAuditActor());
     purchaseOrderStatusHistoryRepository.save(history);
   }
 
@@ -386,7 +384,7 @@ public class PurchaseOrderService {
   }
 
   private String currentActorIdentity() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 
   private String canonicalStatusValue(String status) {

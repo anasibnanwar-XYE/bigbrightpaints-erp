@@ -17,7 +17,7 @@ class TS_BulkPackDeterministicReferenceTest {
   private static final String BULK_PACK_READ_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/factory/service/BulkPackingReadService.java";
   private static final String PACKING_MIGRATION =
-      "src/main/resources/db/migration/V132__packing_idempotency_and_slip_uniqueness.sql";
+      "src/main/resources/db/migration_v2/V3__sales_invoice.sql";
 
   @Test
   void retiredBulkPackMutationSurfaceIsAbsentFromRuntimeService() {

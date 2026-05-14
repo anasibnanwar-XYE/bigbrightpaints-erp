@@ -19,30 +19,6 @@ public record DispatchConfirmRequest(
     String vehicleNumber,
     String challanReference) {
 
-  public DispatchConfirmRequest(
-      Long packingSlipId,
-      Long orderId,
-      List<DispatchLine> lines,
-      String dispatchNotes,
-      String confirmedBy,
-      Boolean adminOverrideCreditLimit,
-      String overrideReason,
-      Long overrideRequestId) {
-    this(
-        packingSlipId,
-        orderId,
-        lines,
-        dispatchNotes,
-        confirmedBy,
-        adminOverrideCreditLimit,
-        overrideReason,
-        overrideRequestId,
-        null,
-        null,
-        null,
-        null);
-  }
-
   public record DispatchLine(
       Long lineId,
       Long batchId,

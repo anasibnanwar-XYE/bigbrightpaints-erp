@@ -5,7 +5,9 @@ Last reviewed: 2026-04-02
 ## Important States
 
 - dealer `ACTIVE`, `ON_HOLD`, `SUSPENDED`
-- order `DRAFT`, `CONFIRMED`, `RESERVED`, `PENDING_DISPATCH`, `PARTIALLY_DISPATCHED`, `DISPATCHED`, `INVOICED`, `SETTLED`, `CANCELLED`
+- order `DRAFT`, `CONFIRMED`, `PROCESSING`, `RESERVED`, `PENDING_PRODUCTION`,
+  `PENDING_INVENTORY`, `READY_TO_SHIP`, `DISPATCHED`, `INVOICED`, `SETTLED`,
+  `ON_HOLD`, `REJECTED`, `CLOSED`, `CANCELLED`, `DELETED`
 - credit request `PENDING`, `APPROVED`, `REJECTED`, `EXPIRED`
 - invoice readiness `NOT_READY`, `READY`, `PARTIAL`
 
@@ -27,9 +29,7 @@ Last reviewed: 2026-04-02
   not fabricate page totals or page counts in the UI.
 - Order search with no matches returns an empty `content` array; render a normal
   empty state instead of a backend-error banner.
-- Order-search status filters map legacy stored statuses into canonical filters:
-  `DRAFT` includes `BOOKED`, `DISPATCHED` includes `SHIPPED` and `FULFILLED`,
-  and `SETTLED` includes `COMPLETED`.
+- Order-search status filters use canonical order lifecycle statuses only.
 - Separate commercial validation errors from backend faults.
 - When dispatch is still pending, show a status explanation and last operational
   milestone instead of a generic failure banner.

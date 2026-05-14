@@ -110,17 +110,7 @@ class SalesOrderSearchRepositoryImpl implements SalesOrderSearchRepository {
     }
     String normalizedStatus = status.trim().toUpperCase(Locale.ROOT);
     jakarta.persistence.criteria.Expression<String> normalizedPath = cb.upper(cb.trim(statusPath));
-    return switch (normalizedStatus) {
-      case "DRAFT" ->
-          cb.or(cb.equal(normalizedPath, normalizedStatus), cb.equal(normalizedPath, "BOOKED"));
-      case "DISPATCHED" ->
-          cb.or(
-              cb.equal(normalizedPath, normalizedStatus),
-              normalizedPath.in("SHIPPED", "FULFILLED"));
-      case "SETTLED" ->
-          cb.or(cb.equal(normalizedPath, normalizedStatus), cb.equal(normalizedPath, "COMPLETED"));
-      default -> cb.equal(normalizedPath, normalizedStatus);
-    };
+    return cb.equal(normalizedPath, normalizedStatus);
   }
 
   private String containsPattern(String value) {

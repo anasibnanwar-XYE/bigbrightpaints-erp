@@ -41,7 +41,7 @@ class AuditLogReadAdapterTest {
   }
 
   @Test
-  void referenceNumberFallsBackToEntityIdWhenExplicitReferenceIsMissing() {
+  void referenceNumberUsesEntityIdWhenExplicitReferenceIsMissing() {
     AuditLogReadAdapter adapter =
         new AuditLogReadAdapter(
             mock(AuditLogRepository.class),
@@ -55,7 +55,7 @@ class AuditLogReadAdapterTest {
   }
 
   @Test
-  void referenceResolvers_supportLegacyAuditMetadataKeys() {
+  void referenceResolvers_supportCurrentAuditMetadataKeys() {
     AuditLogReadAdapter adapter =
         new AuditLogReadAdapter(
             mock(AuditLogRepository.class),
@@ -106,10 +106,10 @@ class AuditLogReadAdapterTest {
     when(auditVisibilityPolicy.resolveCompanyCodes(java.util.Set.of(7L)))
         .thenReturn(Map.of(7L, "TENANT-A"));
 
-    AuditLog fallbackCompanyLog = new AuditLog();
-    fallbackCompanyLog.setCompanyId(7L);
-    fallbackCompanyLog.setRequestPath("/api/v1/companies/7");
-    fallbackCompanyLog.setMetadata(Map.of());
+    AuditLog companyIdOnlyLog = new AuditLog();
+    companyIdOnlyLog.setCompanyId(7L);
+    companyIdOnlyLog.setRequestPath("/api/v1/companies/7");
+    companyIdOnlyLog.setMetadata(Map.of());
 
     AuditLog metadataCompanyLog = new AuditLog();
     metadataCompanyLog.setCompanyId(9L);
@@ -118,7 +118,7 @@ class AuditLogReadAdapterTest {
 
     when(auditLogRepository.findAll(
             org.mockito.ArgumentMatchers.<Specification<AuditLog>>any(), any(Pageable.class)))
-        .thenReturn(new PageImpl<>(java.util.List.of(fallbackCompanyLog, metadataCompanyLog)));
+        .thenReturn(new PageImpl<>(java.util.List.of(companyIdOnlyLog, metadataCompanyLog)));
 
     AuditFeedSlice slice =
         adapter.queryPlatformFeed(

@@ -71,7 +71,7 @@ public class MfaService {
       RefreshTokenService refreshTokenService,
       IamCanonicalStorageService iamCanonicalStorageService,
       AccountLockoutService accountLockoutService,
-      @Value("${security.mfa.issuer:BigBright ERP}") String issuer) {
+      @Value("${security.mfa.issuer:orchestrator-erp}") String issuer) {
     this(
         userAccountRepository,
         mfaRecoveryCodeRepository,

@@ -18,14 +18,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
-import com.bigbrightpaints.erp.codered.support.CoderedConcurrencyHarness;
-import com.bigbrightpaints.erp.codered.support.CoderedRetry;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.risk.support.RiskConcurrencyHarness;
+import com.bigbrightpaints.erp.risk.support.RiskRetry;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 @Tag("critical")
@@ -96,23 +96,23 @@ class AccountCodeCaseInsensitiveUniquenessIT extends AbstractIntegrationTest {
     String canonicalCode = "race-cash-" + shortId().toLowerCase(Locale.ROOT);
     Long companyId = company.getId();
 
-    CoderedConcurrencyHarness.RunResult<Long> result =
-        CoderedConcurrencyHarness.run(
+    RiskConcurrencyHarness.RunResult<Long> result =
+        RiskConcurrencyHarness.run(
             2,
             2,
             Duration.ofSeconds(20),
             threadIndex -> () -> saveCaseVariantAccount(companyId, canonicalCode, threadIndex),
-            CoderedRetry::isRetryable);
+            RiskRetry::isRetryable);
 
     long successCount =
         result.outcomes().stream()
-            .filter(CoderedConcurrencyHarness.Outcome.Success.class::isInstance)
+            .filter(RiskConcurrencyHarness.Outcome.Success.class::isInstance)
             .count();
     @SuppressWarnings("unchecked")
-    List<CoderedConcurrencyHarness.Outcome.Failure<Long>> failures =
+    List<RiskConcurrencyHarness.Outcome.Failure<Long>> failures =
         result.outcomes().stream()
-            .filter(CoderedConcurrencyHarness.Outcome.Failure.class::isInstance)
-            .map(outcome -> (CoderedConcurrencyHarness.Outcome.Failure<Long>) outcome)
+            .filter(RiskConcurrencyHarness.Outcome.Failure.class::isInstance)
+            .map(outcome -> (RiskConcurrencyHarness.Outcome.Failure<Long>) outcome)
             .toList();
 
     assertThat(successCount).isEqualTo(1L);

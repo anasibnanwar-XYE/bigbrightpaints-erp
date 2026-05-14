@@ -33,7 +33,7 @@ Last reviewed: 2026-04-07
 - Debit-note and credit-note retries must reuse the same source document,
   `referenceNumber`, and `idempotencyKey`. Reusing a correction reference for a
   different purchase or invoice is a new action, not a safe retry.
-- Frontend should send `Idempotency-Key`, not `X-Idempotency-Key`. Legacy
+- Frontend should send `Idempotency-Key`, not `X-Idempotency-Key`. Retired
   headers are not part of the frontend contract. Accounting settlement/receipt
   routes and purchasing invoice/return write routes reject
   `X-Idempotency-Key` with a `400` validation error and details that point
@@ -54,7 +54,7 @@ Recommended client behavior:
 - Validation failures are user-fixable and should stay inline with field-level
   feedback where possible.
 - Auth failures, tenant-scope mismatches, module gating, and lifecycle denials
-  are hard stops. Do not auto-retry them with legacy headers or alternate
+  are hard stops. Do not auto-retry them with retired headers or alternate
   endpoints.
 - Conflict or duplicate responses on idempotent writes should resolve to a
   deterministic success-or-already-applied UX, not a blind retry loop.
@@ -119,7 +119,7 @@ Example error envelope:
 }
 ```
 
-Legacy-header rejection example:
+Retired-header rejection example:
 
 ```json
 {
@@ -132,7 +132,7 @@ Legacy-header rejection example:
     "path": "/api/v1/accounting/settlements/dealers",
     "traceId": "749b4ef0-1aa1-4cc7-b404-5df5bd5d9d50",
     "details": {
-      "legacyHeader": "X-Idempotency-Key",
+      "retiredHeader": "X-Idempotency-Key",
       "canonicalHeader": "Idempotency-Key",
       "canonicalPath": "/api/v1/accounting/settlements/dealers"
     }

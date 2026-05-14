@@ -2,7 +2,7 @@
 
 `docs/frontend-api/` documents shared API rules across all frontend portal shells.
 
-Last reviewed: 2026-04-16
+Last reviewed: 2026-05-09
 
 ## Purpose
 
@@ -18,7 +18,6 @@ This folder defines canonical frontend contracts for:
 ### Bootstrap and Authentication
 
 - Only identity bootstrap endpoint: `GET /api/v1/auth/me`.
-- Do not use `GET /api/v1/auth/profile` for frontend identity bootstrap.
 - Use `POST /api/v1/auth/refresh-token` for access-token refresh.
 - Use `POST /api/v1/auth/logout` for session termination.
 
@@ -31,7 +30,7 @@ This folder defines canonical frontend contracts for:
 ### Portal Placement
 
 - **superadmin:** platform control-plane routes (`/api/v1/superadmin/**`); tenant-scoped superadmin sessions are denied on platform-only hosts (`settings`, `roles`, `notify`), while tenant-targeted control routes remain tenant-scoped.
-- **tenant-admin:** canonical `/api/v1/admin/**` product surfaces (`/dashboard`, `/users`, `/approvals`, `/support`, `/self/settings`, `/audit`) plus `/api/v1/changelog`; legacy admin insight reads `/api/v1/portal/dashboard|operations|workforce` are still live until backend retirement.
+- **tenant-admin:** canonical `/api/v1/admin/**` product surfaces (`/dashboard`, `/users`, `/approvals`, `/support`, `/self/settings`, `/audit`) plus `/api/v1/changelog`.
 - **accounting:** COA, journals, reconciliation, period close, reports.
 - **sales:** dealer master, sales orders, commercial credit escalation.
 - **factory:** production, packing, dispatch confirmation.
@@ -59,9 +58,11 @@ This folder defines canonical frontend contracts for:
 
 | Role | File |
 | --- | --- |
+| Superadmin (`ROLE_SUPER_ADMIN`) | [superadmin portal](../frontend-portals/superadmin/README.md) |
 | Admin (`ROLE_ADMIN`) | [admin-role.md](./admin-role.md) |
 | Accounting (`ROLE_ACCOUNTING`) | [accounting-role.md](./accounting-role.md) |
 | Sales (`ROLE_SALES`) | [sales-role.md](./sales-role.md) |
+| Factory (`ROLE_FACTORY`) | [factory portal](../frontend-portals/factory/README.md) |
 | Dealer (`ROLE_DEALER`) | [dealer-role.md](./dealer-role.md) |
 
 ## Relationship to Portal Docs

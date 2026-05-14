@@ -9,16 +9,16 @@ Last reviewed: 2026-04-04
 1. **Feature branch creation** — work happens on feature branches off `main`.
 2. **Pre-commit validation** — Spotless format, Checkstyle, compile, and lint hooks run locally.
 3. **Push and CI** — the PR ship-safety lane runs compile, routed shards, changed-code coverage, secrets scan, and high-risk control; `gate-core` is the main-branch integration lane, and `gate-release` plus `gate-reconciliation` run on tag/manual release validation. The separate `Release` workflow only generates GitHub release notes and is not deploy proof.
-4. **Packet review** — orchestrator assigns reviewers based on change class.
+4. **Document review** — orchestrator assigns reviewers based on change class.
 5. **R2 escalation** — high-risk changes (auth, company, RBAC, HR, accounting, orchestrator, migration_v2) require updated `docs/approvals/R2-CHECKPOINT.md`.
 6. **Merge** — only after CI green + reviewer approval.
 
 ### Docs-only workflow
 
-- Docs-only packets are limited to the canonical docs/governance lane — `README.md`, `AGENTS.md`, `ARCHITECTURE.md`, `CHANGELOG.md`, `docs/INDEX.md`, `docs/ARCHITECTURE.md`, `docs/CONVENTIONS.md`, `docs/SECURITY.md`, `docs/RELIABILITY.md`, `docs/BACKEND-FEATURE-CATALOG.md`, `docs/RECOMMENDATIONS.md`, `docs/adrs/**`, `docs/agents/**`, `docs/approvals/**`, `docs/deprecated/**`, `docs/modules/**`, `docs/flows/**`, `docs/frontend-api/**`, `docs/frontend-portals/**` — or the internal worker-guidance lane `.factory/library/**`.
-- Markdown outside that lane — including `docs/platform/**`, `docs/runbooks/**`, `docs/design/**`, `docs/code-review/**`, `docs/developer/**`, `docs/frontend-update-v2/**`, root worklogs/reports, or mixed markdown-plus-code/config/test/script/OpenAPI changes — is not docs-only.
-- Docs-only packets run `bash ci/lint-knowledgebase.sh` only.
-- Skip manual governance review/subagent review for docs-only packets.
+- Docs-only changes are limited to the canonical docs/governance lane — `README.md`, `AGENTS.md`, `ARCHITECTURE.md`, `CHANGELOG.md`, `docs/INDEX.md`, `docs/ARCHITECTURE.md`, `docs/CONVENTIONS.md`, `docs/SECURITY.md`, `docs/RELIABILITY.md`, `docs/BACKEND-FEATURE-CATALOG.md`, `docs/RECOMMENDATIONS.md`, `docs/adrs/**`, `docs/agents/**`, `docs/approvals/**`, `docs/modules/**`, `docs/flows/**`, `docs/frontend-api/**`, `docs/frontend-portals/**`.
+- Markdown outside that lane — including `docs/platform/**`, `docs/runbooks/**`, root worklogs/reports, or mixed markdown-plus-code/config/test/script/OpenAPI changes — is not docs-only.
+- Docs-only changes run `bash ci/lint-knowledgebase.sh` only.
+- Skip manual governance review/subagent review for docs-only changes.
 - Must not change backend runtime behavior.
 
 ### High-risk change workflow
@@ -40,7 +40,7 @@ Last reviewed: 2026-04-04
 ## Required Governance Surfaces
 
 - `AGENTS.md` — repository agent governance
-- `docs/SECURITY.md` — security review policy
+- `docs/SECURITY.md` — security controls
 - `docs/agents/PERMISSIONS.md` — agent permission boundaries
 - `docs/agents/CATALOG.md` — agent review catalog
 - `docs/agents/WORKFLOW.md` — this document
@@ -54,5 +54,5 @@ Last reviewed: 2026-04-04
 - [docs/agents/PERMISSIONS.md](PERMISSIONS.md) — agent permissions
 - [docs/agents/ENTERPRISE_MODE.md](ENTERPRISE_MODE.md) — enterprise mode
 - [docs/agents/ORCHESTRATION_LAYER.md](ORCHESTRATION_LAYER.md) — orchestration layer
-- [docs/SECURITY.md](../SECURITY.md) — security review policy
+- [docs/SECURITY.md](../SECURITY.md) — security controls
 - [docs/approvals/R2-CHECKPOINT.md](../approvals/R2-CHECKPOINT.md) — R2 checkpoint

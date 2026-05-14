@@ -115,16 +115,6 @@ public class Employee extends VersionedEntity {
   @Column(name = "tax_regime")
   private TaxRegime taxRegime = TaxRegime.NEW;
 
-  // Bank details for payment
-  @Column(name = "bank_account_number")
-  private String bankAccountNumber;
-
-  @Column(name = "bank_name")
-  private String bankName;
-
-  @Column(name = "ifsc_code")
-  private String ifscCode;
-
   @Column(name = "bank_account_number_encrypted")
   private String bankAccountNumberEncrypted;
 
@@ -381,30 +371,6 @@ public class Employee extends VersionedEntity {
 
   public void setTaxRegime(TaxRegime taxRegime) {
     this.taxRegime = taxRegime;
-  }
-
-  public String getBankAccountNumber() {
-    return bankAccountNumber;
-  }
-
-  public void setBankAccountNumber(String bankAccountNumber) {
-    this.bankAccountNumber = bankAccountNumber;
-  }
-
-  public String getBankName() {
-    return bankName;
-  }
-
-  public void setBankName(String bankName) {
-    this.bankName = bankName;
-  }
-
-  public String getIfscCode() {
-    return ifscCode;
-  }
-
-  public void setIfscCode(String ifscCode) {
-    this.ifscCode = ifscCode;
   }
 
   public String getBankAccountNumberEncrypted() {

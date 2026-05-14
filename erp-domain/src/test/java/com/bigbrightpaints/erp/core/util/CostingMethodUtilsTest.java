@@ -11,10 +11,9 @@ import org.junit.jupiter.api.Test;
 class CostingMethodUtilsTest {
 
   @Test
-  void isWeightedAverage_acceptsSupportedAliases() {
+  void isWeightedAverage_acceptsCanonicalWeightedAverageNames() {
     assertThat(CostingMethodUtils.isWeightedAverage("WAC")).isTrue();
     assertThat(CostingMethodUtils.isWeightedAverage("weighted_average")).isTrue();
-    assertThat(CostingMethodUtils.isWeightedAverage("weighted-average")).isTrue();
     assertThat(CostingMethodUtils.isWeightedAverage("  wAc  ")).isTrue();
   }
 
@@ -50,7 +49,7 @@ class CostingMethodUtilsTest {
   }
 
   @Test
-  void selectWeightedAverageValue_usesFallbackSupplierOnceForNonWeightedMethods() {
+  void selectWeightedAverageValue_usesNonWeightedSupplierOnceForNonWeightedMethods() {
     AtomicInteger weightedCalls = new AtomicInteger();
     AtomicInteger nonWeightedCalls = new AtomicInteger();
 
@@ -79,11 +78,11 @@ class CostingMethodUtilsTest {
       assertThat(CostingMethodUtils.isWeightedAverage("weighted_average")).isTrue();
       assertThat(CostingMethodUtils.normalizeRawMaterialMethodOrDefault(" weighted_average "))
           .isEqualTo("WAC");
-      assertThat(CostingMethodUtils.normalizeFinishedGoodMethodOrDefault(" weighted-average "))
+      assertThat(CostingMethodUtils.normalizeFinishedGoodMethodOrDefault(" weighted_average "))
           .isEqualTo("WAC");
       assertThat(CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(" weighted_average "))
           .isEqualTo("WAC");
-      assertThat(CostingMethodUtils.canonicalizeRawMaterialMethodForSync(" weighted-average "))
+      assertThat(CostingMethodUtils.canonicalizeRawMaterialMethodForSync(" weighted_average "))
           .isEqualTo("WAC");
     } finally {
       Locale.setDefault(previous);
@@ -91,13 +90,17 @@ class CostingMethodUtilsTest {
   }
 
   @Test
-  void normalizeRawMaterialMethodOrDefault_canonicalizesAliasesAndRejectsUnsupported() {
+  void normalizeRawMaterialMethodOrDefault_canonicalizesKnownValuesAndRejectsUnsupported() {
     assertThat(CostingMethodUtils.normalizeRawMaterialMethodOrDefault(null)).isEqualTo("FIFO");
-    assertThat(CostingMethodUtils.normalizeRawMaterialMethodOrDefault(" weighted-average "))
+    assertThat(CostingMethodUtils.normalizeRawMaterialMethodOrDefault(" weighted_average "))
         .isEqualTo("WAC");
     assertThat(CostingMethodUtils.normalizeRawMaterialMethodOrDefault("fifo")).isEqualTo("FIFO");
 
     assertThatThrownBy(() -> CostingMethodUtils.normalizeRawMaterialMethodOrDefault("LIFO"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Unsupported costing method");
+    assertThatThrownBy(
+            () -> CostingMethodUtils.normalizeRawMaterialMethodOrDefault("weighted-average"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("Unsupported costing method");
   }
@@ -115,38 +118,47 @@ class CostingMethodUtilsTest {
   }
 
   @Test
-  void canonicalizeFinishedGoodMethodForSync_canonicalizesKnownAndPreservesUnknownTrimmed() {
+  void canonicalizeFinishedGoodMethodForSync_canonicalizesKnownAndRejectsUnknown() {
     assertThat(CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(" weighted_average "))
         .isEqualTo("WAC");
     assertThat(CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(" lifo "))
         .isEqualTo("LIFO");
     assertThat(CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(null)).isEqualTo("FIFO");
-    assertThat(CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(" custom_method "))
-        .isEqualTo("custom_method");
+
+    assertThatThrownBy(
+            () -> CostingMethodUtils.canonicalizeFinishedGoodMethodForSync("custom_method"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Unsupported costing method");
   }
 
   @Test
-  void canonicalizeRawMaterialMethodForSync_canonicalizesKnownAndPreservesUnknownTrimmed() {
+  void canonicalizeRawMaterialMethodForSync_canonicalizesKnownAndRejectsUnknown() {
     assertThat(CostingMethodUtils.canonicalizeRawMaterialMethodForSync(" weighted_average "))
         .isEqualTo("WAC");
     assertThat(CostingMethodUtils.canonicalizeRawMaterialMethodForSync(" fifo ")).isEqualTo("FIFO");
     assertThat(CostingMethodUtils.canonicalizeRawMaterialMethodForSync(null)).isEqualTo("FIFO");
-    assertThat(CostingMethodUtils.canonicalizeRawMaterialMethodForSync(" custom_method "))
-        .isEqualTo("custom_method");
+
+    assertThatThrownBy(
+            () -> CostingMethodUtils.canonicalizeRawMaterialMethodForSync("custom_method"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Unsupported costing method");
   }
 
   @Test
-  void resolveFinishedGoodBatchSelectionMethod_canonicalizesSupportedAndFallsBackToFifo() {
-    assertThat(CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod("weighted-average"))
+  void resolveFinishedGoodBatchSelectionMethod_canonicalizesSupportedAndRejectsUnknown() {
+    assertThat(CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod("weighted_average"))
         .isEqualTo(CostingMethodUtils.FinishedGoodBatchSelectionMethod.WAC);
     assertThat(CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod("lifo"))
         .isEqualTo(CostingMethodUtils.FinishedGoodBatchSelectionMethod.LIFO);
     assertThat(CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod("fifo"))
         .isEqualTo(CostingMethodUtils.FinishedGoodBatchSelectionMethod.FIFO);
-    assertThat(CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod("custom_method"))
-        .isEqualTo(CostingMethodUtils.FinishedGoodBatchSelectionMethod.FIFO);
     assertThat(CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod(null))
         .isEqualTo(CostingMethodUtils.FinishedGoodBatchSelectionMethod.FIFO);
+
+    assertThatThrownBy(
+            () -> CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod("custom_method"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Unsupported costing method");
   }
 
   @Test

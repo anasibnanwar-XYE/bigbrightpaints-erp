@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-04-02
 
-This repo-root file is a signpost into the canonical `orchestrator-erp` docs spine. Use [docs/INDEX.md](docs/INDEX.md) for navigation, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full code-grounded runtime architecture, and [docs/deprecated/INDEX.md](docs/deprecated/INDEX.md) for retired or reference-only surfaces.
+This repo-root file is a signpost into the canonical `orchestrator-erp` docs spine. Use [docs/INDEX.md](docs/INDEX.md) for navigation and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full code-grounded runtime architecture.
 
 ## Canonical Docs Spine
 
@@ -10,14 +10,13 @@ This repo-root file is a signpost into the canonical `orchestrator-erp` docs spi
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — canonical runtime architecture reference
 - [docs/frontend-portals/README.md](docs/frontend-portals/README.md) — canonical portal ownership docs
 - [docs/frontend-api/README.md](docs/frontend-api/README.md) — canonical shared frontend/API contract docs
-- [docs/deprecated/INDEX.md](docs/deprecated/INDEX.md) — retirement and reference-only registry
 
 ## System Shape
 
 orchestrator-erp is a modular monolith built with Spring Boot. The base package remains `com.bigbrightpaints.erp`.
 
 - **core** — shared infrastructure: security, config, exception handling, audit, idempotency, health, utilities
-- **modules** — domain modules: accounting, admin, auth, company, demo, factory, hr, inventory, invoice, portal, production, purchasing, rbac, reports, sales
+- **modules** — domain modules: accounting, admin, auth, company, factory, hr, inventory, invoice, portal, production, purchasing, rbac, reports, sales
 - **orchestrator** — background coordination: outbox/event publishing, command dispatch, scheduler surfaces
 - **shared/dto** — shared API envelopes and cross-cutting DTOs
 
@@ -44,5 +43,5 @@ orchestrator-erp is a modular monolith built with Spring Boot. The base package 
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — full runtime architecture reference
 - [docs/RELIABILITY.md](docs/RELIABILITY.md) — reliability posture and safety gaps
-- [docs/SECURITY.md](docs/SECURITY.md) — security review policy
+- [docs/SECURITY.md](docs/SECURITY.md) — security controls
 - [docs/INDEX.md](docs/INDEX.md) — canonical documentation index

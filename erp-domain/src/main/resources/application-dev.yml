@@ -22,7 +22,7 @@ spring:
     driver-class-name: org.postgresql.Driver
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations: classpath:db/migration_v2
 jwt:
   # JWT secret fallback is test-only; non-test profiles must provide JWT_SECRET.
   secret: ${JWT_SECRET:}

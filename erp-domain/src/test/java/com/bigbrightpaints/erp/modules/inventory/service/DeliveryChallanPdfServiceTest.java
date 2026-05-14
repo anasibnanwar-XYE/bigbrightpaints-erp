@@ -142,33 +142,25 @@ class DeliveryChallanPdfServiceTest {
   }
 
   @Test
-  void renderDeliveryChallanPdf_fallsBackToSlipIdAndBlankOrderDealerFields() {
+  void renderDeliveryChallanPdf_requiresSlipNumberAndSalesOrder() {
     Company company = company("Acme & Co", "ACME");
     company.setTimezone(null);
     PackagingSlip slip = dispatchedSlip(company, true);
     slip.setSlipNumber(null);
-    slip.setSalesOrder(null);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     when(packagingSlipRepository.findByIdAndCompany(19L, company)).thenReturn(Optional.of(slip));
-    SpringTemplateEngine stubTemplateEngine = new SpringTemplateEngine();
-    ClassLoaderTemplateResolver resolver = new ClassLoaderTemplateResolver();
-    resolver.setPrefix("templates/");
-    resolver.setSuffix(".html");
-    resolver.setCharacterEncoding("UTF-8");
-    stubTemplateEngine.setTemplateResolver(resolver);
 
-    DeliveryChallanPdfService realService =
-        new DeliveryChallanPdfService(
-            companyContextService,
-            packagingSlipRepository,
-            stubTemplateEngine,
-            realActionUsageService);
+    assertThatThrownBy(() -> service.renderDeliveryChallanPdf(19L))
+        .hasMessageContaining("Delivery challan requires a slip number");
 
-    DeliveryChallanPdfService.PdfDocument pdf = realService.renderDeliveryChallanPdf(19L);
+    PackagingSlip missingOrder = dispatchedSlip(company, true);
+    missingOrder.setSalesOrder(null);
+    when(packagingSlipRepository.findByIdAndCompany(20L, company))
+        .thenReturn(Optional.of(missingOrder));
 
-    assertThat(pdf.fileName()).isEqualTo("delivery-challan-null.pdf");
-    assertThat(pdf.content()).isNotEmpty();
+    assertThatThrownBy(() -> service.renderDeliveryChallanPdf(20L))
+        .hasMessageContaining("Delivery challan requires a sales order");
   }
 
   @Test
@@ -241,7 +233,7 @@ class DeliveryChallanPdfServiceTest {
   }
 
   @Test
-  void toLineView_fallsBackToReservedQuantityWhenShippedQuantityIsMissing() throws Exception {
+  void toLineView_requiresShippedQuantity() throws Exception {
     PackagingSlipLine line =
         dispatchedSlip(company("Acme & Sons", "ACME"), true).getLines().getFirst();
     line.setShippedQuantity(null);
@@ -251,10 +243,8 @@ class DeliveryChallanPdfServiceTest {
         DeliveryChallanPdfService.class.getDeclaredMethod("toLineView", PackagingSlipLine.class);
     toLineView.setAccessible(true);
 
-    DeliveryChallanPdfService.DeliveryChallanLineView view =
-        (DeliveryChallanPdfService.DeliveryChallanLineView) toLineView.invoke(service, line);
-
-    assertThat(view.shippedQuantity()).isEqualByComparingTo("4.50");
+    assertThatThrownBy(() -> toLineView.invoke(service, line))
+        .hasRootCauseMessage("Delivery challan line is missing shipped quantity");
   }
 
   @Test
@@ -270,7 +260,7 @@ class DeliveryChallanPdfServiceTest {
   }
 
   @Test
-  void toLineView_defaultsMissingQuantitiesToZero() throws Exception {
+  void toLineView_rejectsMissingQuantities() throws Exception {
     PackagingSlipLine line =
         dispatchedSlip(company("Acme & Sons", "ACME"), true).getLines().getFirst();
     line.setShippedQuantity(null);
@@ -280,10 +270,8 @@ class DeliveryChallanPdfServiceTest {
         DeliveryChallanPdfService.class.getDeclaredMethod("toLineView", PackagingSlipLine.class);
     toLineView.setAccessible(true);
 
-    DeliveryChallanPdfService.DeliveryChallanLineView view =
-        (DeliveryChallanPdfService.DeliveryChallanLineView) toLineView.invoke(service, line);
-
-    assertThat(view.shippedQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
+    assertThatThrownBy(() -> toLineView.invoke(service, line))
+        .hasRootCauseMessage("Delivery challan line is missing shipped quantity");
   }
 
   @Test
@@ -300,7 +288,7 @@ class DeliveryChallanPdfServiceTest {
   }
 
   @Test
-  void isEligibleForDeliveryChallan_handlesNullStatusAndFallbackQuantities() throws Exception {
+  void isEligibleForDeliveryChallan_requiresDispatchedStatusAndShippedQuantity() throws Exception {
     Method isEligible =
         DeliveryChallanPdfService.class.getDeclaredMethod(
             "isEligibleForDeliveryChallan", PackagingSlip.class);
@@ -308,12 +296,12 @@ class DeliveryChallanPdfServiceTest {
 
     PackagingSlip pendingSlip = dispatchedSlip(company("Acme", "ACME"), true);
     pendingSlip.setStatus(null);
-    PackagingSlip fallbackSlip = dispatchedSlip(company("Acme", "ACME"), true);
-    fallbackSlip.getLines().getFirst().setShippedQuantity(null);
+    PackagingSlip missingShippedQuantitySlip = dispatchedSlip(company("Acme", "ACME"), true);
+    missingShippedQuantitySlip.getLines().getFirst().setShippedQuantity(null);
 
     assertThat(isEligible.invoke(service, new Object[] {null})).isEqualTo(false);
     assertThat(isEligible.invoke(service, pendingSlip)).isEqualTo(false);
-    assertThat(isEligible.invoke(service, fallbackSlip)).isEqualTo(true);
+    assertThat(isEligible.invoke(service, missingShippedQuantitySlip)).isEqualTo(false);
   }
 
   private Company company(String name, String code) {

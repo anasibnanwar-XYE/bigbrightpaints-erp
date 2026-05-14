@@ -44,7 +44,7 @@ import com.bigbrightpaints.erp.modules.auth.web.LoginRequest;
 import com.bigbrightpaints.erp.modules.auth.web.RefreshTokenRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
-import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 
 import ch.qos.logback.classic.Level;
@@ -67,7 +67,7 @@ class AuthServiceAuditAttributionTest {
   @Mock private MfaService mfaService;
   @Mock private TokenBlacklistService tokenBlacklistService;
   @Mock private AuditService auditService;
-  @Mock private TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
+  @Mock private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private AuthScopeService authScopeService;
   @Mock private IamCanonicalStorageService iamCanonicalStorageService;
@@ -109,7 +109,7 @@ class AuthServiceAuditAttributionTest {
             mfaService,
             tokenBlacklistService,
             auditService,
-            tenantRuntimeRequestAdmissionService,
+            tenantRuntimeEnforcementService,
             passwordEncoder,
             authScopeService,
             iamCanonicalStorageService,
@@ -184,8 +184,8 @@ class AuthServiceAuditAttributionTest {
 
     assertThat(user.getFailedLoginAttempts()).isEqualTo(1);
     verify(userAccountRepository).save(user);
-    verify(tenantRuntimeRequestAdmissionService)
-        .enforceAuthOperationAllowed("ACME", "user@example.com", "LOGIN");
+    verify(tenantRuntimeEnforcementService)
+        .enforceAuthOperation("ACME", "user@example.com", "LOGIN");
     verify(auditService)
         .logAuthFailure(
             eq(AuditEvent.LOGIN_FAILURE),
@@ -210,8 +210,8 @@ class AuthServiceAuditAttributionTest {
     doThrow(
             com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
                 "Tenant runtime hold"))
-        .when(tenantRuntimeRequestAdmissionService)
-        .enforceAuthOperationAllowed("ACME", "user@example.com", "LOGIN");
+        .when(tenantRuntimeEnforcementService)
+        .enforceAuthOperation("ACME", "user@example.com", "LOGIN");
 
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(ApplicationException.class)
@@ -264,8 +264,7 @@ class AuthServiceAuditAttributionTest {
     assertThat(response.accessToken()).isEqualTo("access-new");
     assertThat(response.refreshToken()).isEqualTo("refresh-new");
     verify(companyRepository, never()).findByCodeIgnoreCase(any());
-    verify(tenantRuntimeRequestAdmissionService, never())
-        .enforceAuthOperationAllowed(any(), any(), any());
+    verify(tenantRuntimeEnforcementService, never()).enforceAuthOperation(any(), any(), any());
   }
 
   @Test
@@ -329,8 +328,8 @@ class AuthServiceAuditAttributionTest {
     assertThat(response.refreshToken()).isEqualTo("refresh-new");
     assertThat(response.companyCode()).isEqualTo("ACME");
     assertThat(response.displayName()).isEqualTo(user.getDisplayName());
-    verify(tenantRuntimeRequestAdmissionService)
-        .enforceAuthOperationAllowed("ACME", "user@example.com", "REFRESH_TOKEN");
+    verify(tenantRuntimeEnforcementService)
+        .enforceAuthOperation("ACME", "user@example.com", "REFRESH_TOKEN");
   }
 
   @Test

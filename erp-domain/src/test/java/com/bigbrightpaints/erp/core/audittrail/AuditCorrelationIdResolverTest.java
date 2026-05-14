@@ -28,7 +28,7 @@ class AuditCorrelationIdResolverTest {
     request.addHeader("X-Trace-Id", UUID.randomUUID().toString());
     request.addHeader("X-Request-Id", "REQ-1");
 
-    UUID resolved = AuditCorrelationIdResolver.resolveCorrelationId(request, "fallback-key");
+    UUID resolved = AuditCorrelationIdResolver.resolveCorrelationId(request, "candidate-key");
 
     assertThat(resolved).isEqualTo(expected);
   }
@@ -46,19 +46,19 @@ class AuditCorrelationIdResolverTest {
   }
 
   @Test
-  void resolveCorrelationId_generatesDeterministicUuidFromFallbackCandidate() {
+  void resolveCorrelationId_generatesDeterministicUuidFromCandidate() {
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.addHeader("X-Request-Id", "REQ-123");
     UUID expected =
         UUID.nameUUIDFromBytes("AUDIT-CORRELATION|REQ-123".getBytes(StandardCharsets.UTF_8));
 
-    UUID resolved = AuditCorrelationIdResolver.resolveCorrelationId(request, "fallback-key");
+    UUID resolved = AuditCorrelationIdResolver.resolveCorrelationId(request, "candidate-key");
 
     assertThat(resolved).isEqualTo(expected);
   }
 
   @Test
-  void resolveCorrelationId_usesRequestAttributeAndExplicitFallbackKeys() {
+  void resolveCorrelationId_usesRequestAttributeAndExplicitCandidateKeys() {
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.setAttribute("traceId", "trace-attribute");
     UUID expected =
@@ -80,7 +80,7 @@ class AuditCorrelationIdResolverTest {
   }
 
   @Test
-  void resolveCorrelationId_handlesNullFallbackArray() {
+  void resolveCorrelationId_handlesNullCandidateArray() {
     MockHttpServletRequest request = new MockHttpServletRequest();
 
     UUID resolved = AuditCorrelationIdResolver.resolveCorrelationId(request, (String[]) null);

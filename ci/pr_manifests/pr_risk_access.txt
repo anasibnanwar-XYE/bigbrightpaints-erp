@@ -1,0 +1,4 @@
+com.bigbrightpaints.erp.risk.DispatchOrderLookupReadOnlyIT
+com.bigbrightpaints.erp.risk.SwaggerProdHardeningIT
+com.bigbrightpaints.erp.risk.HealthEndpointProdHardeningIT
+com.bigbrightpaints.erp.risk.ActuatorProdHardeningIT

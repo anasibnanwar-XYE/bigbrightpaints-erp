@@ -21,6 +21,6 @@ public record LoginRequest(
 
   @AssertTrue(message = "Unsupported MFA factor type")
   public boolean hasSupportedFactorType() {
-    return MfaFactorTypes.isSupportedTotpAlias(factorType);
+    return MfaFactorTypes.isSupportedTotpFactor(factorType);
   }
 }

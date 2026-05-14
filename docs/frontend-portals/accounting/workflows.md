@@ -108,7 +108,7 @@
 1. Review the month-end checklist and reconciliation status.
 2. Submit `request-close`.
 3. Checker reviews and approves or rejects through the approval flow.
-4. Direct close is never offered as a fallback action.
+4. Direct close is never offered as an alternate action.
 5. Reopen is superadmin-only and must not appear in normal accounting shells.
 
 ## 10. Reports, Export Request, Approval, And Download

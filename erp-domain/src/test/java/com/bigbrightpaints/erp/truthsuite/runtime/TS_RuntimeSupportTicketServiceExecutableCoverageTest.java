@@ -207,7 +207,7 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
   }
 
   private UserAccount user(Long id, String email, String roleName, Company scopedCompany) {
-    UserAccount user = new UserAccount(email, "hash", email);
+    UserAccount user = new UserAccount(email, "TEST", "hash", email);
     ReflectionTestUtils.setField(user, "id", id);
     if (scopedCompany != null) {
       user.setCompany(scopedCompany);

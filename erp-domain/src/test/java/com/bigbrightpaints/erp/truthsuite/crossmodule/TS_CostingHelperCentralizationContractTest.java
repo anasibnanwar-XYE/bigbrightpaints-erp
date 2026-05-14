@@ -13,8 +13,8 @@ class TS_CostingHelperCentralizationContractTest {
 
   private static final String RAW_MATERIAL_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/RawMaterialService.java";
-  private static final String FINISHED_GOODS_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java";
+  private static final String FINISHED_GOODS_RESERVATION_ENGINE =
+      "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsReservationEngine.java";
   private static final String INVENTORY_ADJUSTMENT_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/InventoryAdjustmentService.java";
   private static final String PACKAGING_MATERIAL_SERVICE =
@@ -27,9 +27,9 @@ class TS_CostingHelperCentralizationContractTest {
   @Test
   void inventoryAndReportsUseSharedCostingSelectionHelpers() {
     TruthSuiteFileAssert.assertContains(
-        FINISHED_GOODS_SERVICE,
+        FINISHED_GOODS_RESERVATION_ENGINE,
         "CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod(",
-        "CostingMethodUtils.isWeightedAverage(");
+        "CostingMethodUtils.FinishedGoodBatchSelectionMethod");
     TruthSuiteFileAssert.assertContains(
         INVENTORY_ADJUSTMENT_SERVICE,
         "CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod(");
@@ -52,7 +52,7 @@ class TS_CostingHelperCentralizationContractTest {
   @Test
   void modulesDoNotDeclareLocalWeightedAverageHelperCopies() {
     assertNoLocalWeightedAverageHelper(RAW_MATERIAL_SERVICE);
-    assertNoLocalWeightedAverageHelper(FINISHED_GOODS_SERVICE);
+    assertNoLocalWeightedAverageHelper(FINISHED_GOODS_RESERVATION_ENGINE);
     assertNoLocalWeightedAverageHelper(INVENTORY_ADJUSTMENT_SERVICE);
     assertNoLocalWeightedAverageHelper(INVENTORY_VALUATION_SERVICE);
     assertNoLocalWeightedAverageHelper(PACKAGING_MATERIAL_SERVICE);

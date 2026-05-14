@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-04-26
 
-This packet documents the **reporting and export flow**: financial report reads, account statements, workflow shortcut guidance, and the export approval/download gate. It is written for client and implementation readers who need the current shipped behavior, not a list of planned or retired routes.
+This document describes the **reporting and export flow**: financial report reads, account statements, workflow shortcut guidance, and the export approval/download gate. It is written for client and implementation readers who need the current shipped behavior, not a list of planned or retired routes.
 
 Reports and exports are part of the connected accounting system. Reports read accounting-owned truth; export decisions are controlled by the tenant-admin approval inbox; sensitive disclosure remains role-gated.
 
@@ -74,7 +74,7 @@ There is no standalone export status endpoint, and there are no direct export ap
 | Supplier Statement PDF | GET | `/api/v1/accounting/statements/suppliers/{supplierId}/pdf` | ADMIN | Download supplier statement PDF. |
 | Supplier Aging PDF | GET | `/api/v1/accounting/aging/suppliers/{supplierId}/pdf` | ADMIN | Download supplier aging PDF. |
 
-Dealer finance disclosure uses internal finance reads under `/api/v1/portal/finance/**` and dealer self-service reads under `/api/v1/dealer-portal/**`. Dealer statement/aging PDF aliases under `/api/v1/accounting/statements/dealers/**` or `/api/v1/accounting/aging/dealers/**` are not current backend surfaces.
+Dealer finance disclosure uses internal finance reads under `/api/v1/portal/finance/**` and dealer self-service reads under `/api/v1/dealer-portal/**`.
 
 ---
 
@@ -153,13 +153,11 @@ The flow is complete when:
 1. **No standalone export status endpoint** — the current contract uses create, approval inbox, and download routes.
 2. **No direct export approve/reject routes** — decisions are made through the approval inbox route only.
 3. **Cash flow remains a sensitive live report** — use it as a finance disclosure, not as an ungated operational summary.
-4. **Dealer statement PDFs are not exposed under accounting statement/aging aliases** — use portal finance or dealer portal reads for dealer finance disclosure.
+4. **Dealer statement PDFs use finance reads** — use portal finance or dealer portal reads for dealer finance disclosure.
 
 ---
 
-## 6. Canonical vs Non-Canonical Paths
-
-### Canonical Paths
+## 6. Current API Paths
 
 | Path | Owner | Notes |
 | --- | --- | --- |
@@ -172,19 +170,6 @@ The flow is complete when:
 | `GET /api/v1/admin/approvals` | `AdminApprovalController` | Approval inbox. |
 | `POST /api/v1/admin/approvals/{originType}/{id}/decisions` | `AdminApprovalController` | Approval decision. |
 | `GET /api/v1/exports/{requestId}/download` | `ReportController` | Export download. |
-
-### Non-Canonical / Retired Paths
-
-| Path | Status | Replacement |
-| --- | --- | --- |
-| Standalone export status route | Not exposed | Keep the created id; use inbox and download route. |
-| Direct export approve route | Not exposed | `POST /api/v1/admin/approvals/EXPORT_REQUEST/{id}/decisions` |
-| Direct export reject route | Not exposed | `POST /api/v1/admin/approvals/EXPORT_REQUEST/{id}/decisions` |
-| Export-specific tenant-admin approve/reject aliases | Retired approval aliases | `POST /api/v1/admin/approvals/EXPORT_REQUEST/{id}/decisions` |
-| Export-specific pending list alias | Retired pending alias | `GET /api/v1/admin/approvals` |
-| Dealer statement/aging PDFs under `/api/v1/accounting/statements/dealers/**` or `/aging/dealers/**` | Not current backend surface | `/api/v1/portal/finance/**` for internal dealer finance and `/api/v1/dealer-portal/**` for dealer self-service. |
-
----
 
 ## 7. Cross-Module Dependencies
 
@@ -210,10 +195,10 @@ The flow is complete when:
 
 ## 9. Related Documentation
 
-- [Accounting Workflow Architecture](accounting-workflow-architecture.md) — client-shareable connected accounting architecture
+- [Accounting Workflow Architecture](accounting-workflow-architecture.md) — connected accounting workflow doc
 - [Accounting / Period Close Flow](accounting-period-close.md) — period close and reconciliation workflow
 - [Invoice / Dealer Finance Flow](invoice-dealer-finance.md) — dealer finance reads and settlement linkage
-- [docs/modules/reports.md](../modules/reports.md) — Reports module packet
+- [docs/modules/reports.md](../modules/reports.md) — Reports module doc
 - [docs/frontend-api/exports-and-approvals.md](../frontend-api/exports-and-approvals.md) — frontend-facing export and approval contract
 
 ---
@@ -226,5 +211,3 @@ The flow is complete when:
 | --- | --- |
 | P&L snapshot branch | Not implemented. P&L reads live journal truth. |
 | Standalone export status endpoint | Not implemented. Use the created request id and canonical download route. |
-| Direct export approval aliases | Retired/not exposed. Use the approval inbox decision route. |
-| Dealer statement PDF aliases under accounting | Not exposed. Use portal finance/dealer portal reads for dealer finance and supplier PDF routes for supplier exports. |

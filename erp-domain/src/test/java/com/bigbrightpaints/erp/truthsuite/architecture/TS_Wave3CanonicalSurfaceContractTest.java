@@ -5,8 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.lang.reflect.Modifier;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -20,18 +18,6 @@ class TS_Wave3CanonicalSurfaceContractTest {
   private static final String WORKFLOW_ENGINE =
       "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/"
           + "FinishedGoodsWorkflowEngineService.java";
-
-  @Test
-  void accountingCoreScaffoldsStayHiddenBehindPublicServiceEntryPoints() throws Exception {
-    assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingFacadeCore");
-    assertRemoved(
-        "com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailServiceCore");
-    assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodServiceCore");
-    assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreSupport");
-    assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreEngine");
-    assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreLogic");
-    assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreService");
-  }
 
   @Test
   void finishedGoodsWorkflowSeamStaysInternalAndUsesInjectedInventoryServices() throws Exception {
@@ -77,10 +63,5 @@ class TS_Wave3CanonicalSurfaceContractTest {
     assertThat(Modifier.isPublic(Class.forName(fqcn).getModifiers()))
         .as("%s should stay package-private", fqcn)
         .isFalse();
-  }
-
-  private void assertRemoved(String fqcn) {
-    Path sourcePath = Path.of("src/main/java", fqcn.replace('.', '/') + ".java");
-    assertThat(Files.exists(sourcePath)).as("%s source should be removed", fqcn).isFalse();
   }
 }

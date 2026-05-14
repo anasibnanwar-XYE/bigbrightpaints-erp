@@ -366,6 +366,6 @@ public class AttendanceService {
   }
 
   private String getCurrentUser() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 }

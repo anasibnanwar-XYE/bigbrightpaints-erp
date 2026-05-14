@@ -2,16 +2,14 @@ package com.bigbrightpaints.erp.modules.production.dto;
 
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
-
 public record SkuReadinessDto(
     String sku,
-    @JsonAlias("catalog") Stage masterReady,
-    @JsonAlias("inventory") Stage inventoryReady,
-    @JsonAlias("production") Stage productionReady,
-    @JsonAlias("packing") Stage packingReady,
-    @JsonAlias("sales") Stage salesReady,
-    @JsonAlias("accounting") Stage accountingReady) {
+    Stage masterReady,
+    Stage inventoryReady,
+    Stage productionReady,
+    Stage packingReady,
+    Stage salesReady,
+    Stage accountingReady) {
 
   public Stage catalog() {
     return masterReady;

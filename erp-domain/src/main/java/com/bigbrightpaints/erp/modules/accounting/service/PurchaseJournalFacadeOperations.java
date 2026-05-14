@@ -396,7 +396,7 @@ class PurchaseJournalFacadeOperations {
     }
     JournalReferenceMapping mapping = new JournalReferenceMapping();
     mapping.setCompany(company);
-    mapping.setLegacyReference(baseReference.trim());
+    mapping.setReferenceKey(baseReference.trim());
     mapping.setCanonicalReference(canonicalReference.trim());
     mapping.setEntityType("PURCHASE_JOURNAL");
     mapping.setEntityId(entry.getId());

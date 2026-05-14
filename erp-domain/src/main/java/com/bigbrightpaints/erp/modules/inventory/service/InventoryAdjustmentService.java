@@ -586,7 +586,7 @@ public class InventoryAdjustmentService {
   }
 
   private String resolveCurrentUser() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 
   private void logInventoryAdjustmentAuditEvent(

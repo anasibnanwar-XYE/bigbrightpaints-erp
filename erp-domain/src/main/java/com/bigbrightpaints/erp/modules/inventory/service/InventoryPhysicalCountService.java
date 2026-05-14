@@ -97,7 +97,7 @@ public class InventoryPhysicalCountService {
     countRecord.setCountDate(countDate != null ? countDate : companyClock.today(company));
     countRecord.setSourceReference(normalizeText(sourceReference));
     countRecord.setNote(normalizeText(note));
-    countRecord.setCreatedBy(SecurityActorResolver.resolveActorWithSystemProcessFallback());
+    countRecord.setCreatedBy(SecurityActorResolver.resolveAuditActor());
     inventoryPhysicalCountRepository.save(countRecord);
   }
 

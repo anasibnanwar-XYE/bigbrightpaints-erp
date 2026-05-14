@@ -66,7 +66,7 @@ class PerformanceExplainIT extends AbstractIntegrationTest {
             "EXPLAIN SELECT * FROM sales_orders WHERE company_id = ? AND status = ? ORDER BY"
                 + " created_at DESC LIMIT 25",
             company.getId(),
-            "BOOKED"));
+            "CONFIRMED"));
     logPlan(
         "invoices-company",
         explain(
@@ -131,7 +131,7 @@ class PerformanceExplainIT extends AbstractIntegrationTest {
     order.setCompany(company);
     order.setDealer(dealer);
     order.setOrderNumber("SO-PERF-" + System.nanoTime());
-    order.setStatus("BOOKED");
+    order.setStatus("CONFIRMED");
     order.setTotalAmount(new BigDecimal("100.00"));
     order.setSubtotalAmount(new BigDecimal("100.00"));
     order.setGstTotal(BigDecimal.ZERO);

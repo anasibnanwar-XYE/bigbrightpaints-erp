@@ -37,12 +37,12 @@ class RawMaterialPurchaseControllerTest {
   }
 
   @Test
-  @DisplayName("createPurchase rejects X-Idempotency-Key legacy header")
-  void createPurchase_rejectsLegacyIdempotencyHeader() {
+  @DisplayName("createPurchase rejects X-Idempotency-Key retired header")
+  void createPurchase_rejectsRetiredIdempotencyHeader() {
     PurchasingService purchasingService = mock(PurchasingService.class);
     RawMaterialPurchaseController controller = new RawMaterialPurchaseController(purchasingService);
 
-    assertThatThrownBy(() -> controller.createPurchase(null, "legacy-001", purchaseRequest()))
+    assertThatThrownBy(() -> controller.createPurchase(null, "retired-001", purchaseRequest()))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("X-Idempotency-Key is not supported for purchase invoices");
     verify(purchasingService, never())
@@ -63,12 +63,12 @@ class RawMaterialPurchaseControllerTest {
   }
 
   @Test
-  @DisplayName("recordPurchaseReturn rejects X-Idempotency-Key legacy header")
-  void recordPurchaseReturn_rejectsLegacyIdempotencyHeader() {
+  @DisplayName("recordPurchaseReturn rejects X-Idempotency-Key retired header")
+  void recordPurchaseReturn_rejectsRetiredIdempotencyHeader() {
     PurchasingService purchasingService = mock(PurchasingService.class);
     RawMaterialPurchaseController controller = new RawMaterialPurchaseController(purchasingService);
 
-    assertThatThrownBy(() -> controller.recordPurchaseReturn(null, "legacy-001", returnRequest()))
+    assertThatThrownBy(() -> controller.recordPurchaseReturn(null, "retired-001", returnRequest()))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("X-Idempotency-Key is not supported for purchase returns");
     verify(purchasingService, never())

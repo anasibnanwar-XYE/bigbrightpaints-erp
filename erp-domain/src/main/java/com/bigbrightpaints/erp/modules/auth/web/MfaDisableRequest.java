@@ -15,6 +15,6 @@ public record MfaDisableRequest(String code, String recoveryCode, String factorT
 
   @AssertTrue(message = "Unsupported MFA factor type")
   public boolean hasSupportedFactorType() {
-    return MfaFactorTypes.isSupportedTotpAlias(factorType);
+    return MfaFactorTypes.isSupportedTotpFactor(factorType);
   }
 }

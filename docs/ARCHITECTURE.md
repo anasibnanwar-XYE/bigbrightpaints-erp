@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-04-02
 
-This is the canonical runtime architecture reference in the public `orchestrator-erp` docs spine. Use [docs/INDEX.md](INDEX.md) for top-level navigation and [../ARCHITECTURE.md](../ARCHITECTURE.md) only as the repo-root signpost into this packet.
+This is the canonical runtime architecture reference in the public `orchestrator-erp` docs spine. Use [docs/INDEX.md](INDEX.md) for top-level navigation and [../ARCHITECTURE.md](../ARCHITECTURE.md) only as the repo-root signpost into this change.
 
 ## 1) Runtime topology and module map
 
@@ -39,14 +39,14 @@ Most operational modules post financial effects through accounting service/facad
 - Sales/O2C dispatch + invoicing → accounting postings (`SalesCoreEngine.confirmDispatch`, `InvoiceService.issueInvoiceForOrder`, `AccountingFacade.createStandardJournal`).
 - Purchasing/GRN/returns → inventory movements + accounting entries (`GoodsReceiptService`, `PurchaseReturnService`, `InventoryAccountingEventListener`).
 - Factory/production/packing → WIP/consumption/value journals (`ProductionLogService`, `PackingService`, `BulkPackingService`).
-- Accounting also performs company-scoped factory lookups when reconciling production/packing-linked financial references, but those reads stay behind `CompanyScopedFactoryLookupService` while journal writes still enter through the accounting service/facade seams rather than factory-owned workflows.
+- Accounting also performs company-scoped factory lookups when reconciling production/packing-linked financial references, but those reads stay behind `CompanyScopedFactoryLookupService` while journal writes still enter through accounting service/facade boundaries rather than factory-owned workflows.
 - Payroll run posting/payment → payroll journals (`PayrollPostingService`, `AccountingFacade.postPayrollRun`, `PayrollAccountingService`, `JournalController.recordPayrollPayment`).
 - Settlement write ownership is hard-cut across focused collaborators: `SettlementAllocationResolutionService` (allocation resolution), `SettlementTotalsValidationService` (totals/validation), and `SettlementJournalLineDraftService` (journal-line drafting), consumed by `DealerSettlementService`, `SupplierSettlementService`, and `SupplierPaymentService` without a monolithic replacement seam.
 
-Canonical seam rule after Wave 3:
+Canonical accounting boundary rule:
 
 - Inject `AccountingFacade`, `AccountingService`, `AccountingPeriodService`, `ReconciliationService`, and `AccountingAuditTrailService` at module boundaries.
-- Keep new work on those flat facade/service seams only. Any remaining `*Core` / `*Engine` helpers are historical implementation detail, not canonical module entrypoints.
+- Keep new work on those flat facade/service boundaries only. Any remaining `*Core` / `*Engine` helpers are implementation detail, not canonical module entrypoints.
 - Operational finished-good costing stays in `modules.inventory.service.InventoryValuationService`; report and snapshot valuation reads live in `modules.reports.service.InventoryValuationQueryService`.
 
 Key facade entrypoint: `JournalCreationRequest` encapsulates debit/credit lines, source module/reference, and period date semantics (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/JournalCreationRequest.java`).
@@ -145,7 +145,7 @@ Evidence and invariants:
 - Material issue + labor/overhead journals are posted to WIP/consumption accounts (`ProductionLogService.postMaterialJournal`, `postLaborOverheadJournal`).
 - Semi-finished and finished-good batch registration updates stock and movement lines (`ProductionLogService.registerSemiFinishedBatch`, `PackingService.executeLine`, `BulkPackingService.createChildBatches`).
 - Packing idempotency uses reserved keys/hash with replay resolution and journal/movement linking helpers (`PackingService.reserveIfNeeded`, `packingJournalLinkHelper.linkPackagingMovementsToJournal`).
-- The stock-truth decision for Wave 4 is documented in [`docs/developer/onboarding-stock-readiness/06-stock-truth-decision.md`](./developer/onboarding-stock-readiness/06-stock-truth-decision.md); later packets must treat batch rows as authoritative stock state and aggregate stock fields as derived summaries.
+- Batch rows are authoritative stock state; aggregate stock fields are derived summaries.
 
 Primary files:
 
@@ -179,7 +179,7 @@ Evidence and invariants:
 - Payroll run identity/idempotency is period+type keyed with signature checks (`PayrollRunService.createPayrollRun`, `buildIdempotencyKey`, `assertRunSignatureMatches`).
 - Calculation derives line-level earnings/deductions from attendance + statutory engines (`PayrollCalculationService.calculatePayroll`, `calculateEmployeePay`).
 - Posting enforces required payroll account availability, deduction classification constraints, and posted-status/journal-link invariants (`PayrollPostingService.postPayrollToAccounting`).
-- Journal posting path goes through standardized lines into `AccountingFacade.postPayrollRun`, which delegates directly to `PayrollAccountingService` as the canonical payroll journal owner (no `AccountingService` fallback seam) while preserving posted-audit metadata and `sourceModule=PAYROLL`.
+- Journal posting path goes through standardized lines into `AccountingFacade.postPayrollRun`, which delegates directly to `PayrollAccountingService` as the canonical payroll journal owner (no alternate `AccountingService` path) while preserving posted-audit metadata and `sourceModule=PAYROLL`.
 
 Primary files:
 
@@ -314,13 +314,12 @@ Primary files:
 
 ### 3.2 Flyway current-state strategy
 
-The repository still contains the frozen historical `db/migration/*` tree, but
-the current operational contract is `db/migration_v2/*` only.
+The repository contains only the current `db/migration_v2/*` Flyway track.
 
 Runtime profile grouping in `erp-domain/src/main/resources/application.yml` binds production to `flyway-v2`
 (`spring.profiles.group.prod: [flyway-v2]`), making `migration_v2` the only
 supported prod-like runtime path. Tooling and deployment docs should not point
-new work back at the legacy chain.
+new work anywhere else.
 
 Key references:
 
@@ -384,7 +383,7 @@ Patterns appear across domains:
 ### 5.1 Internal event propagation
 
 - Inventory movement/value changes are emitted via Spring events and consumed by accounting listener (`InventoryMovementRecorder.publishMovementEventIfSupported`, `InventoryAccountingEventListener`).
-- Factory slip lifecycle visibility is surfaced by `FactorySlipEventListener`.
+- Factory slip lifecycle visibility is recorded on packing and dispatch records directly.
 
 ### 5.2 Orchestrator reliability layer
 
@@ -435,7 +434,7 @@ Strengths:
 - Strong idempotency discipline across transactional APIs.
 - Clear maker-checker workflow for period close and explicit super-admin gate for reopen.
 - Company/tenant enforcement early in request chain plus optional module gating.
-- Accounting posting centralization via `JournalCreationRequest` and the live accounting facade/service seams.
+- Accounting posting centralization via `JournalCreationRequest` and the live accounting facade/service boundaries.
 
 Trade-offs:
 
@@ -457,7 +456,7 @@ All paths below are relative to `erp-domain/src/main/java/com/bigbrightpaints/er
 - Sales/O2C: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/controller/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/`
 - Inventory dispatch/reservation/slips: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/*`
 - Invoice linkage: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/service/InvoiceService.java`
-- Accounting period/reconciliation and posting seams: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/*`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/*`
+- Accounting period/reconciliation and posting boundaries: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/*`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/*`
 - Purchasing/P2P: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/controller/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/`
 - Factory/M2S: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/*`
 - Payroll: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/controller/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/`

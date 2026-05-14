@@ -2,13 +2,13 @@
 
 Last reviewed: 2026-04-02
 
-> **⚠️ This is the canonical recommendations surface for the orchestrator-erp backend.** All other recommendation or open-decision sections in flow packets, module packets, and handoff documents should defer to this register for authoritative verdicts. This document records the user-approved classifications for all formerly open items from the flow library and `docs/modules/sales.md`.
+> **⚠️ This is the canonical recommendations surface for the orchestrator-erp backend.** All other recommendation or open-decision sections in flow documents, module documents, and handoff documents should defer to this register for authoritative verdicts. This document records the user-approved classifications for all formerly open items from the flow library and `docs/modules/sales.md`.
 
 ---
 
 ## Purpose
 
-This register serves as the **single source of truth** for product and engineering recommendations that were previously documented as "open decisions" in individual flow and module packets. When the user provides explicit verdicts for these items, they are recorded here rather than re-litigated across multiple packets.
+This register serves as the **single source of truth** for product and engineering recommendations that were previously documented as "open decisions" in individual flow and module documents. When the user provides explicit verdicts for these items, they are recorded here rather than re-litigated across multiple documents.
 
 The register classifies each item into one of three categories:
 1. **Bug to Fix Now** — items requiring immediate engineering attention due to data integrity, security, or correctness issues
@@ -34,7 +34,7 @@ The register classifies each item into one of three categories:
 | Item | Status | Classification | Rationale |
 | --- | --- | --- | --- |
 | Profile audit gap — user profile changes do not emit audit events | Known gap | 🔴 **Bug to Fix Now** | Audit trail incompleteness is a compliance risk. Should emit audit events for profile mutations. |
-| MFA recovery code table unused — service uses column, not relational table | Known | 🟢 **Accepted Decision** | Works as designed via column storage. Table exists for potential future enhancement but is not required. |
+| MFA recovery-code storage | Current | 🟢 **Accepted Decision** | Runtime uses `mfa_recovery_codes`; V190 removes the old user-column storage. No action required. |
 
 ---
 
@@ -138,19 +138,17 @@ The register classifies each item into one of three categories:
 ## Cross-References
 
 - [docs/INDEX.md](INDEX.md) — Canonical docs entrypoint
-- [docs/flows/FLOW-INVENTORY.md](flows/FLOW-INVENTORY.md) — Flow inventory with links to individual flow packets
-- [docs/modules/MODULE-INVENTORY.md](modules/MODULE-INVENTORY.md) — Module inventory with links to module packets
-- [docs/deprecated/INDEX.md](deprecated/INDEX.md) — Deprecated surfaces registry
+- [docs/BACKEND-FEATURE-CATALOG.md](BACKEND-FEATURE-CATALOG.md) — Backend feature catalog with module and flow document links
 - [docs/adrs/INDEX.md](adrs/INDEX.md) — ADR index for architectural decisions
 
 ---
 
 ## Notes for Contributors
 
-When a new open decision is identified in a flow or module packet:
-1. **Do not** create a new recommendation section in that packet
-2. **Instead**, add a brief note in the packet's open decisions section with a reference to this register
+When a new open decision is identified in a flow or module document:
+1. **Do not** create a new recommendation section in that document
+2. **Instead**, add a brief note in the change's open decisions section with a reference to this register
 3. **Escalate** the classification decision to product for verdict
 4. **Update** this register once a verdict is received
 
-This ensures the recommendations register remains the single source of truth and prevents conflicting guidance across packets.
+This ensures the recommendations register remains the single source of truth and prevents conflicting guidance across documents.

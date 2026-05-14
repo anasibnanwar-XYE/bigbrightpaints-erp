@@ -12,7 +12,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
@@ -45,7 +44,6 @@ import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import com.bigbrightpaints.erp.test.TestDataSeeder;
 
-@TestPropertySource(properties = "erp.raw-material.intake.enabled=true")
 @Transactional
 class AuditFixesIntegrationTest extends AbstractIntegrationTest {
 
@@ -424,12 +422,24 @@ class AuditFixesIntegrationTest extends AbstractIntegrationTest {
             null,
             null);
 
-    rawMaterialService.createBatch(material.id(), request, "RM-DUP-KEY-1");
+    rawMaterialService.recordReceipt(
+        material.id(),
+        request,
+        new RawMaterialService.ReceiptContext(
+            InventoryReference.RAW_MATERIAL_PURCHASE, "DUP-GRN-001", "Duplicate receipt", false));
 
     com.bigbrightpaints.erp.core.exception.ApplicationException ex =
         assertThrows(
             com.bigbrightpaints.erp.core.exception.ApplicationException.class,
-            () -> rawMaterialService.createBatch(material.id(), request, "RM-DUP-KEY-2"));
+            () ->
+                rawMaterialService.recordReceipt(
+                    material.id(),
+                    request,
+                    new RawMaterialService.ReceiptContext(
+                        InventoryReference.RAW_MATERIAL_PURCHASE,
+                        "DUP-GRN-002",
+                        "Duplicate receipt",
+                        false)));
     assertTrue(ex.getMessage().contains("Batch code"));
   }
 }

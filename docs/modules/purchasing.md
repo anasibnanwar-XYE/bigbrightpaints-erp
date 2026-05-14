@@ -1,11 +1,11 @@
-# Purchasing / Procure-to-Pay (P2P) Module Packet
+# Purchasing / Procure-to-Pay (P2P) Module Document
 
 Last reviewed: 2026-03-30
 
-This packet documents the purchasing module, which owns **procure-to-pay truth** for the ERP. It covers supplier lifecycle, purchase order lifecycle, goods receipt (GRN), purchase invoice capture, purchase returns, supplier settlements, and the AP (accounts payable) boundary with accounting.
+This document describes the purchasing module, which owns **procure-to-pay truth** for the ERP. It covers supplier lifecycle, purchase order lifecycle, goods receipt (GRN), purchase invoice capture, purchase returns, supplier settlements, and the AP (accounts payable) boundary with accounting.
 
 **Critical boundary note:** This module maintains two distinct truth surfaces:
-- **Stock truth** — GRN creates raw material batches in the inventory module (documented in [inventory.md](inventory.md))
+- **Stock truth** — GRN creates raw material batches in the inventory module (documented in [inventory-stock-control.md](inventory-stock-control.md))
 - **AP truth** — Purchase invoices create payable entries in the accounting module (documented in the accounting AGENTS.md)
 
 These boundaries must remain explicit. GRN stock intake does not automatically create AP entries; AP truth is only established when a purchase invoice is captured against a received GRN.
@@ -404,7 +404,7 @@ The GRN → purchase invoice relationship is one-to-many: a single GRN can be in
 | --- | --- |
 | **Key source** | `Idempotency-Key` header or body `idempotencyKey` field |
 | **Key requirement** | Required — missing key throws 400 error |
-| **Legacy header** | `X-Idempotency-Key` explicitly rejected with 400 error |
+| **Retired header** | `X-Idempotency-Key` explicitly rejected with 400 error |
 | **Resolution** | `IdempotencyHeaderUtils.resolveBodyOrHeaderKey()` |
 | **Implementation** | `GoodsReceiptService` uses shared `IdempotencyReservationService` for reservation and race reconciliation |
 | **Test coverage** | `TS_P2PGoodsReceiptIdempotencyTest`, `PurchasingWorkflowControllerTest` |
@@ -451,12 +451,10 @@ The GRN → purchase invoice relationship is one-to-many: a single GRN can be in
 ## 12. Cross-References
 
 - [docs/INDEX.md](../INDEX.md) — canonical documentation index
-- [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — module inventory
-- [docs/modules/inventory.md](inventory.md) — stock truth boundary (RawMaterialBatch creation from GRN)
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
+- [docs/modules/inventory-stock-control.md](inventory-stock-control.md) — stock truth boundary (RawMaterialBatch creation from GRN)
 - [docs/modules/core-idempotency.md](core-idempotency.md) — shared idempotency infrastructure
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — architecture reference
 - [docs/flows/procure-to-pay.md](../flows/procure-to-pay.md) — canonical procure-to-pay flow (behavioral entrypoint)
-- [docs/workflows/purchase-to-pay.md](../workflows/purchase-to-pay.md) — historical operational workflow guide (superseded by this packet)
-- [docs/developer/accounting-flows/03-purchasing-boundary.md](../developer/accounting-flows/03-purchasing-boundary.md) — internal truth-path documentation
+- [docs/flows/procure-to-pay.md](../flows/procure-to-pay.md) — canonical procure-to-pay flow
 - [docs/frontend-portals/factory/README.md](../frontend-portals/factory/README.md) — Factory frontend handoff (procure-to-pay payloads, supplier management)
-- [docs/deprecated/INDEX.md](../deprecated/INDEX.md) — Deprecated surfaces registry (PO idempotency, GRN headers)

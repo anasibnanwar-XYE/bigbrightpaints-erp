@@ -97,24 +97,18 @@ public class DealerPortalService {
     Company company = companyContextService.requireCurrentCompany();
     UserAccount authenticatedUser = resolveAuthenticatedUser(auth);
 
-    if (authenticatedUser != null && authenticatedUser.getId() != null) {
-      Dealer matchedByUserId =
-          resolveSingleDealerOrNull(
-              dealerRepository.findAllByCompanyAndPortalUserId(company, authenticatedUser.getId()),
-              "userId:" + authenticatedUser.getId());
-      if (matchedByUserId != null) {
-        return Optional.of(matchedByUserId);
-      }
+    if (authenticatedUser == null || authenticatedUser.getId() == null) {
+      throw new AccessDeniedException("No authenticated user identity");
     }
 
-    String email = resolveAuthenticatedEmail(authenticatedUser, auth);
-    Dealer matchedByEmail =
+    Dealer matchedByUserId =
         resolveSingleDealerOrNull(
-            dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(company, email),
-            "email:" + email);
-    if (matchedByEmail != null) {
-      return Optional.of(matchedByEmail);
+            dealerRepository.findAllByCompanyAndPortalUserId(company, authenticatedUser.getId()),
+            "userId:" + authenticatedUser.getId());
+    if (matchedByUserId != null) {
+      return Optional.of(matchedByUserId);
     }
+
     return Optional.empty();
   }
 

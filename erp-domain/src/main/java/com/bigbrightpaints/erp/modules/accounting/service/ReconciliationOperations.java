@@ -1239,7 +1239,7 @@ final class ReconciliationOperations {
   }
 
   private String resolveCurrentActor() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 
   private boolean isResolvedOrAcknowledged(ReconciliationDiscrepancy discrepancy) {

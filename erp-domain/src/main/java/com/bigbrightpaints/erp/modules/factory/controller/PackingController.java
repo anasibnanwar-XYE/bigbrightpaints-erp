@@ -83,7 +83,7 @@ public class PackingController {
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Packing request is required");
     }
     if (StringUtils.hasText(requestId)) {
-      throw unsupportedLegacyHeader("X-Request-Id");
+      throw unsupportedRetiredHeader("X-Request-Id");
     }
     if (!StringUtils.hasText(idempotencyKeyHeader)) {
       throw new ApplicationException(
@@ -102,11 +102,11 @@ public class PackingController {
         request.closeResidualWastage());
   }
 
-  private ApplicationException unsupportedLegacyHeader(String legacyHeader) {
+  private ApplicationException unsupportedRetiredHeader(String retiredHeader) {
     return new ApplicationException(
             ErrorCode.VALIDATION_INVALID_INPUT,
-            legacyHeader + " is not supported for packing records; use Idempotency-Key")
-        .withDetail("legacyHeader", legacyHeader)
+            retiredHeader + " is not supported for packing records; use Idempotency-Key")
+        .withDetail("retiredHeader", retiredHeader)
         .withDetail("canonicalHeader", "Idempotency-Key")
         .withDetail("canonicalPath", CANONICAL_PACKING_PATH);
   }

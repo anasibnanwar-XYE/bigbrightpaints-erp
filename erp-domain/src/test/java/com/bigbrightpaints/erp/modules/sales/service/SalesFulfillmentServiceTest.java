@@ -56,7 +56,7 @@ class SalesFulfillmentServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 1L);
     order.setOrderNumber("SO-1");
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     order.setTotalAmount(new BigDecimal("100"));
 
     when(salesService.getOrderWithItems(1L)).thenReturn(order);
@@ -107,7 +107,7 @@ class SalesFulfillmentServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 2L);
     order.setOrderNumber("SO-2");
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     order.setTotalAmount(new BigDecimal("250"));
     order.setSalesJournalEntryId(999L);
 
@@ -159,7 +159,7 @@ class SalesFulfillmentServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 3L);
     order.setOrderNumber("SO-3");
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     order.setTotalAmount(new BigDecimal("300"));
 
     when(salesService.getOrderWithItems(3L)).thenReturn(order);
@@ -208,7 +208,7 @@ class SalesFulfillmentServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 4L);
     order.setOrderNumber("SO-4");
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     order.setTotalAmount(new BigDecimal("120"));
 
     when(salesService.getOrderWithItems(4L)).thenReturn(order);
@@ -231,7 +231,7 @@ class SalesFulfillmentServiceTest {
     SalesOrder order = new SalesOrder();
     setField(order, "id", 5L);
     order.setOrderNumber("SO-5");
-    order.setStatus("SHIPPED");
+    order.setStatus("DISPATCHED");
     order.setSalesJournalEntryId(55L);
     order.setFulfillmentInvoiceId(66L);
 
@@ -287,7 +287,7 @@ class SalesFulfillmentServiceTest {
     setField(order, "id", 8L);
     order.setCompany(company);
     order.setOrderNumber("SO-8");
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     when(salesService.getOrderWithItems(8L)).thenReturn(order);
     when(salesService.confirmDispatch(any()))
         .thenReturn(
@@ -329,7 +329,7 @@ class SalesFulfillmentServiceTest {
     setField(order, "id", 9L);
     order.setCompany(company);
     order.setOrderNumber("SO-9");
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     order.setTotalAmount(new BigDecimal("180.00"));
 
     PackagingSlipDto reservedSlip =
@@ -348,7 +348,13 @@ class SalesFulfillmentServiceTest {
             null,
             null,
             null,
-            List.of());
+            List.of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
     when(salesService.getOrderWithItems(9L)).thenReturn(order);
     when(finishedGoodsService.reserveForOrder(order))
         .thenReturn(new InventoryReservationResult(reservedSlip, List.of()));
@@ -392,7 +398,7 @@ class SalesFulfillmentServiceTest {
     setField(order, "id", 10L);
     order.setCompany(company);
     order.setOrderNumber("SO-10");
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
 
     when(salesService.getOrderWithItems(10L)).thenReturn(order);
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
@@ -418,7 +424,7 @@ class SalesFulfillmentServiceTest {
     setField(order, "id", 11L);
     order.setCompany(company);
     order.setOrderNumber("SO-11");
-    order.setStatus("BOOKED");
+    order.setStatus("DRAFT");
     order.setTotalAmount(new BigDecimal("200.00"));
 
     PackagingSlipDto reservedSlip =
@@ -437,7 +443,13 @@ class SalesFulfillmentServiceTest {
             null,
             null,
             null,
-            List.of());
+            List.of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
     when(salesService.getOrderWithItems(11L)).thenReturn(order);
     when(finishedGoodsService.reserveForOrder(order))
         .thenReturn(new InventoryReservationResult(reservedSlip, List.of()));

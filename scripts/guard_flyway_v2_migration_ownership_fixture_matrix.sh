@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE_GUARD="$ROOT_DIR/scripts/guard_flyway_v2_migration_ownership.sh"
-SOURCE_COMPAT="$ROOT_DIR/scripts/bash_compat.sh"
 
 fail() {
   echo "[guard_flyway_v2_migration_ownership_fixture_matrix] FAIL: $1" >&2
@@ -11,7 +10,6 @@ fail() {
 }
 
 [[ -f "$SOURCE_GUARD" ]] || fail "missing source guard script: $SOURCE_GUARD"
-[[ -f "$SOURCE_COMPAT" ]] || fail "missing bash compatibility helper: $SOURCE_COMPAT"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -30,7 +28,6 @@ run_case() {
     "$case_root/erp-domain/src/main/resources/db/migration_v2"
 
   cp "$SOURCE_GUARD" "$case_root/scripts/guard_flyway_v2_migration_ownership.sh"
-  cp "$SOURCE_COMPAT" "$case_root/scripts/bash_compat.sh"
   chmod +x "$case_root/scripts/guard_flyway_v2_migration_ownership.sh"
 
   cat > "$migration_file" <<SQL

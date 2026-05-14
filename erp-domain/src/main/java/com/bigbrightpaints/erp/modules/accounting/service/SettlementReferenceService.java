@@ -93,7 +93,7 @@ class SettlementReferenceService {
     if (company != null && StringUtils.hasText(idempotencyKey)) {
       String key = journalReplayService.normalizeIdempotencyMappingKey(idempotencyKey);
       JournalReferenceMapping mapping =
-          journalReplayService.findLatestLegacyReferenceMapping(company, key).orElse(null);
+          journalReplayService.findLatestReferenceKeyMapping(company, key).orElse(null);
       if (mapping != null && StringUtils.hasText(mapping.getCanonicalReference())) {
         return mapping.getCanonicalReference().trim();
       }
@@ -110,7 +110,7 @@ class SettlementReferenceService {
     if (company != null && StringUtils.hasText(idempotencyKey)) {
       String key = journalReplayService.normalizeIdempotencyMappingKey(idempotencyKey);
       JournalReferenceMapping mapping =
-          journalReplayService.findLatestLegacyReferenceMapping(company, key).orElse(null);
+          journalReplayService.findLatestReferenceKeyMapping(company, key).orElse(null);
       if (mapping != null && StringUtils.hasText(mapping.getCanonicalReference())) {
         return mapping.getCanonicalReference().trim();
       }
@@ -126,7 +126,7 @@ class SettlementReferenceService {
     if (company != null && StringUtils.hasText(idempotencyKey)) {
       String key = journalReplayService.normalizeIdempotencyMappingKey(idempotencyKey);
       JournalReferenceMapping mapping =
-          journalReplayService.findLatestLegacyReferenceMapping(company, key).orElse(null);
+          journalReplayService.findLatestReferenceKeyMapping(company, key).orElse(null);
       if (mapping != null && StringUtils.hasText(mapping.getCanonicalReference())) {
         return mapping.getCanonicalReference().trim();
       }

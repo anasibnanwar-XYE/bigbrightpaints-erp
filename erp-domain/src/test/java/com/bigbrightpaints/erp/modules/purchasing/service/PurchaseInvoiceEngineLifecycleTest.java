@@ -699,52 +699,6 @@ class PurchaseInvoiceEngineLifecycleTest {
   }
 
   @Test
-  @DisplayName("splitTaxAmountSafe falls back to IGST when splitter returns null for inter-state")
-  void splitTaxAmountSafe_fallsBackToInterStateIgstWhenSplitterReturnsNull() {
-    when(gstService.splitTaxAmount(new BigDecimal("100.00"), new BigDecimal("18.00"), "KA", "MH"))
-        .thenReturn(null);
-    when(gstService.resolveTaxType("KA", "MH", false)).thenReturn(GstService.TaxType.INTER_STATE);
-
-    GstService.GstBreakdown breakdown =
-        ReflectionTestUtils.invokeMethod(
-            purchaseInvoiceEngine,
-            "splitTaxAmountSafe",
-            new BigDecimal("100.00"),
-            new BigDecimal("18.00"),
-            "KA",
-            "MH");
-
-    assertThat(breakdown).isNotNull();
-    assertThat(breakdown.taxType()).isEqualTo(GstService.TaxType.INTER_STATE);
-    assertThat(breakdown.cgst()).isEqualByComparingTo(BigDecimal.ZERO);
-    assertThat(breakdown.sgst()).isEqualByComparingTo(BigDecimal.ZERO);
-    assertThat(breakdown.igst()).isEqualByComparingTo("18.00");
-  }
-
-  @Test
-  @DisplayName("splitTaxAmountSafe falls back to CGST SGST split when splitter returns null")
-  void splitTaxAmountSafe_fallsBackToIntraStateSplitWhenSplitterReturnsNull() {
-    when(gstService.splitTaxAmount(new BigDecimal("100.00"), new BigDecimal("18.00"), "KA", "KA"))
-        .thenReturn(null);
-    when(gstService.resolveTaxType("KA", "KA", false)).thenReturn(GstService.TaxType.INTRA_STATE);
-
-    GstService.GstBreakdown breakdown =
-        ReflectionTestUtils.invokeMethod(
-            purchaseInvoiceEngine,
-            "splitTaxAmountSafe",
-            new BigDecimal("100.00"),
-            new BigDecimal("18.00"),
-            "KA",
-            "KA");
-
-    assertThat(breakdown).isNotNull();
-    assertThat(breakdown.taxType()).isEqualTo(GstService.TaxType.INTRA_STATE);
-    assertThat(breakdown.cgst()).isEqualByComparingTo("9.00");
-    assertThat(breakdown.sgst()).isEqualByComparingTo("9.00");
-    assertThat(breakdown.igst()).isEqualByComparingTo(BigDecimal.ZERO);
-  }
-
-  @Test
   @DisplayName("createPurchase rejects goods receipt drift when stock movement is missing")
   void createPurchase_rejectsGoodsReceiptWithoutStockMovement() {
     when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(

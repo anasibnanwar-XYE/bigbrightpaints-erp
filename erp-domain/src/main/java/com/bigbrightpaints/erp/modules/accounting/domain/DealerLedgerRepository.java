@@ -105,7 +105,7 @@ public interface DealerLedgerRepository extends JpaRepository<DealerLedgerEntry,
   List<DealerLedgerEntry> findOverdueAsOf(
       @Param("company") Company company, @Param("asOfDate") java.time.LocalDate asOfDate);
 
-  // DSO calculation support - using native query for date arithmetic compatibility
+  // DSO calculation support - native query keeps date arithmetic explicit.
   @Query(
       value =
           "SELECT AVG((paid_date - entry_date)::numeric) FROM dealer_ledger_entries WHERE"

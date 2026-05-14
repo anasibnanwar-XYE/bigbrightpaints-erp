@@ -49,5 +49,5 @@ For the full architecture reference, see:
 
 ## Known Limitations
 
-- Dispatch ownership is a two-layer seam: the controller/host may sit on one module while the commercial/accounting ownership is asserted by another.
+- Dispatch ownership is split across modules: inventory owns the transport/controller path while sales and accounting own commercial posting.
 - Some stock operations depend on configuration toggles (e.g., `erp.inventory.accounting.events.enabled`).

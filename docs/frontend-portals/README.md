@@ -1,11 +1,10 @@
 # Frontend Portal Contract
 
 `docs/frontend-portals/` is the frontend ownership map for the ERP shell split.
-Older tracker-style notes under `docs/frontend-update-v2/` are delta/history
-references only. They are not a second source of truth for routing, API
-ownership, or portal placement.
+This tree is the source of truth for routing, API ownership, and portal
+placement.
 
-Last reviewed: 2026-04-08
+Last reviewed: 2026-05-09
 
 Exact portal folders:
 - `superadmin`
@@ -29,6 +28,9 @@ Each folder must carry the same file set:
 ## Canonical Portal Navigation Map
 
 Use this map to navigate every active portal contract surface from this README.
+
+- [Frontend portal build guide](./build-guide.md)
+- [Portal matrix](./portal-matrix.md)
 
 ### Superadmin
 
@@ -69,7 +71,6 @@ Use this map to navigate every active portal contract surface from this README.
 - [role-boundaries](./sales/role-boundaries.md)
 - [states-and-errors](./sales/states-and-errors.md)
 - [playwright-journeys](./sales/playwright-journeys.md)
-- [frontend-engineer-handoff (reference-only)](./sales/frontend-engineer-handoff.md)
 
 ### Factory
 
@@ -96,7 +97,6 @@ Use this map to navigate every active portal contract surface from this README.
 - Use `GET /api/v1/auth/me` as the only frontend identity bootstrap.
 - Persist tenant scope as `companyCode`, never `companyId`.
 - Tenant-scoped requests use `X-Company-Code`; do not send `X-Company-Id`.
-- Do not wire retired surfaces such as `/api/v1/auth/profile`.
 - Superadmin UX is platform control-plane only and must stay on `/api/v1/superadmin/**`.
 - Tenant-admin UX owns `/api/v1/admin/users/**` and `GET /api/v1/admin/approvals`.
 - Export approvals belong to tenant-admin, not accounting.
@@ -116,14 +116,13 @@ Use this map to navigate every active portal contract surface from this README.
 
 ## How frontend engineers should use this tree
 
-1. Read [`portal-matrix.md`](./portal-matrix.md) to place a screen in the correct folder.
-2. Open the target portal `README.md` first.
-3. Build the page using that portal's `routes.md`, `api-contracts.md`, and `workflows.md`.
-4. Use `states-and-errors.md` to implement loading, empty, validation, and failure UX.
-5. Convert `playwright-journeys.md` into browser tests after screens are wired.
-6. Use `docs/frontend-update-v2/` only when you need branch-history context for
-   a specific older hardening note; if it disagrees with this tree or
-   `docs/frontend-api/`, this tree wins.
+1. Read [`build-guide.md`](./build-guide.md) for the portal/persona overview.
+2. Read [`portal-matrix.md`](./portal-matrix.md) to place a screen in the correct folder.
+3. Open the target portal `README.md` first.
+4. Build the page using that portal's `routes.md`, `api-contracts.md`, and `workflows.md`.
+5. Use `states-and-errors.md` to implement loading, empty, validation, and failure UX.
+6. Convert `playwright-journeys.md` into browser tests after screens are wired.
+7. Treat this tree and `docs/frontend-api/` as the frontend contract source.
 
 ## Shared shell rules
 

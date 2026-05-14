@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **company module** (`modules/company`) and the tenant-runtime infrastructure it owns. It covers tenant lifecycle, runtime admission, module gating, super-admin control-plane operations, company-context resolution, usage-enforcement surfaces, and the V1 Add Client activation boundary.
+This document describes the **company module** (`modules/company`) and the tenant-runtime infrastructure it owns. It covers tenant lifecycle, runtime admission, module gating, super-admin control-plane operations, company-context resolution, usage-enforcement surfaces, and the V1 Add Client activation boundary.
 
 ## Ownership Summary
 
@@ -45,7 +45,7 @@ and is generated in `openapi.json`. Company-owned Super Admin routes include:
 | `/api/v1/superadmin/tenants/{id}/suspension/**`, `/resume`, `/cancel`, `/archive`, `/commercial-state`, `/lifecycle` | Commercial/lifecycle access matrix and current lifecycle update endpoint |
 | `/api/v1/superadmin/support/tickets/**` | Support queue, customer-visible messages, internal notes, SLA refresh, feature/incident conversion, and Sentry link/sync |
 | `/api/v1/superadmin/audit/**`, `/infra/**`, `/observability/datadog/status` | Privacy-safe audit/security events, infra health/cost, and safe observability status |
-| `/api/v1/superadmin/profile/**`, `/settings`, `/roles/**`, `/changelog/**`, `/notify` | Platform operator profile, settings, role catalog, release notes, and notification utility |
+| `/api/v1/superadmin/profile/**`, `/settings`, `/roles/**`, `/changelog/**`, `/notify` | Platform operator profile, settings, role catalog, release notes, and notification dispatch |
 
 All list routes use documented query parameters and explicit validation for
 unknown filters, invalid enums, invalid sort fields, and oversized pages. All
@@ -120,9 +120,9 @@ Called during login and refresh to check tenant state and active-user quota. Rej
 **Policy persistence:**
 Runtime policies are persisted to the `system_settings` table with keys like `tenant.runtime.hold-state.{companyId}`, `tenant.runtime.max-concurrent-requests.{companyId}`, etc. On startup or cache expiry, policies are loaded from persistence. If persistence is unavailable during a cache refresh, the last-known in-memory policy is kept (request admission remains available during transient outages).
 
-### TenantRuntimeRequestAdmissionService
+### TenantRuntimeEnforcementService
 
-A thin facade over `TenantRuntimeEnforcementService` that provides the entry point for runtime filters, interceptors, and auth flows. It prevents direct coupling between the filter chain and the enforcement policy service.
+Canonical runtime policy, request-admission, auth-operation, counter, and snapshot owner. `CompanyContextFilter`, the portal/runtime interceptor, auth login/refresh, and super-admin runtime controls call this service directly.
 
 ### Add Client and Owner Setup Services
 
@@ -170,7 +170,7 @@ Resolves the current company from `CompanyContextHolder` (ThreadLocal set by `Co
 Company context is set by `CompanyContextFilter` (in `core/security/`, documented in [auth.md](auth.md)):
 
 1. JWT `companyCode` claim is extracted by `JwtAuthenticationFilter`.
-2. `CompanyContextFilter` validates the claim against any `X-Company-Code` header, rejects legacy `X-Company-Id` headers, resolves the company lifecycle state, enforces lifecycle restrictions, runs tenant runtime admission, and sets `CompanyContextHolder`.
+2. `CompanyContextFilter` validates the claim against any `X-Company-Code` header, rejects retired `X-Company-Id` headers, resolves the company lifecycle state, enforces lifecycle restrictions, runs tenant runtime admission, and sets `CompanyContextHolder`.
 3. Downstream services use `CompanyContextHolder.getCompanyCode()` or `CompanyContextService` to access tenant context.
 
 ### Super-Admin Platform Scope
@@ -208,7 +208,7 @@ provider credentials, or `.env` values.
 | Boundary | Direction | Description |
 | --- | --- | --- |
 | company → auth | dependency | Super-admin control plane calls `TokenBlacklistService` and `RefreshTokenService` for force-logout |
-| company → auth | dependency | `TenantRuntimeRequestAdmissionService` is called by `AuthService` for login/refresh admission |
+| company → auth | dependency | `TenantRuntimeEnforcementService` is called by `AuthService` for login/refresh admission |
 | company → auth | dependency | Add Client and owner setup use canonical auth/account services for activation, scoped account setup, session revocation, and password recovery |
 | company → accounting | dependency | `TenantDefaultSeedingService` and setup mappings seed and repair accounting defaults through the current seed-status corridor |
 | company → core/security | dependency | `CompanyContextFilter` enforces lifecycle and runtime admission |
@@ -226,12 +226,12 @@ provider credentials, or `.env` values.
 ## Cross-References
 
 - [docs/modules/auth.md](auth.md) — auth module (login, refresh, logout, MFA, token revocation, security filters)
-- [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — canonical module inventory
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/adrs/ADR-002-multi-tenant-auth-scoping.md](../adrs/ADR-002-multi-tenant-auth-scoping.md) — ADR for multi-tenant auth scoping
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — overall architecture reference
-- [docs/SECURITY.md](../SECURITY.md) — security review policy
+- [docs/SECURITY.md](../SECURITY.md) — security controls
 - [docs/RELIABILITY.md](../RELIABILITY.md) — reliability posture
 - [docs/adrs/ADR-006-portal-and-host-boundary-separation.md](../adrs/ADR-006-portal-and-host-boundary-separation.md) — portal/host boundary ADR
-- [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory including auth/identity and tenant/admin management flows
+- [docs/BACKEND-FEATURE-CATALOG.md](../BACKEND-FEATURE-CATALOG.md) — backend feature catalog
 - [docs/flows/auth-identity.md](../flows/auth-identity.md) — canonical auth/identity flow (behavioral entrypoint)
 - [docs/flows/tenant-admin-management.md](../flows/tenant-admin-management.md) — canonical tenant/admin management flow (behavioral entrypoint)

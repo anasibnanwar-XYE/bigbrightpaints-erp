@@ -143,8 +143,7 @@ public class SalesService {
             transactionManager,
             meterRegistry);
     this.salesCoreEngine = engine;
-    SalesIdempotencyService idempotencyService = new SalesIdempotencyService(engine);
-    this.salesOrderCrudService = new SalesOrderCrudService(engine, idempotencyService);
+    this.salesOrderCrudService = new SalesOrderCrudService(engine);
     this.salesOrderLifecycleService = new SalesOrderLifecycleService(engine);
     this.salesDealerCrudService = new SalesDealerCrudService(engine);
     this.salesDispatchReconciliationService = new SalesDispatchReconciliationService(engine);

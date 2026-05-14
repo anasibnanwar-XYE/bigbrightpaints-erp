@@ -8,11 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.lang.reflect.Method;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -239,31 +235,7 @@ class FactoryServiceTest {
   }
 
   @Test
-  void factoryService_noLongerExposesLegacyBatchLoggingSurface() {
-    assertThat(Arrays.stream(FactoryService.class.getDeclaredMethods()).map(Method::getName))
-        .doesNotContain(
-            "listBatches",
-            "logBatch",
-            "logBatchInternal",
-            "createBatchWithNaturalKey",
-            "resolveExistingBatch",
-            "isBatchPayloadEquivalent",
-            "assertLegacyBatchLoggingAllowed",
-            "registerFinishedGoodsBatch");
-    assertThat(
-            Files.exists(
-                Path.of(
-                    "src/main/java/com/bigbrightpaints/erp/modules/factory/dto/ProductionBatchRequest.java")))
-        .isFalse();
-    assertThat(
-            Files.exists(
-                Path.of(
-                    "src/main/java/com/bigbrightpaints/erp/modules/factory/dto/ProductionBatchDto.java")))
-        .isFalse();
-  }
-
-  @Test
-  void dashboard_countsLoggedBatchesWithoutLegacyBatchDtos() {
+  void dashboard_countsProductionLogsWithoutRetiredBatchDtos() {
     ProductionPlan completedPlan = new ProductionPlan();
     completedPlan.setStatus("COMPLETED");
     ProductionPlan pendingPlan = new ProductionPlan();

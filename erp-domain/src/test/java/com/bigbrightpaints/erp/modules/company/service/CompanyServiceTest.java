@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -96,7 +98,11 @@ class CompanyServiceTest {
 
   @BeforeEach
   void setUp() {
-    lenient().when(companyClock.now(any())).thenReturn(Instant.parse("2026-03-18T06:30:00Z"));
+    Instant now = Instant.parse("2026-03-18T06:30:00Z");
+    lenient().when(companyClock.now(nullable(Company.class))).thenReturn(now);
+    lenient()
+        .when(companyClock.today(nullable(Company.class)))
+        .thenReturn(LocalDate.of(2026, 3, 18));
     lenient().when(billingService.getBillingMetrics()).thenReturn(Map.of());
     lenient().when(tenantSupportControlPort.countOpenSupportTickets()).thenReturn(0L);
     lenient().when(tenantSupportControlPort.countOpenBugs()).thenReturn(0L);
@@ -231,7 +237,7 @@ class CompanyServiceTest {
 
   @Test
   void
-      synchronizeRuntimePolicyEnvelope_usesFallbackReasonAndActiveStateWhenLifecycleFieldsAreBlank() {
+      synchronizeRuntimePolicyEnvelope_usesDefaultReasonAndActiveStateWhenLifecycleFieldsAreBlank() {
     authenticateAs("ROLE_SUPER_ADMIN");
     Company target = company(4L, "ACME");
     target.setLifecycleState(null);
@@ -245,13 +251,13 @@ class CompanyServiceTest {
         "synchronizeRuntimePolicyEnvelope",
         target,
         SecurityContextHolder.getContext().getAuthentication(),
-        "fallback-sync");
+        "default-sync");
 
     verify(tenantRuntimeEnforcementService)
         .updatePolicy(
             "ACME",
             TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
-            "fallback-sync",
+            "default-sync",
             0,
             77,
             Integer.MAX_VALUE,
@@ -931,7 +937,7 @@ class CompanyServiceTest {
   }
 
   @Test
-  void companyRequest_legacyQuotaConstructor_initializesAdminFieldsAsNull() {
+  void companyRequest_quotaConstructorInitializesAdminFieldsAsNull() {
     CompanyRequest request =
         new CompanyRequest("Acme", "ACME", "UTC", BigDecimal.TEN, 10L, 20L, 30L, 40L, true, true);
 

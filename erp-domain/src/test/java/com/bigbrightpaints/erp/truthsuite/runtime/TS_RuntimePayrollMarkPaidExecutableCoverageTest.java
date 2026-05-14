@@ -118,7 +118,7 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
     when(hrLookupService.lockPayrollRun(company, 77L)).thenReturn(run);
     when(accountingLookupService.requireJournalEntry(company, 990L)).thenReturn(paymentJournal);
 
-    assertThatThrownBy(() -> service.markAsPaid(77L, "legacy-ref"))
+    assertThatThrownBy(() -> service.markAsPaid(77L, "payment-ref"))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Payroll payment journal reference is missing");
   }
@@ -171,7 +171,7 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
     when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
     when(payrollRunRepository.save(any(PayrollRun.class))).thenReturn(run);
 
-    service.markAsPaid(77L, "legacy-ref");
+    service.markAsPaid(77L, "payment-ref");
 
     assertThat(line.getPaymentStatus()).isEqualTo(PayrollRunLine.PaymentStatus.PAID);
     assertThat(line.getPaymentReference()).isEqualTo("PAYROLL-PAY-2026-001");

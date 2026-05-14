@@ -44,29 +44,29 @@ final class AccountingFacadeJournalSupport {
   }
 
   static Long resolvePrimaryDebitAccount(
-      List<JournalEntryRequest.JournalLineRequest> lines, Long fallback) {
+      List<JournalEntryRequest.JournalLineRequest> lines, Long defaultAccountId) {
     if (lines == null) {
-      return fallback;
+      return defaultAccountId;
     }
     return lines.stream()
         .filter(line -> line.debit() != null && line.debit().compareTo(BigDecimal.ZERO) > 0)
         .map(JournalEntryRequest.JournalLineRequest::accountId)
         .filter(Objects::nonNull)
         .findFirst()
-        .orElse(fallback);
+        .orElse(defaultAccountId);
   }
 
   static Long resolvePrimaryCreditAccount(
-      List<JournalEntryRequest.JournalLineRequest> lines, Long fallback) {
+      List<JournalEntryRequest.JournalLineRequest> lines, Long defaultAccountId) {
     if (lines == null) {
-      return fallback;
+      return defaultAccountId;
     }
     return lines.stream()
         .filter(line -> line.credit() != null && line.credit().compareTo(BigDecimal.ZERO) > 0)
         .map(JournalEntryRequest.JournalLineRequest::accountId)
         .filter(Objects::nonNull)
         .findFirst()
-        .orElse(fallback);
+        .orElse(defaultAccountId);
   }
 
   static BigDecimal calculateTotalCredits(List<JournalEntryRequest.JournalLineRequest> lines) {

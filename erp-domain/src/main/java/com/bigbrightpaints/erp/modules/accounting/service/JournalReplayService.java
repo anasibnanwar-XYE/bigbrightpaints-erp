@@ -98,7 +98,7 @@ class JournalReplayService {
     return reference.trim().toUpperCase(Locale.ROOT).startsWith("RESERVED-");
   }
 
-  Optional<JournalReferenceMapping> findLatestLegacyReferenceMapping(
+  Optional<JournalReferenceMapping> findLatestReferenceKeyMapping(
       Company company, String idempotencyKey) {
     if (company == null || !StringUtils.hasText(idempotencyKey)) {
       return Optional.empty();
@@ -124,7 +124,7 @@ class JournalReplayService {
       return false;
     }
     String key = normalizeIdempotencyMappingKey(idempotencyKey);
-    return findLatestLegacyReferenceMapping(company, key).isPresent();
+    return findLatestReferenceKeyMapping(company, key).isPresent();
   }
 
   boolean hasExistingSettlementAllocations(Company company, String idempotencyKey) {
@@ -145,7 +145,7 @@ class JournalReplayService {
     }
     String key = normalizeIdempotencyMappingKey(idempotencyKey);
     String canonical = canonicalReference.trim();
-    Optional<JournalReferenceMapping> existing = findLatestLegacyReferenceMapping(company, key);
+    Optional<JournalReferenceMapping> existing = findLatestReferenceKeyMapping(company, key);
     if (existing.isPresent()) {
       JournalReferenceMapping mapping = existing.get();
       if (StringUtils.hasText(mapping.getCanonicalReference())
@@ -165,7 +165,7 @@ class JournalReplayService {
       return new IdempotencyReservation(true, canonical);
     }
     JournalReferenceMapping mapping =
-        findLatestLegacyReferenceMapping(company, key)
+        findLatestReferenceKeyMapping(company, key)
             .orElseThrow(
                 () ->
                     new ApplicationException(
@@ -189,11 +189,11 @@ class JournalReplayService {
     }
     String key = normalizeIdempotencyMappingKey(idempotencyKey);
     Optional<JournalReferenceMapping> mappingCandidate =
-        findLatestLegacyReferenceMapping(company, key);
+        findLatestReferenceKeyMapping(company, key);
     if (mappingCandidate.isEmpty()) {
       JournalReferenceMapping created = new JournalReferenceMapping();
       created.setCompany(company);
-      created.setLegacyReference(key);
+      created.setReferenceKey(key);
       created.setCanonicalReference(entry.getReferenceNumber());
       created.setEntityId(entry.getId());
       if (StringUtils.hasText(entityType)) {
@@ -360,7 +360,7 @@ class JournalReplayService {
       return existing;
     }
     Optional<JournalReferenceMapping> mappingCandidate =
-        findLatestLegacyReferenceMapping(company, normalizeIdempotencyMappingKey(idempotencyKey));
+        findLatestReferenceKeyMapping(company, normalizeIdempotencyMappingKey(idempotencyKey));
     if (mappingCandidate.isEmpty()) {
       return null;
     }

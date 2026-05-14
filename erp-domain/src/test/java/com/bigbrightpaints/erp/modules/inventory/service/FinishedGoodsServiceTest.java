@@ -178,6 +178,10 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
                     line.getId(), new BigDecimal("5"), null)),
             null,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     finishedGoodsService.confirmDispatch(request, "tester");
@@ -249,6 +253,10 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
                     line.getId(), new BigDecimal("5"), null)),
             null,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     finishedGoodsService.confirmDispatch(request, "tester");
@@ -272,7 +280,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void dispatchUsesReservedBatchActualCostUnderLegacyWeightedAverageAliasUnderTurkishLocale() {
+  void dispatchUsesReservedBatchActualCostUnderWeightedAverageNameUnderTurkishLocale() {
     Locale previous = Locale.getDefault();
     Locale.setDefault(Locale.forLanguageTag("tr-TR"));
     try {
@@ -283,7 +291,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
               "FG-WAC-ALIAS-DISP",
               new BigDecimal("20"),
               BigDecimal.ZERO,
-              "weighted-average");
+              "weighted_average");
 
       FinishedGoodBatch batchA =
           createBatch(
@@ -438,7 +446,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
   @Test
   @Tag("critical")
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
-  void reserveForOrder_treatsLegacyWeightedAverageAliasAsFifoUnderTurkishLocale() {
+  void reserveForOrder_treatsWeightedAverageNameAsWacUnderTurkishLocale() {
     Locale previous = Locale.getDefault();
     Locale.setDefault(Locale.forLanguageTag("tr-TR"));
     try {
@@ -449,7 +457,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
               "FG-WAC-ALIAS-" + UUID.randomUUID().toString().substring(0, 8),
               new BigDecimal("6"),
               BigDecimal.ZERO,
-              "weighted-average");
+              "weighted_average");
 
       FinishedGoodBatch olderManufacturedLaterExpiry =
           createBatch(
@@ -758,36 +766,6 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void linkDispatchMovementsToJournal_backfillsLegacyNullPackingSlipIdForSingleSlipOrder() {
-    Company company = seedCompany("DISPATCH-LEGACY-LINK");
-    FinishedGood fg =
-        createFinishedGood(company, "FG-LINK", new BigDecimal("10"), BigDecimal.ZERO, "FIFO");
-    FinishedGoodBatch batch =
-        createBatch(fg, "BATCH-LINK", new BigDecimal("10"), BigDecimal.ZERO, new BigDecimal("9"));
-    SalesOrder order =
-        createOrder(
-            company, "SO-LINK-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("2"));
-    PackagingSlip slip = createSlip(company, order, "DISPATCHED", batch, new BigDecimal("2"));
-
-    InventoryMovement legacy = new InventoryMovement();
-    legacy.setFinishedGood(fg);
-    legacy.setFinishedGoodBatch(batch);
-    legacy.setReferenceType(InventoryReference.SALES_ORDER);
-    legacy.setReferenceId(order.getId().toString());
-    legacy.setMovementType("DISPATCH");
-    legacy.setQuantity(new BigDecimal("2"));
-    legacy.setUnitCost(new BigDecimal("9"));
-    InventoryMovement savedLegacy = inventoryMovementRepository.saveAndFlush(legacy);
-
-    finishedGoodsService.linkDispatchMovementsToJournal(slip.getId(), 777L);
-
-    InventoryMovement refreshed =
-        inventoryMovementRepository.findById(savedLegacy.getId()).orElseThrow();
-    assertThat(refreshed.getPackingSlipId()).isEqualTo(slip.getId());
-    assertThat(refreshed.getJournalEntryId()).isEqualTo(777L);
-  }
-
-  @Test
   void dispatchRejectsZeroCostWhenOnHandExists() {
     Company company = seedCompany("WAC-ZERO");
     FinishedGood fg =
@@ -827,6 +805,10 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
                     line.getId(), new BigDecimal("5"), null)),
             null,
             null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     assertThatThrownBy(() -> finishedGoodsService.confirmDispatch(request, "tester"))
@@ -854,6 +836,10 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
             List.of(
                 new DispatchConfirmationRequest.LineConfirmation(
                     line.getId(), new BigDecimal("5"), null)),
+            null,
+            null,
+            null,
+            null,
             null,
             null,
             null);
@@ -1530,6 +1516,10 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
                     primaryLine.getId(), new BigDecimal("6"), null)),
             "partial primary shipment",
             "tester",
+            null,
+            null,
+            null,
+            null,
             null);
 
     var firstResponse = finishedGoodsService.confirmDispatch(firstConfirm, "tester");
@@ -1549,6 +1539,10 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
                     firstBackorderLine.getId(), new BigDecimal("2"), null)),
             "partial backorder shipment",
             "tester",
+            null,
+            null,
+            null,
+            null,
             null);
 
     var secondResponse = finishedGoodsService.confirmDispatch(secondConfirm, "tester");

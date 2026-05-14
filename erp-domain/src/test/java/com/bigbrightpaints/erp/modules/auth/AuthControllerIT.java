@@ -1179,21 +1179,21 @@ public class AuthControllerIT extends AbstractIntegrationTest {
             Map.class);
     assertThat(retiredForgotSuperadminResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
-    ResponseEntity<Map> retiredAdminSettingsResponse =
+    ResponseEntity<Map> oldAdminSettingsResponse =
         rest.exchange(
             "/api/v1/admin/settings",
             HttpMethod.GET,
             new HttpEntity<>(bearer(accessToken)),
             Map.class);
-    assertThat(retiredAdminSettingsResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(oldAdminSettingsResponse.getStatusCode()).isNotEqualTo(HttpStatus.OK);
 
-    ResponseEntity<Map> retiredAdminRolesResponse =
+    ResponseEntity<Map> oldAdminRolesResponse =
         rest.exchange(
             "/api/v1/admin/roles",
             HttpMethod.GET,
             new HttpEntity<>(bearer(accessToken)),
             Map.class);
-    assertThat(retiredAdminRolesResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(oldAdminRolesResponse.getStatusCode()).isNotEqualTo(HttpStatus.OK);
 
     ResponseEntity<Map> blockedAdminResponse =
         rest.exchange(

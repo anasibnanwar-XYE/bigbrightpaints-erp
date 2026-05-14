@@ -69,7 +69,7 @@ class ExportApprovalServiceTest {
     company.setCode("EXP");
     company.setTimezone("UTC");
 
-    actor = new UserAccount("admin@bbp.com", "hash", "Export Admin");
+    actor = new UserAccount("admin@bbp.com", "TEST", "hash", "Export Admin");
     ReflectionTestUtils.setField(actor, "id", 11L);
     actor.setCompany(company);
 

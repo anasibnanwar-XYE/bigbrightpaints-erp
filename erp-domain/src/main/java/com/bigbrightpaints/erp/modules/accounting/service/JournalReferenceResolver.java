@@ -40,13 +40,13 @@ public class JournalReferenceResolver {
     if (direct.isPresent()) {
       return direct;
     }
-    List<JournalReferenceMapping> legacyMappings =
+    List<JournalReferenceMapping> referenceKeyMappings =
         journalReferenceMappingRepository.findAllByCompanyAndReferenceKeyIgnoreCase(
             company, trimmed);
-    Optional<JournalEntry> legacyEntry =
-        findEntryByMappings(company, legacyMappings, true, "legacy", trimmed);
-    if (legacyEntry.isPresent()) {
-      return legacyEntry;
+    Optional<JournalEntry> referenceKeyEntry =
+        findEntryByMappings(company, referenceKeyMappings, true, "reference key", trimmed);
+    if (referenceKeyEntry.isPresent()) {
+      return referenceKeyEntry;
     }
     List<JournalReferenceMapping> canonicalMappings =
         journalReferenceMappingRepository.findAllByCompanyAndCanonicalReferenceIgnoreCase(
@@ -86,7 +86,7 @@ public class JournalReferenceResolver {
         mappings.stream().sorted(comparator.reversed()).toList();
     for (JournalReferenceMapping mapping : ordered) {
       String candidate =
-          useCanonicalReference ? mapping.getCanonicalReference() : mapping.getLegacyReference();
+          useCanonicalReference ? mapping.getCanonicalReference() : mapping.getReferenceKey();
       if (!StringUtils.hasText(candidate)) {
         continue;
       }

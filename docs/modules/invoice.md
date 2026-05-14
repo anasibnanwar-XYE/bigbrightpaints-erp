@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **invoice module** and the **finance host ownership** between internal finance views and dealer self-service. It covers invoice lifecycle, settlement behavior, host ownership boundaries, self-service isolation, and the ledger, invoice-list, aging, and invoice-PDF surfaces that internal and dealer-facing consumers interact with.
+This document describes the **invoice module** and the **finance host ownership** between internal finance views and dealer self-service. It covers invoice lifecycle, settlement behavior, host ownership boundaries, self-service isolation, and the ledger, invoice-list, aging, and invoice-PDF surfaces that internal and dealer-facing consumers interact with.
 
 ---
 
@@ -184,25 +184,6 @@ Invoice list filtering:
 
 ---
 
-## Deprecated / Non-Canonical Paths
-
-The following paths have been **retired** and return 404:
-
-| Retired Path | Former Actor | Replacement |
-| --- | --- | :--- |
-| `GET /api/v1/dealers/{id}/ledger` | Admin, Sales, Accounting | `GET /api/v1/portal/finance/ledger?dealerId={id}` |
-| `GET /api/v1/dealers/{id}/invoices` | Admin, Sales, Accounting | `GET /api/v1/portal/finance/invoices?dealerId={id}` |
-| `GET /api/v1/dealers/{id}/aging` | Admin, Sales, Accounting | `GET /api/v1/portal/finance/aging?dealerId={id}` |
-| `GET /api/v1/invoices/dealers/{id}` | Admin | `GET /api/v1/portal/finance/invoices?dealerId={id}` |
-| `GET /api/v1/accounting/aging/dealers/{id}` | Accounting | `GET /api/v1/portal/finance/aging?dealerId={id}` |
-| `GET /api/v1/accounting/statements/dealers/{id}` | Accounting | Use portal finance endpoints |
-| `GET /api/v1/reports/aging/dealer/{id}` | Accounting | `GET /api/v1/portal/finance/aging?dealerId={id}` |
-| `GET /api/v1/reports/dso/dealer/{id}` | Accounting | Use portal finance aging |
-
-All legacy dealer finance aliases have been removed from `openapi.json` and the endpoint inventories. The canonical paths are `/api/v1/portal/finance/*` for internal and `/api/v1/dealer-portal/*` for dealer self-service.
-
----
-
 ## Frontend Contract Boundaries
 
 ### For Internal Finance (Admin/Accounting)
@@ -234,9 +215,9 @@ All legacy dealer finance aliases have been removed from `openapi.json` and the 
 
 ---
 
-## Cross-Module Seams
+## Cross-Module Boundaries
 
-| Seam | Modules Involved | Boundary Behavior |
+| Boundary | Modules Involved | Boundary Behavior |
 | --- | --- | --- |
 | Invoice creation | Sales → Invoice | `SalesFulfillmentService.fulfill(issueInvoice=true)` triggers invoice creation via `InvoiceService.issueInvoiceForOrder()` |
 | AR posting | Invoice → Accounting | Invoice issuance triggers accounting via internal `AccountingService` (not directly via AccountingFacade) |
@@ -262,7 +243,7 @@ All legacy dealer finance aliases have been removed from `openapi.json` and the 
 - [sales.md](sales.md) — Sales module, order lifecycle, dispatch coordination, dealer management
 - [admin-portal-rbac.md](admin-portal-rbac.md) — Host ownership map, PortalRoleActionMatrix predicates
 - [purchasing.md](purchasing.md) — Purchase invoices (AP side)
-- [inventory.md](inventory.md) — Stock and dispatch execution
+- [inventory-stock-control.md](inventory-stock-control.md) — Stock and dispatch execution
 - [core-security-error.md](core-security-error.md) — Security filter chain, access denial messages
 - [core-idempotency.md](core-idempotency.md) — Idempotency helpers
 - [docs/INDEX.md](../INDEX.md) — canonical documentation index

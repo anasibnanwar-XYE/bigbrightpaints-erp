@@ -18,17 +18,153 @@ Last reviewed: 2026-05-14
   - orchestrator ingress now requires `Idempotency-Key` for mutating commands instead of deriving keys from request IDs or payload hashes.
   - `CommandDispatcher` propagates the persisted lease idempotency key and fails fast if the lease command is missing or malformed.
   - trace detail serialization fails closed instead of storing non-JSON fallback strings.
+  - post-PR #200 rebase remediation restores the final PR #199 hard-cut orchestrator runtime shape after conflict resolution, with no `WorkflowService`, policy-enforcer, payroll-run request, or orchestrator-disabled compatibility leftovers.
+  - IAM canonical account upsert now reconciles by current scoped identity (`email`, `auth_scope_code`) after first checking `user_id`, matching the database uniqueness contract and avoiding a second historical-account path.
+  - after all runtime PR shards passed on `d1ea0d40e322675aa97e7c4c16e0451161fddc96`, changed-code coverage compaction advances the existing CI baseline to that green runtime SHA so shard routing still sees the full PR-vs-main diff while coverage enforcement is scoped to this final non-runtime CI/evidence patch.
 - Commands run:
   - `bash scripts/guard_orchestrator_correlation_contract.sh`
   - `bash scripts/guard_flyway_v2_migration_ownership.sh`
   - `bash scripts/guard_flyway_v2_referential_contract.sh`
   - `bash scripts/flyway_overlap_scan.sh`
   - `git diff --check`
+  - `rg -n "^(<<<<<<<|=======|>>>>>>>)" erp-domain/src/main/java erp-domain/src/test/java docs openapi.json ci scripts`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=CorrelationIdentifierSanitizerTest,TS_RuntimeOrchestratorExecutableCoverageTest,TS_RuntimeOrchestratorCorrelationCoverageTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest,TS_RuntimeTraceServiceExecutableCoverageTest,TS_PackagingSlipInvoiceLinkV2MigrationContractTest test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
   - `bash ci/check-high-risk-changes.sh`
   - `bash ci/lint-knowledgebase.sh`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `bash scripts/guard_openapi_contract_drift.sh`
+  - `bash scripts/guard_accounting_portal_scope_contract.sh`
+  - `python3 scripts/ci_risk_router.py --base ae97fa3b4443a58a44d1b3f161d58e1b6964bab9 --head HEAD`
+  - `python3 -m py_compile scripts/ci_risk_router.py scripts/pr_ci_parity.py`
+
+## Addendum — `hard-cut-orchestrator-idempotency-trace-cleanup`
+
+- Scope: removes the request-key fallback after orchestrator idempotency lease creation, requires the leased command to carry the canonical persisted idempotency key, and makes trace detail serialization fail closed instead of falling back to `Map.toString()`.
+- Risk trigger: touches high-risk orchestrator runtime code under `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/**` and runtime truth-suite coverage.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no API route, tenant boundary, privilege rule, persistence schema, or background execution behavior was widened. The cleanup removes fallback behavior and keeps one canonical persisted idempotency/trace JSON path.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the orchestrator cleanup commits and rerun focused orchestrator runtime tests, compile, Spotless, high-risk guard, and whitespace checks.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - `CommandDispatcher` now derives downstream event/trace idempotency only from the leased `OrchestratorCommand`.
+  - missing or malformed leased command idempotency fails fast instead of falling back to the request argument.
+  - `TraceService` still serializes null details as `{}` but throws on serialization failure before saving an invalid non-JSON audit row.
+- Commands run:
+  - `MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -Dtest=CommandDispatcherTest,TS_RuntimeOrchestratorExecutableCoverageTest test`
+  - `MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -Dtest=TS_RuntimeTraceServiceExecutableCoverageTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest test`
+  - `MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `bash scripts/guard_orchestrator_correlation_contract.sh`
+  - `git diff --check`
+- Result summary:
+  - command dispatcher focused pack reported 16 tests run, 0 failures/errors/skips after fixture cleanup
+  - trace/idempotency focused pack reported 14 tests run, 0 failures/errors/skips
+  - orchestrator correlation guard now asserts the leased canonical idempotency key is propagated downstream and the request-key fallback stays absent
+  - Spotless and whitespace diff checks passed
+
+## Addendum — `hard-cut-sales-order-status-canonicalization`
+
+- Scope: adds Flyway v2 forward migration `V207__canonicalize_sales_order_statuses.sql` to collapse retired sales-order status tokens into the current canonical lifecycle, updates the migration contract guard, and removes `BOOKED` from performance fixtures in favor of `CONFIRMED`.
+- Risk trigger: touches high-risk Flyway v2 schema under `erp-domain/src/main/resources/db/migration_v2/**` and sales/order-credit behavior fixtures.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no runtime compatibility path, fallback, or privilege/tenant-boundary change was introduced. Retired order statuses are handled once through forward data canonicalization so Java services keep one current-state lifecycle model.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the status canonicalization commit and rerun Flyway v2 migration guards, targeted O2C/performance/accounting tests, compile, Spotless, high-risk guard, and whitespace checks.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - `BOOKED` canonicalizes to `CONFIRMED` so pending credit exposure remains represented by a current pending-exposure status.
+  - `SHIPPED` and `FULFILLED` canonicalize to `DISPATCHED`; `COMPLETED` canonicalizes to `SETTLED`, preventing retired terminal sales-order states from re-entering fulfillment.
+  - sales-order status history is canonicalized with the same mapping so frontend status history reads current lifecycle tokens.
+  - performance fixtures now seed `CONFIRMED`, and the reports performance fixture enables `REPORTS_ADVANCED` through the canonical module helper.
+- Commands run:
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_PackagingSlipInvoiceLinkV2MigrationContractTest,AccountingCatalogControllerSecurityIT,PerformanceBudgetIT,PerformanceExplainIT test`
+- Result summary:
+  - first focused run applied 97 Flyway v2 migrations through V207 and exposed a pre-existing `PerformanceBudgetIT` fixture issue where `REPORTS_ADVANCED` was not enabled for the reports endpoint
+  - after enabling `REPORTS_ADVANCED` through the canonical test helper, the focused pack reported 14 tests run, 0 failures/errors/skips
+
+## Addendum — `hard-cut-accounting-period-close-hook-cleanup`
+
+- Scope: removes the production test-only period-close hook layer from accounting period close and moves the concurrency pause into the period-close atomicity integration test with a test-local PostgreSQL trigger/advisory lock.
+- Risk trigger: touches high-risk accounting close/reopen code and period-close tests under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/**` and `erp-domain/src/test/java/**`.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no accounting workflow, tenant boundary, approval rule, or migration behavior changed. The cleanup removes a production bean that existed only for tests; period close still takes the pessimistic period lock, captures the snapshot before marking the period closed, and rejects concurrent posting after close.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the hook cleanup commit and rerun compile, Spotless, high-risk guard, and focused period-close tests.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - removed period-close hook names have no remaining source/docs/CI references
+  - the period-close atomicity integration test still proves posting blocks while close holds the accounting-period lock, now using test-owned database blocking instead of a production hook
+  - accounting period close/reopen unit and runtime coverage still pass
+- Commands run:
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Dtest=AccountingPeriodServiceTest,AccountingPeriodServicePolicyTest,PeriodCloseAtomicityTest,TS_RuntimeAccountingFacadePeriodCloseBoundaryTest,TS_RuntimeAccountingPeriodServiceExecutableCoverageTest,TS_RuntimeAccountingPeriodPolicyExecutableCoverageTest,TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest -Djacoco.skip=true test`
+  - `MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `git diff --check`
+  - `bash ci/check-high-risk-changes.sh`
+- Result summary:
+  - test-compile passed after removing the production hook
+  - focused period-close pack reported 89 tests run, 0 failures/errors/skips
+  - Spotless check, whitespace diff check, high-risk guard, and stale hook-name scan passed
+
+## Addendum — `hard-cut-runtime-auth-cleanup`
+
+- Scope: hard-cut cleanup branch that removes the duplicate tenant runtime access layer, unused SQL-backed IAM entity mirrors, and unused DTO leftovers while keeping the canonical runtime/auth/API contracts intact.
+- Risk trigger: touches high-risk auth/company/runtime paths and related tests/docs/CI manifests under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/**`, `erp-domain/src/test/java/**`, `ci/**`, and canonical docs.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary expansion, destructive migration, or compatibility shim was introduced. Runtime admission remains on `TenantRuntimeEnforcementService`, portal/report interception keeps the same policy service, and IAM persistence remains on the SQL-backed canonical storage services.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the runtime/auth cleanup commits and rerun compile, targeted auth/runtime/IAM tests, stale-reference scans, high-risk guard, whitespace checks, and broader PR gates.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - duplicate `TenantRuntimeAccessService`, `TenantRuntimeRequestAdmissionService`, stale runtime truth tests, and related wrapper references are absent from source/docs/CI manifests
+  - runtime admission is still documented and routed through `TenantRuntimeEnforcementService`, including portal/report interceptor paths
+  - unused IAM entity mirror classes are absent; SQL-backed `IamCanonicalStorageService`, `AuthSessionService`, migrations, and IAM contract tests remain canonical
+  - removed accounting/admin/sales/production DTO class names have no remaining source/docs references
+- Commands run:
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Dtest=TenantRuntimeEnforcementServiceTest,TenantRuntimeEnforcementInterceptorTest,CompanyContextFilterControlPlaneBindingTest,CompanyContextFilterPasswordResetBypassTest,TS_RuntimeTenantRuntimeEnforcementTest,TS_RuntimeTenantPolicyControlExecutableCoverageTest,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TenantRuntimeEnforcementAuthIT,PortalInsightsControllerIT,SuperAdminUsageServiceTest -Djacoco.skip=true test`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp clean -DskipTests test-compile`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Dtest=IamCoreSchemaAndModelHardCutMigrationIT,TS_IamCoreSchemaAndModelHardCutMigrationContractTest,AuthControllerIT,MfaControllerIT,ScopedAccountBootstrapServiceIT,AdminUserSecurityIT -Djacoco.skip=true test`
+  - exact stale-name scans for removed runtime services, runtime truth tests, unused DTOs, and IAM entity mirror classes
+  - `git diff --check`
+  - `bash ci/check-high-risk-changes.sh`
+- Result summary:
+  - targeted runtime/auth pack reported 166 tests run, 0 failures/errors/skips
+  - clean compile after runtime cleanup passed with 1081 main sources and 589 tests
+  - clean compile after unused accounting DTO cleanup passed with 1077 main sources and 589 tests
+  - clean compile after unused portal DTO cleanup passed with 1073 main sources and 589 tests
+  - clean compile after IAM entity deletion passed with 1065 main sources and 589 tests
+  - targeted auth/IAM pack reported 80 tests run, 0 failures/errors/skips
+  - stale-name scans, `git diff --check`, and high-risk guard passed
+
+## Addendum — `active-flyway-v2-hard-cut-baseline`
+
+- Scope: hard-cut schema-resource cleanup that removes the retired Flyway v1 tree, keeps `erp-domain/src/main/resources/db/migration_v2` as the only supported migration track, retires the Tally import table through a forward v2 migration while preserving historical migration files, and renames journal reference mapping storage from `legacy_reference` to `reference_key`.
+- Risk trigger: touches high-risk Flyway v2 schema under `erp-domain/src/main/resources/db/migration_v2/**` and removes the retired Flyway v1 migration tree.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary expansion, or runtime fallback was introduced. This is a pre-release hard cut that removes an obsolete schema track and aligns the active v2 baseline with the current backend model.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the schema-resource commit. After applying to an internal database, restore from a pre-change snapshot/PITR or rebuild from the previous v2 baseline; do not re-add the v1 migration tree or Tally import compatibility path.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - old Flyway v1 references are absent from runtime, test, script, and config paths after the earlier docs/tooling cleanup and this schema-resource slice
+  - `tally_imports` and `TallyImport` references are absent from current runtime/test/API surfaces outside historical and forward migration resources
+  - Flyway v2 ownership, referential, and overlap guards pass against the reduced active migration track
+  - staged whitespace check passes for the schema-resource slice
+- Commands run:
+  - `git diff --cached --check`
+  - `bash scripts/guard_flyway_v2_migration_ownership.sh`
+  - `bash scripts/guard_flyway_v2_referential_contract.sh`
+  - `bash scripts/flyway_overlap_scan.sh`
+  - `rg -n --pcre2 "db/migration(?!_v2)|classpath:db/migration(?!_v2)" .github ci scripts erp-domain/src erp-domain/pom.xml`
+  - `rg -n "tally_import|TallyImport|tally-import" erp-domain/src/main erp-domain/src/test scripts ci .github openapi.json`
+- Result summary:
+  - staged whitespace check passed with no output
+  - Flyway ownership guard passed with `[guard_flyway_v2_migration_ownership] OK`
+  - Flyway referential guard passed after checking 237 FK references against 217 PK/UNIQUE targets
+  - Flyway overlap scan passed after scanning 95 migrations with no duplicate table, constraint, or index findings
+  - old Flyway path scan returned no matches across runtime, test, script, and config paths
+  - Tally import scan returned no runtime/test/API matches
 
 ## Addendum — `pr198-rebase-on-pr197-hard-cut`
 
@@ -47,8 +183,8 @@ Last reviewed: 2026-05-14
   - code review found stale current-route documentation for retired auth profile; the DoD map now points at canonical self-profile/contact/security routes, and retired auth alias security/corridor shortcuts were removed instead of preserved
   - PR CI found a new `company->admin` module-boundary edge; company now depends on company-owned owner-invite/support-control ports, and the admin module implements those ports without adding an architecture allowlist entry
   - `openapi.json` was regenerated from `OpenApiSnapshotIT`; removed Super Admin flat onboarding/support reset and plan-template alias routes are absent, while the Super Admin plans route is canonical
-  - `docs/endpoint-inventory.md` was regenerated from `openapi.json` and now reports 362 paths, 428 operations, sha256 `43a4225c802b908590f39f91bdbd803139e8ad464d76d7c271b61fc541f11891`
-  - frontend/API/module/workflow/runbook/code-review docs and `.factory` handoffs now point at Add Client, activation/setup, Super Admin plans, and current route behavior instead of old compatibility surfaces
+  - `docs/openapi-endpoint-contract.md` was regenerated from `openapi.json` and now reports 362 paths, 428 operations, sha256 `43a4225c802b908590f39f91bdbd803139e8ad464d76d7c271b61fc541f11891`
+  - frontend/API/module/workflow/runbook docs now point at Add Client, activation/setup, Super Admin plans, and current route behavior instead of old compatibility surfaces
   - post-CI remediation keeps tenant usage rollups on a single canonical upsert path for snapshot/counter rows, removes the check-then-insert race exposed by workflow concurrency coverage, clears stale JPA state after native refresh upserts, and avoids no-op counter `updated_at` churn
   - entitlement-aware integration fixtures now write the same current-state feature override settings used by runtime module gates, so HR, reports, manufacturing, and portal tests no longer rely on stale `enabledModules`-only state
   - dealer invoice PDF export now runs in a writable transaction because PDF generation records tenant usage; this preserves the canonical quota/audit side effect instead of bypassing it
@@ -64,20 +200,20 @@ Last reviewed: 2026-05-14
   - `bash ci/lint-knowledgebase.sh`
   - `bash ci/check-high-risk-changes.sh`
   - `git diff --check`
-  - `rg -n "^(<<<<<<<|=======|>>>>>>>)" erp-domain/src/main/java erp-domain/src/test/java docs .factory openapi.json ci`
-  - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AuditServiceTest,CompanyServiceTest,SuperAdminTenantControlPlaneServiceTest,SuperAdminControllerTest,TenantOnboardingControllerTest,AuthTenantAuthorityIT,OpenApiSnapshotIT,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeCompanyControllerExecutableCoverageTest test`
+  - `rg -n "^(<<<<<<<|=======|>>>>>>>)" erp-domain/src/main/java erp-domain/src/test/java docs openapi.json ci`
+  - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AuditServiceTest,CompanyServiceTest,SuperAdminTenantControlPlaneServiceTest,SuperAdminControllerTest,TenantOnboardingControllerTest,AuthTenantAuthorityIT,OpenApiSnapshotIT,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeTenantRuntimeEnforcementTest,TS_RuntimeTenantPolicyControlExecutableCoverageTest test`
   - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_AuthDigestTokenStorageGuardTest,IamCoreSchemaAndModelHardCutMigrationIT test`
   - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AuthControllerIT,OpenApiSnapshotIT,IdentityRouteInventoryContractTest test`
   - `bash ci/check-architecture.sh`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=CompanyServiceTest,SuperAdminTenantEntitlementServiceTest test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock GATE_CANONICAL_BASE_REF=main bash scripts/gate_core.sh`
-  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=CompanyControllerIT,SuperAdminControllerIT#superAdmin_canUpdateLifecycle_listTenants_andReadTenantDetail,CR_ActuatorProdHardeningIT,CR_PayrollLegacyEndpointGatedIT,CR_CatalogImportConcurrencyIT test`
+  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=CompanyControllerIT,SuperAdminControllerIT#superAdmin_canUpdateLifecycle_listTenants_andReadTenantDetail,ActuatorProdHardeningIT,CatalogImportConcurrencyIT test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=PortalInsightsControllerIT,ReportControllerSecurityIT,TenantRuntimePolicyServiceTest test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=DealerPortalControllerSecurityIT,ProductionCatalogFinishedGoodInvariantIT test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=RawMaterialControllerSecurityIT test`
-  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TenantUsageRollupServiceTest,CR_CatalogImportConcurrencyIT test`
+  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TenantUsageRollupServiceTest,CatalogImportConcurrencyIT test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile pr-fast --label auth-tenant --maven-arg -Dtest.groups= --manifest ci/pr_manifests/pr_auth_tenant.txt`
-  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile codered --label codered-access --manifest ci/pr_manifests/pr_codered_access.txt`
+  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile risk --label risk-access --manifest ci/pr_manifests/pr_risk_access.txt`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile pr-fast --label business-slice --maven-arg -Dtest.groups= --manifest ci/pr_manifests/pr_business_slice.txt`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AccountingCatalogControllerSecurityIT,ReportExportApprovalIT test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=ReportInventoryParityIT,ReportControllerRouteContractIT test`
@@ -92,7 +228,7 @@ Last reviewed: 2026-05-14
   - module-boundary fix pack reported `CompanyServiceTest` and `SuperAdminTenantEntitlementServiceTest` green, and `ci/check-architecture.sh` passed with no `company->admin` edge
   - Gate Core reported 416 tests run, 0 failures/errors/skips; module coverage passed with line ratio `0.9611307420494699` and branch ratio `0.8980891719745223`
   - post-CI Access/Tenant manifest rerun reported 159 tests run, 0 failures/errors/skips after canonical status and entitlement fixture fixes
-  - post-CI CODE-RED Access manifest rerun reported 13 tests run, 0 failures/errors/skips after actuator and HR module-gate expectation updates
+  - post-CI risk Access manifest rerun reported 13 tests run, 0 failures/errors/skips after actuator and HR module-gate expectation updates
   - post-CI Workflow Integration manifest rerun reported 337 tests run, 0 failures/errors/skips after tenant usage rollup upserts, dealer PDF transaction, manufacturing entitlement, and retired-route assertion fixes
   - post-CI Finance/Accounting focused rerun reported `AccountingCatalogControllerSecurityIT` 8 tests and `ReportExportApprovalIT` 7 tests with 0 failures/errors/skips; the report focused rerun passed `ReportInventoryParityIT` and `ReportControllerRouteContractIT`
   - post-CI Finance/Accounting manifest rerun reported 360 tests run, 0 failures/errors/skips after entitlement-aware report/accounting fixture updates
@@ -210,6 +346,75 @@ Last reviewed: 2026-05-14
   - targeted digest-token/auth/activation suite reported 34 tests run, 0 failures/errors/skips after formatting
   - no bearer tokens, passwords, activation links, reset links, token digests, provider credentials, or `.env` values were printed in evidence
 
+## Addendum — `hard-cut-tenant-usage-shutdown-flush`
+
+- Scope: tenant usage metric persistence shutdown behavior.
+- Risk trigger: touches tenant/company usage accounting under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/TenantUsageMetricsService.java`.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary change, data migration, or billing model expansion was introduced. The shutdown flush now runs through a bounded daemon worker so graceful runtime shutdown can persist buffered tenant usage without letting unavailable storage stall CI/runtime shutdown. Scheduled and explicit tenant usage flush behavior remains canonical.
+- Rollback owner: Droid mission orchestrator.
+- Rollback method: revert this packet and rerun the tenant usage metrics service test, high-risk guard, Spotless, compile/test-compile, and gate-fast.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - `@PreDestroy` tenant usage flush is bounded to a short daemon-thread wait and cancels on timeout/failure
+  - shutdown tests cover both successful buffered metric persistence and unavailable-storage timeout behavior
+  - scheduled and explicit `flushPendingMetrics()` persistence tests still cover counter persistence, rollup recording, retry restoration, and multi-tenant partial failure behavior
+  - this preserves graceful shutdown persistence while removing the unbounded path that waited on unavailable Testcontainers PostgreSQL connections after the truth-suite tests had already passed
+- Commands run:
+  - `git diff --check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TenantUsageMetricsServiceTest test`
+  - `bash ci/check-high-risk-changes.sh`
+  - `bash ci/lint-knowledgebase.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `cd erp-domain && DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
+- Result summary:
+  - targeted tenant usage metrics suite reported 17 tests run, 0 failures/errors/skips
+  - high-risk guard, docs lint, Spotless, and test-compile passed
+
+## Addendum — `journal-reference-key-forward-migration`
+
+- Scope: Flyway v2 checksum preservation for retired Tally import storage, accounting journal reference mapping column canonicalization, and packaging-slip COGS journal link backfill.
+- Risk trigger: touches Flyway v2 migration ownership under `erp-domain/src/main/resources/db/migration_v2/`.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary change, or rollback-blocking schema change was introduced. Historical migrations remain immutable; the `legacy_reference` to `reference_key` rename, retired `tally_imports` table removal, and packaging-slip COGS journal link backfill now live in forward migrations so already-applied v2 databases avoid checksum drift and replay-safety gaps.
+- Rollback owner: Droid mission orchestrator.
+- Rollback method: revert this packet and rerun migration validation, accounting shard tests, high-risk guard, Spotless, compile/test-compile, and PR CI.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - `V2__accounting_core.sql` and `V8__idempotency_case_insensitive_lookup_indexes.sql` preserve the originally applied `legacy_reference` schema/index names
+  - `V37__tally_import_idempotency.sql` and `V184__accounting_truth_rls_hard_cut.sql` preserve applied migration contents instead of deleting or editing versioned scripts
+  - `V204__journal_reference_mapping_reference_key.sql` performs the current-state rename and recreates canonical `reference_key` indexes
+  - `V205__drop_tally_imports_hard_cut.sql` performs the hard-cut Tally import table removal as a forward migration
+  - `V206__backfill_packaging_slip_cogs_journal_links.sql` links historical `COGS-{slip_number}` journals to `packaging_slips.cogs_journal_entry_id` before runtime relies on the canonical COGS marker
+  - current Java/JPA/repository code continues to target `reference_key`
+- Commands run:
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=ReconciliationServiceTest,BankReconciliationSessionServiceTest test`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AccountingCatalogControllerSecurityIT test`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=PurchasingServiceTest test`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=ReconciliationServiceTest,BankReconciliationSessionServiceTest,PurchasingServiceTest,AccountingCatalogControllerSecurityIT test`
+  - `bash ci/check-high-risk-changes.sh`
+  - `bash ci/lint-knowledgebase.sh`
+  - `bash scripts/guard_openapi_contract_drift.sh`
+  - `bash scripts/guard_accounting_portal_scope_contract.sh`
+  - `python3 -m unittest testing/ci/test_pr_review_ci_contract.py`
+  - `python3 -m py_compile scripts/ci_risk_router.py scripts/changed_files_coverage.py scripts/pr_ci_parity.py testing/ci/test_pr_review_ci_contract.py`
+  - `MIGRATION_SET=v2 mvn -B -ntp spotless:apply && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 bash scripts/gate_fast.sh`
+  - `MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -Dtest=TS_PackagingSlipInvoiceLinkV2MigrationContractTest test`
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AccountingCatalogControllerSecurityIT test`
+  - `bash scripts/guard_flyway_v2_migration_ownership.sh`
+  - `bash scripts/guard_flyway_v2_referential_contract.sh`
+  - `bash scripts/flyway_overlap_scan.sh`
+- Result summary:
+  - Targeted accounting reconciliation, catalog, and purchasing tests passed with 39, 8, 23, and 70 tests respectively.
+  - Flyway validated 96 migrations and a fresh Testcontainers PostgreSQL schema applied through `V206__backfill_packaging_slip_cogs_journal_links.sql`.
+  - Packaging-slip migration contract test passed with 2 tests, 0 failures/errors/skips.
+  - Accounting catalog security IT passed with 8 tests, 0 failures/errors/skips after applying through v206.
+  - Flyway v2 ownership, referential, and overlap guards passed after staging the new migration.
+  - High-risk, knowledgebase, OpenAPI drift, accounting portal scope, PR CI contract, Python compile, Spotless, and test-compile checks passed.
+  - `gate_fast` passed with 904 tests, 0 failures/errors/skips; changed-files coverage recorded `threshold_gap_allowed=true` and `passes=true` for PR long-branch convergence parity.
+
 ## Scope
 - Feature: `identity-account-hardcut-20260427` / PR #197
 - Branch: codex identity-account-hardcut-20260427
@@ -282,5 +487,5 @@ Last reviewed: 2026-05-14
 - Artifacts/links:
   - PR: https://github.com/evilfps/bigbrightpaints-erp/pull/197
   - CI run: https://github.com/evilfps/bigbrightpaints-erp/actions/runs/25162444152
-  - frontend handoff: `docs/frontend-portals/tenant-admin/identity-iam-handoff-2026-04-30.md`
+  - frontend contract: `docs/frontend-portals/tenant-admin/identity-iam.md`
   - migration and rollback docs: `docs/runbooks/migrations.md`, `docs/runbooks/rollback.md`

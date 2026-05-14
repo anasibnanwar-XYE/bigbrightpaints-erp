@@ -983,13 +983,13 @@ public class SuperAdminBillingService {
   }
 
   private Instant effectiveAtFor(
-      String commercialState, SuperAdminBillingSubscription subscription, Instant fallback) {
+      String commercialState, SuperAdminBillingSubscription subscription, Instant defaultInstant) {
     return switch (commercialState) {
       case "CANCELED" ->
-          subscription.getCanceledAt() == null ? fallback : subscription.getCanceledAt();
+          subscription.getCanceledAt() == null ? defaultInstant : subscription.getCanceledAt();
       case "ARCHIVED" ->
-          subscription.getArchivedAt() == null ? fallback : subscription.getArchivedAt();
-      default -> fallback;
+          subscription.getArchivedAt() == null ? defaultInstant : subscription.getArchivedAt();
+      default -> defaultInstant;
     };
   }
 

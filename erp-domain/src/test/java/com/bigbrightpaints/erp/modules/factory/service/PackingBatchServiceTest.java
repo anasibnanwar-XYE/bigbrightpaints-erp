@@ -59,7 +59,7 @@ class PackingBatchServiceTest {
   }
 
   @Test
-  void registerFinishedGoodBatch_usesFallbackSemiFinishedAccountWhenConsumptionMissing() {
+  void registerFinishedGoodBatch_usesConfiguredSemiFinishedAccountWhenConsumptionMissing() {
     ProductionLog log = productionLog("PROD-201", "5.00");
     FinishedGood finishedGood = finishedGood("FG-201", 710L);
     PackingRecord record = packingRecord(201L, "1L");

@@ -15,15 +15,4 @@ public record PromotionRequest(
     @NotNull BigDecimal discountValue,
     @NotNull LocalDate startDate,
     @NotNull LocalDate endDate,
-    String status) {
-  public PromotionRequest(
-      String name,
-      String description,
-      String discountType,
-      BigDecimal discountValue,
-      LocalDate startDate,
-      LocalDate endDate,
-      String status) {
-    this(name, description, null, discountType, discountValue, startDate, endDate, status);
-  }
-}
+    String status) {}

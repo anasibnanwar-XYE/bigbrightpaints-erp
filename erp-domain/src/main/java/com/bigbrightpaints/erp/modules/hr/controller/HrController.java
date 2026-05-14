@@ -2,10 +2,8 @@ package com.bigbrightpaints.erp.modules.hr.controller;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -199,24 +197,5 @@ public class HrController {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Attendance import completed", hrService.bulkImportAttendance(request)));
-  }
-
-  /* Payroll (legacy aliases) */
-  @GetMapping("/payroll-runs")
-  public ResponseEntity<ApiResponse<Map<String, Object>>> payrollRuns() {
-    return legacyPayrollRunsGone();
-  }
-
-  @PostMapping("/payroll-runs")
-  public ResponseEntity<ApiResponse<Map<String, Object>>> createPayrollRun() {
-    return legacyPayrollRunsGone();
-  }
-
-  private ResponseEntity<ApiResponse<Map<String, Object>>> legacyPayrollRunsGone() {
-    return ResponseEntity.status(HttpStatus.GONE)
-        .body(
-            ApiResponse.failure(
-                "Legacy payroll runs endpoint is deprecated; use /api/v1/payroll/runs",
-                Map.of("canonicalPath", "/api/v1/payroll/runs")));
   }
 }

@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARTIFACT_DIR="$ROOT_DIR/artifacts/gate-fast"
 TRUTH_TEST_ROOT="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite"
-COMPAT_BASH_ENV_BOOTSTRAP="$ROOT_DIR/scripts/bash_env_bootstrap.sh"
 MAVEN_MEMORY_DEFAULTS="$ROOT_DIR/scripts/maven_memory_defaults.sh"
 if [[ -f "$MAVEN_MEMORY_DEFAULTS" ]]; then
   source "$MAVEN_MEMORY_DEFAULTS"
@@ -12,14 +11,6 @@ if [[ -f "$MAVEN_MEMORY_DEFAULTS" ]]; then
 elif [[ -z "${MAVEN_OPTS:-}" ]]; then
   export MAVEN_OPTS="-Xmx${BBP_MAVEN_XMX:-1536m} -XX:MaxMetaspaceSize=${BBP_MAVEN_MAX_METASPACE:-512m} -XX:+UseG1GC"
 fi
-if [[ "${BASH_ENV:-}" != "$COMPAT_BASH_ENV_BOOTSTRAP" && -n "${BASH_ENV:-}" ]]; then
-  export BBP_CHAINED_BASH_ENV="${BASH_ENV:-}"
-  export BBP_CHAINED_BASH_ENV_PARENT_PID="$$"
-else
-  unset BBP_CHAINED_BASH_ENV
-  unset BBP_CHAINED_BASH_ENV_PARENT_PID
-fi
-export BASH_ENV="$COMPAT_BASH_ENV_BOOTSTRAP"
 REQUIRE_DIFF_BASE="${GATE_FAST_REQUIRE_DIFF_BASE:-false}"
 RELEASE_VALIDATION_MODE="${GATE_FAST_RELEASE_VALIDATION_MODE:-false}"
 SYNC_PR_MODE="${GATE_FAST_SYNC_PR_MODE:-false}"
@@ -39,11 +30,11 @@ if [[ -n "$EXPECTED_RELEASE_HEAD_SHA" && "$GIT_CONTEXT_AVAILABLE" == "true" && "
   echo "[gate-fast] FAIL: RELEASE_HEAD_SHA=$EXPECTED_RELEASE_HEAD_SHA does not match current HEAD=$RESOLVED_RELEASE_HEAD_SHA"
   exit 2
 fi
-CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-harness-engineering-orchestrator}"
+CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-origin/main}"
 CANONICAL_BASE_REQUIRED="${GATE_REQUIRE_CANONICAL_BASE:-false}"
 CANONICAL_BASE_SHA=""
 CANONICAL_BASE_VERIFIED="false"
-CHANGED_COVERAGE_BASELINE_REF="${PR_CHANGED_COVERAGE_BASELINE_SHA:-9d467c0543d1e728fab4b4ab3049a92399f5db69}"
+CHANGED_COVERAGE_BASELINE_REF="${PR_CHANGED_COVERAGE_BASELINE_SHA:-19f518f0600da667fb7e0d335577f3a97e69ca1f}"
 TRACEABILITY_FILE="$ARTIFACT_DIR/gate-fast-traceability.json"
 
 resolve_diff_base() {
@@ -72,9 +63,8 @@ resolve_diff_base() {
     return 0
   fi
 
-  # Fall back to the canonical harness anchor only when the branch has no
-  # usable mainline base. This keeps changed-files coverage scoped to the
-  # cleaned branch diff instead of replaying the entire release lineage.
+  # Use the canonical base only when the branch has no usable mainline base.
+  # This keeps changed-files coverage scoped to the current branch diff.
   if [[ -n "${CANONICAL_BASE_SHA:-}" ]] && git merge-base --is-ancestor "$CANONICAL_BASE_SHA" HEAD; then
     git merge-base "$CANONICAL_BASE_SHA" HEAD
     return 0
@@ -116,6 +106,23 @@ resolve_changed_coverage_diff_base() {
   fi
 
   echo "$requested_base"
+}
+
+changed_coverage_baseline_applies() {
+  local requested_base="$1"
+  local baseline_ref="${CHANGED_COVERAGE_BASELINE_REF:-}"
+  local baseline_sha=""
+
+  if [[ "$RELEASE_VALIDATION_MODE" == "true" || -z "$baseline_ref" ]]; then
+    return 1
+  fi
+
+  if ! baseline_sha="$(git -C "$ROOT_DIR" rev-parse --verify --quiet --end-of-options "${baseline_ref}^{commit}" 2>/dev/null)"; then
+    return 1
+  fi
+
+  git -C "$ROOT_DIR" merge-base --is-ancestor "$requested_base" "$baseline_sha" \
+    && git -C "$ROOT_DIR" merge-base --is-ancestor "$baseline_sha" "$RESOLVED_RELEASE_HEAD_SHA"
 }
 
 resolve_canonical_base() {
@@ -163,9 +170,6 @@ resolve_canonical_base() {
         CANONICAL_BASE_REF="${resolved_refs[$idx]}"
         CANONICAL_BASE_SHA="${resolved_shas[$idx]}"
         CANONICAL_BASE_VERIFIED="true"
-        if [[ "$CANONICAL_BASE_REF" != "$requested_ref" ]]; then
-          echo "[gate-fast] WARN: canonical base '$requested_ref' is stale/non-ancestor; using '$CANONICAL_BASE_REF' ($CANONICAL_BASE_SHA)"
-        fi
         return 0
       fi
     done
@@ -186,9 +190,6 @@ resolve_canonical_base() {
     if git -C "$ROOT_DIR" merge-base --is-ancestor "${resolved_shas[$idx]}" "$RESOLVED_RELEASE_HEAD_SHA"; then
       CANONICAL_BASE_REF="${resolved_refs[$idx]}"
       CANONICAL_BASE_SHA="${resolved_shas[$idx]}"
-      if [[ "$CANONICAL_BASE_REF" != "$requested_ref" ]]; then
-        echo "[gate-fast] WARN: canonical base '$requested_ref' is stale/non-ancestor; using '$CANONICAL_BASE_REF' ($CANONICAL_BASE_SHA)"
-      fi
       return 0
     fi
   done
@@ -325,7 +326,7 @@ python3 "$ROOT_DIR/scripts/validate_confidence_lanes.py" \
 
 echo "[gate-fast] validate catalog"
 python3 "$ROOT_DIR/scripts/validate_test_catalog.py" \
-  --catalog "$ROOT_DIR/docs/CODE-RED/confidence-suite/TEST_CATALOG.json" \
+  --catalog "$ROOT_DIR/testing/confidence-suite/test-catalog.json" \
   --quarantine "$ROOT_DIR/scripts/test_quarantine.txt" \
   --tests-root "$TRUTH_TEST_ROOT" \
   --gate gate-fast \
@@ -387,7 +388,7 @@ echo "[gate-fast] run critical truth tests"
 (
   cd "$ROOT_DIR/erp-domain"
   rm -rf target/surefire-reports target/site/jacoco target/jacoco.exec
-  mvn -B -ntp -Pgate-fast test
+  mvn -B -ntp -Pgate-fast clean test
 )
 
 if [[ "$SYNC_PR_MODE" == "true" ]]; then
@@ -423,6 +424,10 @@ fi
 
 REQUESTED_DIFF_BASE="$(resolve_diff_base)"
 DIFF_BASE="$(resolve_changed_coverage_diff_base "$REQUESTED_DIFF_BASE")"
+COVERAGE_BASELINE_APPLIED="false"
+if changed_coverage_baseline_applies "$REQUESTED_DIFF_BASE"; then
+  COVERAGE_BASELINE_APPLIED="true"
+fi
 if [[ "$DIFF_BASE" != "$REQUESTED_DIFF_BASE" ]]; then
   echo "[gate-fast] changed-files coverage diff base compacted from $REQUESTED_DIFF_BASE to $DIFF_BASE"
 fi
@@ -485,10 +490,11 @@ coverage_args=(
 if [[ "$RELEASE_VALIDATION_MODE" == "true" ]]; then
   coverage_args+=(--fail-on-vacuous)
 fi
-
-if ! python3 "$ROOT_DIR/scripts/changed_files_coverage.py" "${coverage_args[@]}"; then
-  echo "[gate-fast] WARN: changed-files coverage gate did not meet thresholds; continuing in compatibility mode"
+if [[ "$COVERAGE_BASELINE_APPLIED" == "true" ]]; then
+  coverage_args+=(--allow-threshold-gap)
 fi
+
+python3 "$ROOT_DIR/scripts/changed_files_coverage.py" "${coverage_args[@]}"
 
 python3 - "$ARTIFACT_DIR/changed-coverage.json" "$RELEASE_VALIDATION_MODE" <<'PY'
 import json

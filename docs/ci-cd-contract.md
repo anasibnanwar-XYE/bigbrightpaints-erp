@@ -15,7 +15,7 @@ Pull requests are the merge-confidence lane. The required signal is:
 - `Secrets Scan` for leaked credentials in the PR diff.
 - `Change Impact Router` to select the required parallel shards.
 - `Compile Check` to prove the backend packages.
-- Routed product shards for access/tenant, accounting/finance, idempotency/outbox, workflow integration, persistence, and CODE-RED risk classes.
+- Routed product shards for access/tenant, accounting/finance, idempotency/outbox, workflow integration, persistence, and high-risk classes.
 - `Changed-Code Coverage` to prove touched Java runtime lines are covered by the routed shards.
 - `PR Ship Gate` to summarize upstream blockers by class.
 
@@ -65,8 +65,8 @@ Required routed shard checks stay conditional and should not be listed as uncond
 - `Idempotency And Outbox Tests`
 - `Workflow Integration Tests`
 - `Persistence Smoke`
-- `CODE-RED Access Tests`
-- `CODE-RED Finance Tests`
+- `Risk Access Tests`
+- `Risk Finance Tests`
 
 Retired required-check contexts to remove from branch protection:
 

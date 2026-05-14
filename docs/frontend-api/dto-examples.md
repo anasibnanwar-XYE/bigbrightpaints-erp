@@ -199,10 +199,11 @@ POST /api/v1/sales/orders
 }
 ```
 
-`POST /api/v1/sales/orders` remains `200 OK` for legacy payloads that do not use
-`paymentTerms` and `finishedGoodId`.
+`POST /api/v1/sales/orders` returns `201 Created` for draft-lifecycle payloads
+that include `paymentTerms`/`finishedGoodId`; the standard order path returns
+`200 OK`.
 
-### Order timeline (canonical + alias fields)
+### Order timeline
 
 ```json
 GET /api/v1/sales/orders/1201/timeline
@@ -213,11 +214,8 @@ GET /api/v1/sales/orders/1201/timeline
       "id": 77,
       "fromStatus": "DRAFT",
       "toStatus": "CONFIRMED",
-      "status": "CONFIRMED",
       "changedBy": "sales.lead@acme.test",
-      "actor": "sales.lead@acme.test",
       "changedAt": "2026-04-07T10:25:18Z",
-      "timestamp": "2026-04-07T10:25:18Z",
       "reasonCode": "MANUAL_CONFIRM",
       "reason": "Sales confirmation after stock reservation"
     }
@@ -823,11 +821,20 @@ POST /api/v1/accounting/periods/12/request-close
 }
 ```
 
-The same `PeriodCloseRequestActionRequest` body applies to:
+Accounting uses `PeriodCloseRequestActionRequest` only to create the close
+request:
 
 - `POST /api/v1/accounting/periods/{periodId}/request-close`
-- `POST /api/v1/accounting/periods/{periodId}/approve-close`
-- `POST /api/v1/accounting/periods/{periodId}/reject-close`
+
+Tenant-admin approval or rejection uses the generic approval decision endpoint:
+
+```json
+POST /api/v1/admin/approvals/PERIOD_CLOSE_REQUEST/77/decisions
+{
+  "decision": "APPROVE",
+  "reason": "Bank reconciliation and checklist reviewed"
+}
+```
 
 ## Period reopen request
 

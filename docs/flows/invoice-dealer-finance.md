@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-04-26
 
-This packet documents the **invoice and dealer finance flow**: invoice issuance after dispatch, dealer and internal finance reads, and accounting-owned receipt/settlement behavior. It keeps invoice issuance, finance disclosure, and settlement truth connected instead of describing old invoice-hosted payment aliases as current behavior.
+This document describes the **invoice and dealer finance flow**: invoice issuance after dispatch, dealer and internal finance reads, and accounting-owned receipt/settlement behavior. It keeps invoice issuance, finance disclosure, and settlement truth connected instead of describing old invoice-hosted payment aliases as current behavior.
 
 ---
 
@@ -59,7 +59,7 @@ Sensitive finance disclosure is split by host: internal finance uses `/api/v1/po
 | Supplier Settlement | POST | `/api/v1/accounting/settlements/suppliers` | ADMIN, ACCOUNTING | Settle supplier purchases. |
 | Supplier Auto-Settle | POST | `/api/v1/accounting/suppliers/{supplierId}/auto-settle` | ADMIN, ACCOUNTING | Apply amount to open supplier purchases in deterministic order. |
 
-The canonical idempotency header for receipt/settlement writes is `Idempotency-Key`. The legacy `X-Idempotency-Key` header is rejected.
+The canonical idempotency header for receipt/settlement writes is `Idempotency-Key`. The retired `X-Idempotency-Key` header is rejected.
 
 ---
 
@@ -141,9 +141,7 @@ The flow is complete when:
 
 ---
 
-## 6. Canonical vs Non-Canonical Paths
-
-### Canonical Paths
+## 6. Current API Paths
 
 | Path | Owner | Notes |
 | --- | --- | --- |
@@ -160,22 +158,6 @@ The flow is complete when:
 | `POST /api/v1/accounting/receipts/dealer` | `SettlementController` | Dealer receipt. |
 | `POST /api/v1/accounting/settlements/dealers` | `SettlementController` | Dealer settlement. |
 | `POST /api/v1/accounting/dealers/{dealerId}/auto-settle` | `SettlementController` | Dealer auto-settle. |
-
-### Non-Canonical / Deprecated Paths
-
-| Path | Status | Replacement |
-| --- | --- | --- |
-| Invoice-hosted payment alias | Not current settlement surface | `POST /api/v1/accounting/receipts/dealer` or `/settlements/dealers` |
-| Invoice-hosted settle alias | Not current settlement surface | `POST /api/v1/accounting/settlements/dealers` |
-| Invoice-hosted void alias | Not current public finance workflow here | Use accounting correction/credit-note paths where supported. |
-| Invoice-hosted reverse-payment alias | Not current settlement surface | Use accounting correction/reversal paths where supported. |
-| `GET /api/v1/dealers/{id}/ledger` | Retired (410) | `/api/v1/portal/finance/ledger?dealerId={dealerId}` |
-| `GET /api/v1/dealers/{id}/invoices` | Retired (410) | `/api/v1/portal/finance/invoices?dealerId={dealerId}` |
-| `GET /api/v1/dealers/{id}/aging` | Retired (410) | `/api/v1/portal/finance/aging?dealerId={dealerId}` |
-| `GET /api/v1/reports/aging/dealer/{id}` | Retired | `/api/v1/portal/finance/aging?dealerId={dealerId}` |
-| `/api/v1/accounting/statements/dealers/**` or `/api/v1/accounting/aging/dealers/**` | Not exposed | Portal finance and dealer portal finance reads. |
-
----
 
 ## 7. Cross-Module Dependencies
 
@@ -202,11 +184,11 @@ The flow is complete when:
 
 ## 9. Related Documentation
 
-- [Accounting Workflow Architecture](accounting-workflow-architecture.md) — connected accounting architecture for client sharing
+- [Accounting Workflow Architecture](accounting-workflow-architecture.md) — connected accounting workflow doc
 - [Order-to-Cash Flow](order-to-cash.md) — sales order, dispatch, invoice chain
 - [Reporting / Export Flow](reporting-export.md) — reporting and export approval behavior
-- [docs/modules/invoice.md](../modules/invoice.md) — invoice module packet
-- [docs/modules/sales.md](../modules/sales.md) — sales module packet
+- [docs/modules/invoice.md](../modules/invoice.md) — invoice module doc
+- [docs/modules/sales.md](../modules/sales.md) — sales module doc
 - [docs/modules/admin-portal-rbac.md](../modules/admin-portal-rbac.md) — host ownership and predicates
 
 ---

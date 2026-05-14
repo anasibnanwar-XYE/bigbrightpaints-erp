@@ -117,7 +117,8 @@ class DataInitializerSecurityTest {
     DataInitializer initializer = new DataInitializer();
     Company company = company("BBP");
     Role adminRole = role("ROLE_ADMIN");
-    UserAccount existingUser = new UserAccount("dev.admin@bbp.com", "existing-hash", "Existing");
+    UserAccount existingUser =
+        new UserAccount("dev.admin@bbp.com", "TEST", "existing-hash", "Existing");
     when(userRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("dev.admin@bbp.com", "BBP"))
         .thenReturn(Optional.of(existingUser));
 
@@ -145,7 +146,8 @@ class DataInitializerSecurityTest {
     DataInitializer initializer = new DataInitializer();
     Company company = company("BBP");
     Role adminRole = role("ROLE_ADMIN");
-    UserAccount existingUser = new UserAccount("dev.admin@bbp.com", "existing-hash", "Existing");
+    UserAccount existingUser =
+        new UserAccount("dev.admin@bbp.com", "TEST", "existing-hash", "Existing");
     when(userRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("dev.admin@bbp.com", "BBP"))
         .thenReturn(Optional.of(existingUser));
     when(passwordEncoder.matches("WrongPassword@123", "existing-hash")).thenReturn(false);
@@ -172,7 +174,8 @@ class DataInitializerSecurityTest {
     DataInitializer initializer = new DataInitializer();
     Company company = company("BBP");
     Role adminRole = role("ROLE_ADMIN");
-    UserAccount existingUser = new UserAccount("dev.admin@bbp.com", "existing-hash", "Existing");
+    UserAccount existingUser =
+        new UserAccount("dev.admin@bbp.com", "TEST", "existing-hash", "Existing");
     when(userRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("dev.admin@bbp.com", "BBP"))
         .thenReturn(Optional.of(existingUser));
     when(passwordEncoder.matches("DevAdmin@123!", "existing-hash")).thenReturn(true);
@@ -368,7 +371,8 @@ class DataInitializerSecurityTest {
     when(userRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
             "mock.admin@bbp.com", "MOCK"))
         .thenReturn(
-            Optional.of(new UserAccount("mock.admin@bbp.com", "existing-hash", "Mock Admin")));
+            Optional.of(
+                new UserAccount("mock.admin@bbp.com", "TEST", "existing-hash", "Mock Admin")));
 
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
@@ -397,7 +401,8 @@ class DataInitializerSecurityTest {
             "benchmark.admin@bbp.com", "BBP"))
         .thenReturn(
             Optional.of(
-                new UserAccount("benchmark.admin@bbp.com", "existing-hash", "Benchmark Admin")));
+                new UserAccount(
+                    "benchmark.admin@bbp.com", "TEST", "existing-hash", "Benchmark Admin")));
 
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,

@@ -873,7 +873,7 @@ public class AdminUserService implements OwnerSetupTeamInvitePort {
     if (authentication != null && StringUtils.hasText(authentication.getName())) {
       return authentication.getName().trim();
     }
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 
   private Company resolveTargetCompany(UserAccount user, Company actorCompany) {

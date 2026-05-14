@@ -59,7 +59,6 @@ public class OpenApiTaggingConfig {
         || normalized.startsWith("/api/v1/companies")
         || normalized.startsWith("/api/v1/orchestrator")
         || normalized.startsWith("/api/v1/portal")
-        || normalized.startsWith("/api/v1/demo")
         || normalized.startsWith("/api/integration")) {
       return "ADMIN";
     }

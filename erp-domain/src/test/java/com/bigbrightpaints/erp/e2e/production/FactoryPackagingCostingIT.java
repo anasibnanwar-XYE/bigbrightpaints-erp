@@ -218,7 +218,30 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
 
     salesService.confirmDispatch(
         new DispatchConfirmRequest(
-            slip.getId(), order.getId(), null, null, null, false, null, null));
+            slip.getId(),
+            order.getId(),
+            packagingSlipLineRepository.findByPackagingSlipId(slip.getId()).stream()
+                .map(
+                    line ->
+                        new DispatchConfirmRequest.DispatchLine(
+                            line.getId(),
+                            line.getFinishedGoodBatch().getId(),
+                            line.getQuantity(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            null))
+                .toList(),
+            null,
+            null,
+            false,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null));
 
     // Inventory assertions
     assertThat(rawMaterialRepository.findById(base.getId()).orElseThrow().getCurrentStock())

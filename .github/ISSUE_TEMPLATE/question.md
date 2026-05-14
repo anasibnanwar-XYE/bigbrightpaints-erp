@@ -21,7 +21,7 @@ List the steps you've already taken to find an answer:
 - [ ] README.md
 - [ ] AGENTS.md
 - [ ] API documentation (Swagger/OpenAPI)
-- [ ] Architecture docs (.factory/library/architecture.md)
+- [ ] Architecture docs (docs/ARCHITECTURE.md)
 - [ ] Other: [specify]
 
 ## Module

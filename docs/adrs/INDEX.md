@@ -38,7 +38,7 @@ ADR files are numbered sequentially: `ADR-NNN-short-description.md`. Numbers are
 2. Add the `Last reviewed: YYYY-MM-DD` marker near the top.
 3. Set status to `Accepted` (or `Proposed` if the decision is not yet implemented).
 4. Add a row to the table above.
-5. Link the ADR from any relevant module or flow packet.
+5. Link the ADR from any relevant module or flow document.
 6. Run `bash ci/lint-knowledgebase.sh` to verify freshness markers and links.
 
 ## Cross-references

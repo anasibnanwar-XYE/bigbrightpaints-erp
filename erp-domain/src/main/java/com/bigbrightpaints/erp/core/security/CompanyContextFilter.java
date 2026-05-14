@@ -32,7 +32,6 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
-import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import io.jsonwebtoken.Claims;
@@ -104,7 +103,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
           "/api/v1/admin/self",
           "/api/v1/admin/support",
           "/api/v1/admin/exports",
-          "/api/v1/admin/notify",
           "/api/v1/admin/users");
   private static final Map<String, Set<String>> PUBLIC_AUTH_ENDPOINTS_BY_METHOD =
       Map.of(
@@ -121,7 +119,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
 
   private record CompanyBoundControlBinding(Long companyId, boolean tenantRuntimePolicyControl) {}
 
-  private final TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
+  private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
   private final CompanyService companyService;
   private final AuthScopeService authScopeService;
   private final ObjectMapper objectMapper;
@@ -131,11 +129,11 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   private AuditService auditService;
 
   public CompanyContextFilter(
-      TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService,
+      TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
       CompanyService companyService,
       AuthScopeService authScopeService,
       ObjectMapper objectMapper) {
-    this.tenantRuntimeRequestAdmissionService = tenantRuntimeRequestAdmissionService;
+    this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
     this.companyService = companyService;
     this.authScopeService = authScopeService;
     this.objectMapper = objectMapper;
@@ -149,12 +147,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         TenantRuntimeEnforcementService.TenantRequestAdmission.notTracked();
     try {
       String runtimePath = normalizePath(resolveApplicationPath(request));
-      if (isRetiredAdminHostPath(request, runtimePath)) {
-        // Retired host paths are intentionally unresolved by handlers and should return 404
-        // consistently, independent of auth/company-context binding.
-        filterChain.doFilter(request, response);
-        return;
-      }
       CompanyBoundControlBinding controlBinding =
           resolveCompanyBoundControlBinding(runtimePath, request.getMethod());
       boolean lifecycleControlRequest = controlBinding != null;
@@ -172,12 +164,12 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         writeAccessDenied(response, "SUPER_ADMIN_PLATFORM_ONLY", SUPER_ADMIN_PLATFORM_ONLY_MESSAGE);
         return;
       }
-      String legacyHeaderCompanyId = request.getHeader("X-Company-Id");
-      if (StringUtils.hasText(legacyHeaderCompanyId)) {
+      String retiredHeaderCompanyId = request.getHeader("X-Company-Id");
+      if (StringUtils.hasText(retiredHeaderCompanyId)) {
         writeAccessDenied(
             request,
             response,
-            "COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED",
+            "COMPANY_CONTEXT_RETIRED_HEADER_UNSUPPORTED",
             "Use X-Company-Code for company context binding");
         return;
       }
@@ -341,7 +333,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         }
         if (!lifecycleControlRequest || tenantRuntimePolicyControlRequest) {
           TenantRuntimeEnforcementService.TenantRequestAdmission runtimeAdmission =
-              tenantRuntimeRequestAdmissionService.beginRequest(
+              tenantRuntimeEnforcementService.admitRequest(
                   companyCode,
                   runtimePath,
                   request.getMethod(),
@@ -372,7 +364,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       }
       filterChain.doFilter(request, response);
     } finally {
-      tenantRuntimeRequestAdmissionService.completeRequest(admission, response.getStatus());
+      tenantRuntimeEnforcementService.completeRequestAdmission(admission, response.getStatus());
       CompanyContextHolder.clear();
     }
   }
@@ -453,7 +445,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (auditService == null || AccessDeniedAuditMarker.isCurrentRequestAlreadyAudited(request)) {
       return;
     }
-    String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    String actor = SecurityActorResolver.resolveAuditActor();
     String tenantScope = AccessDeniedAuditMarker.resolveTenantScope(request);
     Map<String, String> metadata = new LinkedHashMap<>();
     metadata.put("actor", actor);
@@ -478,7 +470,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (auditService == null || AccessDeniedAuditMarker.isCurrentRequestAlreadyAudited(request)) {
       return;
     }
-    String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    String actor = SecurityActorResolver.resolveAuditActor();
     String tenantScope = request == null ? null : request.getHeader("X-Company-Code");
     if (!StringUtils.hasText(tenantScope)) {
       tenantScope = AccessDeniedAuditMarker.resolveTenantScope(request);
@@ -493,7 +485,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       metadata.put("deniedPath", normalizePath(resolveApplicationPath(request)));
       metadata.put("deniedMethod", request.getMethod());
       if (StringUtils.hasText(request.getHeader("X-Company-Id"))) {
-        metadata.put("legacyCompanyIdHeaderPresent", "true");
+        metadata.put("retiredCompanyIdHeaderPresent", "true");
       }
       if (StringUtils.hasText(request.getHeader("X-Company-Code"))) {
         metadata.put("companyCodeHeaderPresent", "true");
@@ -755,19 +747,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (normalizedPath.equals("/api/v1/companies")) {
       return true;
     }
-    if (RetiredTenantAdminHostPaths.matchesNormalizedPath(normalizedPath)) {
-      // Let retired admin hosts fall through to dispatcher 404 uniformly.
-      return true;
-    }
     return normalizedPath.equals("/api/v1/auth")
         || normalizedPath.startsWith("/api/v1/auth/")
         || normalizedPath.equals("/api/v1/superadmin")
         || normalizedPath.startsWith("/api/v1/superadmin/");
-  }
-
-  private boolean isRetiredAdminHostPath(HttpServletRequest request, String normalizedPath) {
-    return RetiredTenantAdminHostPaths.matchesNormalizedPath(
-        normalizedPath, request == null ? null : request.getMethod());
   }
 
   private boolean isSetupCorridorRequestAllowed(String path) {

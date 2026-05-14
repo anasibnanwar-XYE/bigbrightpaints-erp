@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-04-15
 
-This packet describes the canonical behavior for tenant and admin management after the tenant-admin hard-cut refactor.
+This document describes the canonical behavior for tenant and admin management after the tenant-admin hard-cut refactor.
 
 ## Product Boundary
 
@@ -62,12 +62,13 @@ business records, token values, provider credentials, or `.env` values.
   `/api/v1/superadmin/tenants/{id}/entitlements/**`,
   `/api/v1/superadmin/tenants/{id}/usage/**`,
   `/api/v1/superadmin/tenants/{id}/billing/**`,
+  `PUT /api/v1/superadmin/tenants/{id}/lifecycle`,
   `/api/v1/superadmin/tenants/{id}/suspension/**`,
   `/api/v1/superadmin/tenants/{id}/resume`,
   `/api/v1/superadmin/tenants/{id}/cancel`,
   `/api/v1/superadmin/tenants/{id}/archive`,
   `/api/v1/superadmin/tenants/{id}/commercial-state`,
-  `/api/v1/superadmin/tenants/{id}/limits`,
+  `PUT /api/v1/superadmin/tenants/{id}/limits`,
   `/api/v1/superadmin/tenants/{id}/modules`,
   `/api/v1/superadmin/tenants/{id}/quota-check`, and
   `/api/v1/superadmin/tenants/{id}/quota-policy`.
@@ -193,14 +194,13 @@ GET /api/v1/admin/self/settings
   -> identity + MFA + mustChangePassword + role list + runtime metrics + active session estimate
 ```
 
-## Canonical vs Retired Paths
+## Current Boundaries
 
-| Retired for tenant-admin product | Canonical |
+| Boundary | Current contract |
 | --- | --- |
-| Export-specific approve/reject aliases | `POST /api/v1/admin/approvals/{originType}/{id}/decisions` |
-| `/api/v1/portal/support/tickets/**` as tenant-admin host | `/api/v1/admin/support/tickets/**` |
-| Tenant-admin dependency on platform role-catalog hosts (`/api/v1/superadmin/roles/**`) | fixed role assignment validation in `/api/v1/admin/users/**` |
-| `/api/v1/auth/profile` as identity source | `GET /api/v1/auth/me` |
+| Approval decisions | `POST /api/v1/admin/approvals/{originType}/{id}/decisions` |
+| Tenant-admin support | `/api/v1/admin/support/tickets/**` |
+| Role assignment | fixed role validation in `/api/v1/admin/users/**` |
 
 ## Completion Boundary
 
@@ -208,8 +208,7 @@ Flow is complete when:
 
 1. Superadmin control-plane actions remain isolated to `/api/v1/superadmin/**`.
 2. Tenant-admin primary screens run on canonical admin product surfaces (`/api/v1/admin/**`).
-3. Legacy portal insights reads (`/api/v1/portal/dashboard|operations|workforce`) remain live `ROLE_ADMIN` read surfaces until backend retirement.
-4. Tenant-admin approval actions happen only through generic admin decisions endpoint with origin-specific decision constraints.
+3. Tenant-admin approval actions happen only through generic admin decisions endpoint with origin-specific decision constraints.
 4. Tenant-admin support runs on admin host, not portal host.
 5. User role assignment remains fixed-list and escalation-proof.
 6. Tenant-admin self-settings use `/api/v1/admin/self/settings` + auth-owned self-service flows.
@@ -223,7 +222,7 @@ This is the canonical implementation order and status for the tenant-admin hard-
 - Tenant-admin product ownership moved to canonical `/api/v1/admin/**` surfaces.
 - Tenant-admin role creation/custom-role dependency removed from product contract.
 - Portal-hosted tenant-admin support ownership retired in favor of admin host.
-- Legacy and canonical boundaries aligned in endpoint inventory + portal docs.
+- Retired route boundaries aligned in openapi endpoint contract + portal docs.
 
 ### Slice 2: User management rewrite (complete)
 
@@ -257,7 +256,7 @@ This is the canonical implementation order and status for the tenant-admin hard-
 
 - Canonical tenant-admin settings payload: `GET /api/v1/admin/self/settings`.
 - Self security and password/MFA flows remain auth-owned (`/api/v1/auth/**`).
-- Utility notify action moved to superadmin control-plane host (`POST /api/v1/superadmin/notify`).
+- Notification action moved to superadmin control-plane host (`POST /api/v1/superadmin/notify`).
 
 ### Slice 7: Documentation realignment (complete)
 
@@ -269,11 +268,11 @@ This is the canonical implementation order and status for the tenant-admin hard-
   - `docs/frontend-portals/tenant-admin/role-boundaries.md`
   - `docs/frontend-api/admin-role.md`
   - `docs/frontend-api/auth-and-company-scope.md`
-  - `docs/endpoint-inventory.md`
+  - `docs/openapi-endpoint-contract.md`
 
 ## Verification Contract
 
-Run these in `bigbrightpaints-erp_worktrees/tenant-admin-hardcut-s1`:
+Run these from the repository root:
 
 - `bash scripts/guard_openapi_contract_drift.sh`
 - `bash scripts/guard_accounting_portal_scope_contract.sh`

@@ -55,7 +55,7 @@ public class PackingService {
   private final PackingInventoryService packingInventoryService;
   private final PackingBatchService packingBatchService;
   private final PackingJournalBuilder packingJournalBuilder;
-  private final PackingJournalLinkHelper packingJournalLinkHelper;
+  private final PackingJournalLinkService packingJournalLinkService;
   private final ProductionLogService productionLogService;
   private final PackingReadService packingReadService;
   private final IdempotencyReservationService idempotencyReservationService =
@@ -78,7 +78,7 @@ public class PackingService {
       PackingInventoryService packingInventoryService,
       PackingBatchService packingBatchService,
       PackingJournalBuilder packingJournalBuilder,
-      PackingJournalLinkHelper packingJournalLinkHelper,
+      PackingJournalLinkService packingJournalLinkService,
       PackingReadService packingReadService) {
     this.companyContextService = companyContextService;
     this.productionLogRepository = productionLogRepository;
@@ -95,7 +95,7 @@ public class PackingService {
     this.packingInventoryService = packingInventoryService;
     this.packingBatchService = packingBatchService;
     this.packingJournalBuilder = packingJournalBuilder;
-    this.packingJournalLinkHelper = packingJournalLinkHelper;
+    this.packingJournalLinkService = packingJournalLinkService;
     this.packingReadService = packingReadService;
   }
 
@@ -338,10 +338,7 @@ public class PackingService {
 
     JournalEntryDto entry = accountingFacade.postPackingJournal(reference, packedDate, memo, lines);
     if (entry != null) {
-      // Truthsuite evidence anchor retained in service after extraction:
-      // movement.setJournalEntryId(entry.id());
-      // inventoryMovementRepository.save(movement);
-      packingJournalLinkHelper.linkPackagingMovementsToJournal(
+      packingJournalLinkService.linkPackagingMovementsToJournal(
           log.getCompany(), referenceId, entry.id());
     }
   }

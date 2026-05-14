@@ -507,12 +507,12 @@
             </properties>
         </profile>
 
-        <!-- CODE-RED: run only the isolated parallel test suite under src/test/java/**/codered/ -->
+        <!-- risk: run only the isolated parallel test suite under src/test/java/**/risk/ -->
         <profile>
-            <id>codered</id>
+            <id>risk</id>
             <properties>
                 <skipTests>false</skipTests>
-                <!-- Coverage gates are not meaningful for CODE-RED invariants; keep suite fast and isolated. -->
+                <!-- Coverage gates are not meaningful for risk invariants; keep suite fast and isolated. -->
                 <jacoco.skip>true</jacoco.skip>
             </properties>
             <build>
@@ -522,61 +522,8 @@
                         <artifactId>maven-surefire-plugin</artifactId>
                         <configuration>
                             <includes combine.self="override">
-                                <include>**/codered/**/CR_*.java</include>
-                            </includes>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
-        <profile>
-            <id>dev-smoke</id>
-            <properties>
-                <skipTests>false</skipTests>
-                <test.groups>critical</test.groups>
-                <test.excludedGroups>flaky</test.excludedGroups>
-                <test.failIfNoTests>true</test.failIfNoTests>
-                <jacoco.skip>true</jacoco.skip>
-            </properties>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <configuration>
-                            <includes combine.self="override">
-                                <include>**/truthsuite/**/*Test.java</include>
-                                <include>**/truthsuite/**/*IT.java</include>
-                                <include>**/truthsuite/**/*Suite.java</include>
-                                <include>**/e2e/sales/OrderFulfillmentE2ETest.java</include>
-                                <include>**/codered/CR_SalesDispatchInvoiceAccounting.java</include>
-                            </includes>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-
-        <profile>
-            <id>local-guard</id>
-            <properties>
-                <skipTests>false</skipTests>
-                <test.groups>critical</test.groups>
-                <test.excludedGroups>flaky</test.excludedGroups>
-                <test.failIfNoTests>true</test.failIfNoTests>
-                <jacoco.skip>true</jacoco.skip>
-            </properties>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <configuration>
-                            <includes combine.self="override">
-                                <include>**/truthsuite/**/*Test.java</include>
-                                <include>**/truthsuite/**/*IT.java</include>
-                                <include>**/truthsuite/**/*Suite.java</include>
+                                <include>**/risk/**/*Test.java</include>
+                                <include>**/risk/**/*IT.java</include>
                             </includes>
                         </configuration>
                     </plugin>
@@ -609,7 +556,6 @@
                                 <include>**/core/util/BusinessDocumentTruthsTest.java</include>
                                 <include>**/modules/admin/AdminUserSecurityIT.java</include>
                                 <include>**/modules/admin/AdminApprovalRbacIT.java</include>
-                                <include>**/modules/admin/controller/AdminSettingsControllerApprovalsContractTest.java</include>
                                 <include>**/modules/accounting/service/AccountingAuditTrailServiceTest.java</include>
                                 <include>**/modules/accounting/event/AccountingEventStoreMetricsTest.java</include>
                                 <include>**/modules/accounting/service/AccountingComplianceAuditServiceTest.java</include>
@@ -617,18 +563,15 @@
                                 <include>**/modules/accounting/service/JournalEntryMutationServiceTest.java</include>
                                 <include>**/modules/auth/AuthPasswordResetPublicContractIT.java</include>
                                 <include>**/modules/factory/controller/PackagingMappingControllerSecurityContractTest.java</include>
-                                <include>**/modules/factory/controller/PackagingMappingControllerTest.java</include>
                                 <include>**/modules/factory/controller/PackingControllerTest.java</include>
                                 <include>**/modules/factory/service/FactoryServiceTest.java</include>
                                 <include>**/modules/factory/service/PackingAllowedSizeServiceTest.java</include>
                                 <include>**/modules/factory/service/PackingReadServiceTest.java</include>
                                 <include>**/modules/factory/service/PackingServiceTest.java</include>
                                 <include>**/modules/factory/service/PackagingMaterialServiceTest.java</include>
-                                <include>**/modules/factory/service/ProductionLogServiceCostingFallbackTest.java</include>
+                                <include>**/modules/factory/service/ProductionLogServiceCostingRulesTest.java</include>
                                 <include>**/modules/inventory/controller/DispatchControllerTest.java</include>
                                 <include>**/modules/inventory/domain/PackagingSlipTest.java</include>
-                                <include>**/modules/inventory/dto/DispatchConfirmationRequestTest.java</include>
-                                <include>**/modules/inventory/dto/DispatchConfirmationResponseTest.java</include>
                                 <include>**/modules/inventory/service/DispatchArtifactPathsTest.java</include>
                                 <include>**/modules/inventory/service/DeliveryChallanPdfServiceTest.java</include>
                                 <include>**/modules/inventory/service/FinishedGoodsDispatchEngineCoverageTest.java</include>
@@ -692,18 +635,15 @@
                                 <include>**/modules/accounting/service/JournalEntryMutationServiceTest.java</include>
                                 <include>**/modules/auth/AuthPasswordResetPublicContractIT.java</include>
                                 <include>**/modules/factory/controller/PackagingMappingControllerSecurityContractTest.java</include>
-                                <include>**/modules/factory/controller/PackagingMappingControllerTest.java</include>
                                 <include>**/modules/factory/controller/PackingControllerTest.java</include>
                                 <include>**/modules/factory/service/FactoryServiceTest.java</include>
                                 <include>**/modules/factory/service/PackingAllowedSizeServiceTest.java</include>
                                 <include>**/modules/factory/service/PackingReadServiceTest.java</include>
                                 <include>**/modules/factory/service/PackingServiceTest.java</include>
                                 <include>**/modules/factory/service/PackagingMaterialServiceTest.java</include>
-                                <include>**/modules/factory/service/ProductionLogServiceCostingFallbackTest.java</include>
+                                <include>**/modules/factory/service/ProductionLogServiceCostingRulesTest.java</include>
                                 <include>**/modules/inventory/controller/DispatchControllerTest.java</include>
                                 <include>**/modules/inventory/domain/PackagingSlipTest.java</include>
-                                <include>**/modules/inventory/dto/DispatchConfirmationRequestTest.java</include>
-                                <include>**/modules/inventory/dto/DispatchConfirmationResponseTest.java</include>
                                 <include>**/modules/inventory/service/DispatchArtifactPathsTest.java</include>
                                 <include>**/modules/inventory/service/DeliveryChallanPdfServiceTest.java</include>
                                 <include>**/modules/inventory/service/FinishedGoodsDispatchEngineCoverageTest.java</include>

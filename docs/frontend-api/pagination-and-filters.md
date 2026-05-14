@@ -20,8 +20,7 @@ Last reviewed: 2026-04-02
 - Approvals: status, request type, created-by, requested date
 - Catalog and stock: `itemClass`, readiness, stock visibility, search text
 - Dealer directory:
-  `GET /api/v1/dealers?status={status}&page={page}&size={size}` and
-  `GET /api/v1/sales/dealers?status={status}&page={page}&size={size}`
+  `GET /api/v1/dealers?status={status}&page={page}&size={size}`
   - omit `page` and `size` for the full active-only directory
   - send `status=ALL` to include non-active dealers
   - when `page` and/or `size` are sent, the backend still returns a plain
@@ -101,8 +100,8 @@ Practical rules:
 - Distinguish server-backed filtering from local UI-only search chips. The
   canonical totals and export scope come from the backend query only.
 - Do not assume every endpoint with `page` and `size` returns a paginated
-  envelope. Dealer-directory endpoints keep a compatibility `data: []` list
-  shape even when windowing is requested.
+  envelope. Dealer-directory endpoints return a sliced `data: []` list when
+  windowing is requested.
 
 ## Empty-state rules
 

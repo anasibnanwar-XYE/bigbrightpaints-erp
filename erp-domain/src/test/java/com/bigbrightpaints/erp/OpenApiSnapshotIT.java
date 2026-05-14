@@ -1098,9 +1098,8 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         .doesNotContain("PUT `/api/v1/auth/profile`")
         .doesNotContain("`POST /api/v1/companies/{id}/support/admin-password-reset`");
 
-    String codeReviewControlPlane =
-        readRepoFile("docs/code-review/flows/company-tenant-control-plane.md");
-    assertThat(codeReviewControlPlane)
+    String tenantAdminManagement = readRepoFile("docs/flows/tenant-admin-management.md");
+    assertThat(tenantAdminManagement)
         .contains("`PUT /api/v1/superadmin/tenants/{id}/lifecycle`")
         .contains("`PUT /api/v1/superadmin/tenants/{id}/limits`")
         .doesNotContain("`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`")
@@ -1110,17 +1109,23 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         .doesNotContain("CompanyService.updateTenantRuntimePolicy(...)")
         .doesNotContain("suspend, activate, deactivate, list usage");
 
-    String authHardening = readRepoFile(".factory/library/auth-hardening.md");
-    assertThat(authHardening)
+    String superadminContracts = readRepoFile("docs/frontend-portals/superadmin/api-contracts.md");
+    assertThat(superadminContracts)
         .contains("`GET /api/v1/auth/me`")
         .contains("`PUT /api/v1/superadmin/tenants/{id}/limits`")
         .doesNotContain("`GET /auth/profile`")
         .doesNotContain("`PUT /api/v1/companies/{id}/tenant-runtime/policy`")
         .doesNotContain("`PUT /api/v1/admin/tenant-runtime/policy`");
 
-    String frontendHandoff = readRepoFile(".factory/library/frontend-handoff.md");
-    assertThat(frontendHandoff)
-        .contains("| GET | `/api/v1/auth/me` |")
+    String frontendApi = readRepoFile("docs/frontend-api/README.md");
+    assertThat(frontendApi)
+        .contains("Only identity bootstrap endpoint: `GET /api/v1/auth/me`.")
+        .doesNotContain("| GET | `/api/v1/auth/profile` |")
+        .doesNotContain("| PUT | `/api/v1/auth/profile` |")
+        .doesNotContain("GET /api/v1/auth/profile")
+        .doesNotContain("PUT /api/v1/auth/profile");
+
+    assertThat(superadminContracts)
         .contains("| PUT | `/api/v1/superadmin/tenants/{id}/lifecycle` |")
         .contains("| PUT | `/api/v1/superadmin/tenants/{id}/limits` |")
         .doesNotContain("| GET | `/api/v1/auth/profile` |")
@@ -1133,15 +1138,12 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         .doesNotContain("`POST /api/v1/superadmin/tenants/{id}/activate`")
         .doesNotContain("`POST /api/v1/superadmin/tenants/{id}/deactivate`");
 
-    String frontendV2 = readRepoFile(".factory/library/frontend-v2.md");
-    assertThat(frontendV2)
+    assertThat(superadminContracts)
         .contains("`PUT /api/v1/superadmin/tenants/{id}/limits`")
         .doesNotContain("`PUT /api/v1/companies/{id}/tenant-runtime/policy`");
 
-    String runtimeControlPlane = readRepoFile(".factory/library/tenant-runtime-control-plane.md");
-    assertThat(runtimeControlPlane)
-        .contains(
-            "Canonical control-plane mutation path: `PUT /api/v1/superadmin/tenants/{id}/limits`")
+    assertThat(tenantAdminManagement)
+        .contains("`PUT /api/v1/superadmin/tenants/{id}/limits`")
         .doesNotContain("Public mutation path: `PUT /api/v1/companies/{id}/tenant-runtime/policy`");
   }
 

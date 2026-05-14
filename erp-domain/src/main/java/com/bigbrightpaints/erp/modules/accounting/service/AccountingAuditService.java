@@ -78,7 +78,7 @@ public class AccountingAuditService {
       return true;
     }
     try {
-      validatePostedEventPayloadCompatibility(journalEntry);
+      validatePostedEventPayloadContract(journalEntry);
       Map<Long, BigDecimal> snapshot =
           balancesBefore != null ? new HashMap<>(balancesBefore) : Map.of();
       accountingEventStore.recordJournalEntryPosted(journalEntry, snapshot);
@@ -95,7 +95,7 @@ public class AccountingAuditService {
     if (original == null || reversal == null) {
       return;
     }
-    validateReversalEventPayloadCompatibility(original, reason);
+    validateReversalEventPayloadContract(original, reason);
     try {
       accountingEventStore.recordJournalEntryReversed(original, reversal, reason);
     } catch (Exception ex) {
@@ -109,7 +109,7 @@ public class AccountingAuditService {
     if (original == null || voidEntry == null) {
       return;
     }
-    validateReversalEventPayloadCompatibility(original, reason);
+    validateReversalEventPayloadContract(original, reason);
     try {
       accountingEventStore.recordJournalEntryVoided(original, voidEntry, reason);
     } catch (Exception ex) {
@@ -159,7 +159,7 @@ public class AccountingAuditService {
       return;
     }
     try {
-      validateSettlementEventPayloadCompatibility(journalEntry, "DEALER_RECEIPT_POSTED");
+      validateSettlementEventPayloadContract(journalEntry, "DEALER_RECEIPT_POSTED");
       accountingEventStore.recordDealerReceiptPosted(
           journalEntry, dealerId, amount, normalizeAuditValue(idempotencyKey));
     } catch (Exception ex) {
@@ -174,7 +174,7 @@ public class AccountingAuditService {
       return;
     }
     try {
-      validateSettlementEventPayloadCompatibility(journalEntry, "SUPPLIER_PAYMENT_POSTED");
+      validateSettlementEventPayloadContract(journalEntry, "SUPPLIER_PAYMENT_POSTED");
       accountingEventStore.recordSupplierPaymentPosted(
           journalEntry, supplierId, amount, normalizeAuditValue(idempotencyKey));
     } catch (Exception ex) {
@@ -194,7 +194,7 @@ public class AccountingAuditService {
       return;
     }
     try {
-      validateSettlementEventPayloadCompatibility(journalEntry, "SETTLEMENT_ALLOCATED");
+      validateSettlementEventPayloadContract(journalEntry, "SETTLEMENT_ALLOCATED");
       accountingEventStore.recordSettlementAllocated(
           journalEntry,
           partnerType.name(),
@@ -209,7 +209,7 @@ public class AccountingAuditService {
   }
 
   String resolveCurrentUsername() {
-    return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    return SecurityActorResolver.resolveAuditActor();
   }
 
   void publishAccountCacheInvalidated(Long companyId) {
@@ -276,7 +276,7 @@ public class AccountingAuditService {
         && event != AuditEvent.SETTLEMENT_RECORDED;
   }
 
-  private void validatePostedEventPayloadCompatibility(JournalEntry journalEntry) {
+  private void validatePostedEventPayloadContract(JournalEntry journalEntry) {
     ensureEventFieldWithinLimit(
         "journalReference",
         journalEntry.getReferenceNumber(),
@@ -310,7 +310,7 @@ public class AccountingAuditService {
     }
   }
 
-  private void validateReversalEventPayloadCompatibility(JournalEntry original, String reason) {
+  private void validateReversalEventPayloadContract(JournalEntry original, String reason) {
     ensureEventFieldWithinLimit(
         "journalReference",
         original.getReferenceNumber(),
@@ -323,8 +323,7 @@ public class AccountingAuditService {
         "JOURNAL_ENTRY_REVERSED");
   }
 
-  private void validateSettlementEventPayloadCompatibility(
-      JournalEntry journalEntry, String operation) {
+  private void validateSettlementEventPayloadContract(JournalEntry journalEntry, String operation) {
     ensureEventFieldWithinLimit(
         "journalReference",
         journalEntry.getReferenceNumber(),

@@ -33,7 +33,6 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodServic
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodSnapshotService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
-import com.bigbrightpaints.erp.modules.accounting.service.PeriodCloseHook;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -69,7 +68,6 @@ class TS_RuntimeAccountingPeriodPolicyExecutableCoverageTest {
   @Mock private ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
   @Mock private PeriodCloseRequestRepository periodCloseRequestRepository;
   @Mock private ObjectProvider<JournalEntryService> journalEntryServiceProvider;
-  @Mock private PeriodCloseHook periodCloseHook;
   @Mock private AccountingPeriodSnapshotService snapshotService;
 
   @Test
@@ -92,7 +90,6 @@ class TS_RuntimeAccountingPeriodPolicyExecutableCoverageTest {
             reconciliationDiscrepancyRepository,
             periodCloseRequestRepository,
             journalEntryServiceProvider,
-            periodCloseHook,
             snapshotService);
 
     Company company = new Company();

@@ -20,13 +20,13 @@ public class SuperAdminUsageService {
   private static final String OPERATIONAL_TIMEZONE = "UTC";
 
   private final TenantUsageRollupService tenantUsageRollupService;
-  private final TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
+  private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
 
   public SuperAdminUsageService(
       TenantUsageRollupService tenantUsageRollupService,
-      TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService) {
+      TenantRuntimeEnforcementService tenantRuntimeEnforcementService) {
     this.tenantUsageRollupService = tenantUsageRollupService;
-    this.tenantRuntimeRequestAdmissionService = tenantRuntimeRequestAdmissionService;
+    this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
   }
 
   public SuperAdminUsageDtos.TenantUsage getTenantUsage(
@@ -35,7 +35,7 @@ public class SuperAdminUsageService {
     SuperAdminUsageDtos.TenantUsage durableUsage =
         tenantUsageRollupService.getTenantUsage(companyId, effectiveLimits);
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot runtimeSnapshot =
-        tenantRuntimeRequestAdmissionService.snapshot(durableUsage.companyCode());
+        tenantRuntimeEnforcementService.snapshot(durableUsage.companyCode());
     return new SuperAdminUsageDtos.TenantUsage(
         durableUsage.companyId(),
         durableUsage.companyCode(),

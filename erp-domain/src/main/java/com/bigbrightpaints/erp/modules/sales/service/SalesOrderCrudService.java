@@ -12,12 +12,9 @@ import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
 public class SalesOrderCrudService {
 
   private final SalesCoreEngine salesCoreEngine;
-  private final SalesIdempotencyService salesIdempotencyService;
 
-  public SalesOrderCrudService(
-      SalesCoreEngine salesCoreEngine, SalesIdempotencyService salesIdempotencyService) {
+  public SalesOrderCrudService(SalesCoreEngine salesCoreEngine) {
     this.salesCoreEngine = salesCoreEngine;
-    this.salesIdempotencyService = salesIdempotencyService;
   }
 
   public List<SalesOrderDto> listOrders(String status, int page, int size) {
@@ -37,7 +34,7 @@ public class SalesOrderCrudService {
   }
 
   public SalesOrderDto createOrder(SalesOrderRequest request) {
-    return salesIdempotencyService.createOrderWithIdempotency(request);
+    return salesCoreEngine.createOrder(request);
   }
 
   public SalesOrderDto updateOrder(Long id, SalesOrderRequest request) {

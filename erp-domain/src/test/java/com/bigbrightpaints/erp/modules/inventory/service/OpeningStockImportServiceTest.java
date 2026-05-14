@@ -1264,9 +1264,7 @@ class OpeningStockImportServiceTest {
     existing.setRowsProcessed(2);
     existing.setRawMaterialBatchesCreated(1);
     existing.setResultsJson(
-        """
-[{"rowNumber":1,"sku":"RM-1","stockType":"RAW_MATERIAL","readiness":{"sku":"RM-1","catalog":{"ready":true,"blockers":[]},"inventory":{"ready":true,"blockers":[]},"production":{"ready":true,"blockers":[]},"sales":{"ready":false,"blockers":["RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"]}}}]
-""");
+        persistedRawMaterialReplayResultsJson(false, "RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"));
 
     when(openingStockImportRepository.findByCompanyAndIdempotencyKey(company, "same-key"))
         .thenReturn(Optional.of(existing));
@@ -1612,9 +1610,7 @@ class OpeningStockImportServiceTest {
     existing.setContentFingerprint(fingerprint(originalCsv));
     existing.setRowsProcessed(2);
     existing.setResultsJson(
-        """
-[{"rowNumber":1,"sku":"RM-1","stockType":"RAW_MATERIAL","readiness":{"sku":"RM-1","catalog":{"ready":true,"blockers":[]},"inventory":{"ready":true,"blockers":[]},"production":{"ready":true,"blockers":[]},"sales":{"ready":false,"blockers":["RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"]}}}]
-""");
+        persistedRawMaterialReplayResultsJson(false, "RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"));
 
     when(openingStockImportRepository.findByCompanyAndIdempotencyKey(company, "same-key"))
         .thenReturn(Optional.of(existing));
@@ -1665,10 +1661,7 @@ class OpeningStockImportServiceTest {
     existing.setOpeningStockBatchKey(batchKey("same-key"));
     existing.setContentFingerprint(fingerprint(replayCsv));
     existing.setRowsProcessed(2);
-    existing.setResultsJson(
-        """
-[{"rowNumber":1,"sku":"RM-1","stockType":"RAW_MATERIAL","readiness":{"sku":"RM-1","catalog":{"ready":true,"blockers":[]},"inventory":{"ready":true,"blockers":[]},"production":{"ready":true,"blockers":[]},"sales":{"ready":true,"blockers":[]}}}]
-""");
+    existing.setResultsJson(persistedRawMaterialReplayResultsJson(true));
 
     when(openingStockImportRepository.findByCompanyAndIdempotencyKey(company, "same-key"))
         .thenReturn(Optional.of(existing));
@@ -1702,9 +1695,7 @@ class OpeningStockImportServiceTest {
     existing.setFinishedGoodsCreated(0);
     existing.setFinishedGoodBatchesCreated(0);
     existing.setResultsJson(
-        """
-[{"rowNumber":1,"sku":"RM-1","stockType":"RAW_MATERIAL","readiness":{"sku":"RM-1","catalog":{"ready":true,"blockers":[]},"inventory":{"ready":true,"blockers":[]},"production":{"ready":true,"blockers":[]},"sales":{"ready":false,"blockers":["RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"]}}}]
-""");
+        persistedRawMaterialReplayResultsJson(false, "RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"));
     existing.setErrorsJson(
         """
 [{"rowNumber":2,"message":"Invalid quantity","sku":"RM-2","stockType":"RAW_MATERIAL","readiness":null}]
@@ -2000,9 +1991,7 @@ class OpeningStockImportServiceTest {
     existing.setOpeningStockBatchKey(batchKey("same-key"));
     existing.setRowsProcessed(3);
     existing.setResultsJson(
-        """
-[{"rowNumber":1,"sku":"RM-1","stockType":"RAW_MATERIAL","readiness":{"sku":"RM-1","catalog":{"ready":true,"blockers":[]},"inventory":{"ready":true,"blockers":[]},"production":{"ready":true,"blockers":[]},"sales":{"ready":false,"blockers":["RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"]}}}]
-""");
+        persistedRawMaterialReplayResultsJson(false, "RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"));
 
     when(openingStockImportRepository.findByCompanyAndIdempotencyKey(company, "same-key"))
         .thenReturn(Optional.of(existing));
@@ -2363,6 +2352,28 @@ class OpeningStockImportServiceTest {
   private SkuReadinessDto readyReadiness(String sku) {
     return new SkuReadinessDto(
         sku, readyStage(), readyStage(), readyStage(), readyStage(), readyStage(), readyStage());
+  }
+
+  private String persistedRawMaterialReplayResultsJson(
+      boolean salesReady, String... salesBlockers) {
+    try {
+      SkuReadinessDto readiness =
+          new SkuReadinessDto(
+              "RM-1",
+              readyStage(),
+              readyStage(),
+              readyStage(),
+              readyStage(),
+              new SkuReadinessDto.Stage(salesReady, List.of(salesBlockers)),
+              readyStage());
+      return new ObjectMapper()
+          .writeValueAsString(
+              List.of(
+                  new OpeningStockImportResponse.ImportRowResult(
+                      1L, "RM-1", "RAW_MATERIAL", null, null, null, null, null, null, readiness)));
+    } catch (Exception ex) {
+      throw new AssertionError("Failed to build opening stock replay fixture", ex);
+    }
   }
 
   private OpeningStockImportResponse importOpeningStock(MultipartFile file, String idempotencyKey) {

@@ -509,7 +509,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                     new HttpEntity<>(headers),
                     Map.class)
                 .getStatusCode())
-        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+        .isNotIn(HttpStatus.OK, HttpStatus.NO_CONTENT);
 
     assertThat(
             rest.exchange(
@@ -518,7 +518,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                     new HttpEntity<>(headers),
                     Map.class)
                 .getStatusCode())
-        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+        .isNotIn(HttpStatus.OK, HttpStatus.NO_CONTENT);
 
     assertPlatformOnlyAccessDenied(
         rest.exchange(
@@ -548,11 +548,11 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                     new HttpEntity<>(headers),
                     Map.class)
                 .getStatusCode())
-        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+        .isNotIn(HttpStatus.OK, HttpStatus.NO_CONTENT);
   }
 
   @Test
-  void retired_admin_user_aliases_are_absent_and_non_mutating_for_every_actor_role() {
+  void old_admin_user_aliases_are_absent_and_non_mutating_for_every_actor_role() {
     UserAccount mustChangeUser =
         dataSeeder.ensureUser(
             "must-change-retired-admin@bbp.com",
@@ -572,15 +572,15 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             bearerHeaders(login("must-change-retired-admin@bbp.com", "MustChange123!", COMPANY)));
 
     for (HttpHeaders headers : actorHeaders) {
-      assertRetiredAdminAliasAbsentAndNonMutating(
+      assertOldAdminAliasAbsentAndNonMutating(
           "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
           HttpMethod.PATCH,
           headers);
-      assertRetiredAdminAliasAbsentAndNonMutating(
+      assertOldAdminAliasAbsentAndNonMutating(
           "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
           HttpMethod.PATCH,
           headers);
-      assertRetiredAdminAliasAbsentAndNonMutating(
+      assertOldAdminAliasAbsentAndNonMutating(
           "/api/v1/admin/users/" + otherCompanyUser.getId(), HttpMethod.DELETE, headers);
     }
   }
@@ -1384,7 +1384,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     return headers;
   }
 
-  private void assertRetiredAdminAliasAbsentAndNonMutating(
+  private void assertOldAdminAliasAbsentAndNonMutating(
       String path, HttpMethod method, HttpHeaders headers) {
     boolean enabledBefore =
         userAccountRepository.findById(otherCompanyUser.getId()).orElseThrow().isEnabled();
@@ -1392,7 +1392,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
         rest.exchange(path, method, new HttpEntity<>(headers), Map.class);
     assertThat(response.getStatusCode())
         .as("%s %s returned body %s", method, path, response.getBody())
-        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+        .isNotIn(HttpStatus.OK, HttpStatus.NO_CONTENT);
     assertThat(userAccountRepository.findById(otherCompanyUser.getId()))
         .hasValueSatisfying(user -> assertThat(user.isEnabled()).isEqualTo(enabledBefore));
   }

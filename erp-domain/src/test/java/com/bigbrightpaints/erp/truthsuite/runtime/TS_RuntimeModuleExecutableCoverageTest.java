@@ -174,17 +174,17 @@ class TS_RuntimeModuleExecutableCoverageTest {
     materialWithoutSku.setCompany(company);
     ReflectionTestUtils.setField(materialWithoutSku, "id", 77L);
 
-    Company utcFallbackCompany = company("BTZ", null);
+    Company utcDefaultCompany = company("BTZ", null);
     FinishedGood finishedGoodWithoutSku = new FinishedGood();
-    finishedGoodWithoutSku.setCompany(utcFallbackCompany);
+    finishedGoodWithoutSku.setCompany(utcDefaultCompany);
     finishedGoodWithoutSku.setProductCode("   ");
 
-    String rmFallback = service.nextRawMaterialBatchCode(materialWithoutSku);
-    String fgFallback = service.nextFinishedGoodBatchCode(finishedGoodWithoutSku, null);
-    String utcSlip = service.nextPackagingSlipNumber(utcFallbackCompany);
+    String rmGenerated = service.nextRawMaterialBatchCode(materialWithoutSku);
+    String fgGenerated = service.nextFinishedGoodBatchCode(finishedGoodWithoutSku, null);
+    String utcSlip = service.nextPackagingSlipNumber(utcDefaultCompany);
 
-    assertThat(rmFallback).contains("RM-77-");
-    assertThat(fgFallback).contains("-FG-ITEM-");
+    assertThat(rmGenerated).contains("RM-77-");
+    assertThat(fgGenerated).contains("-FG-ITEM-");
     assertThat(utcSlip).startsWith("BTZ-PS-");
   }
 

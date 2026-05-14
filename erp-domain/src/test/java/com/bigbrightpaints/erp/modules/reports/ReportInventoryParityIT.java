@@ -76,7 +76,6 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
     String lifoCode = prefix + "-LIFO";
     String wacCode = prefix + "-WAC";
     String wacAliasCode = prefix + "-WAC-ALIAS";
-    String legacyFallbackCode = prefix + "-LEGACY";
     String reservedDriftCode = prefix + "-RES-DRIFT";
 
     seedFinishedGoodWithBatches(
@@ -152,24 +151,6 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
                 new BigDecimal("12"),
                 Instant.parse("2026-01-02T00:00:00Z"))));
     seedFinishedGoodWithBatches(
-        legacyFallbackCode,
-        "LEGACY_UNKNOWN",
-        new BigDecimal("5"),
-        new BigDecimal("1"),
-        List.of(
-            new BatchSeed(
-                legacyFallbackCode + "-OLD",
-                new BigDecimal("2"),
-                BigDecimal.ZERO,
-                new BigDecimal("5"),
-                Instant.parse("2026-01-01T00:00:00Z")),
-            new BatchSeed(
-                legacyFallbackCode + "-NEW",
-                new BigDecimal("10"),
-                new BigDecimal("10"),
-                new BigDecimal("20"),
-                Instant.parse("2026-01-02T00:00:00Z"))));
-    seedFinishedGoodWithBatches(
         reservedDriftCode,
         "FIFO",
         new BigDecimal("2"),
@@ -187,7 +168,7 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
             .filter(row -> String.valueOf(row.get("productCode")).startsWith(prefix))
             .toList();
 
-    assertThat(trackedRows).hasSize(6);
+    assertThat(trackedRows).hasSize(5);
 
     Map<String, Map<String, Object>> byCode =
         trackedRows.stream()
@@ -201,8 +182,6 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
         .isEqualByComparingTo(new BigDecimal("10.4"));
     assertThat(asDecimal(byCode.get(wacAliasCode).get("weightedAverageCost")))
         .isEqualByComparingTo(new BigDecimal("10.4"));
-    assertThat(asDecimal(byCode.get(legacyFallbackCode).get("weightedAverageCost")))
-        .isEqualByComparingTo(new BigDecimal("20"));
     assertThat(asDecimal(byCode.get(reservedDriftCode).get("weightedAverageCost")))
         .isEqualByComparingTo(BigDecimal.ZERO);
 

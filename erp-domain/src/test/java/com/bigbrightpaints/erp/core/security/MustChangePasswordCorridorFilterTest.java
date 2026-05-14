@@ -29,7 +29,7 @@ class MustChangePasswordCorridorFilterTest {
   }
 
   @Test
-  void retiredAdminHost_withMatrixParam_bypassesCorridorBlock() throws Exception {
+  void adminHostWithMatrixParam_isBlockedWhenPasswordChangeRequired() throws Exception {
     authenticateMustChangeUser();
     MockHttpServletRequest request =
         new MockHttpServletRequest("GET", "/api/v1/admin/settings;v=1");
@@ -39,12 +39,13 @@ class MustChangePasswordCorridorFilterTest {
 
     filter.doFilter(request, response, (ignoredRequest, ignoredResponse) -> chainCalled.set(true));
 
-    assertThat(chainCalled).isTrue();
-    assertThat(response.getStatus()).isEqualTo(200);
+    assertThat(chainCalled).isFalse();
+    assertThat(response.getStatus()).isEqualTo(403);
+    assertThat(response.getContentAsString()).contains("PASSWORD_CHANGE_REQUIRED");
   }
 
   @Test
-  void retiredAdminHost_withServletPathAndPathInfo_bypassesCorridorBlock() throws Exception {
+  void adminHostWithServletPathAndPathInfo_isBlockedWhenPasswordChangeRequired() throws Exception {
     authenticateMustChangeUser();
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ignored");
     request.setServletPath("/api/v1/admin");
@@ -55,8 +56,9 @@ class MustChangePasswordCorridorFilterTest {
 
     filter.doFilter(request, response, (ignoredRequest, ignoredResponse) -> chainCalled.set(true));
 
-    assertThat(chainCalled).isTrue();
-    assertThat(response.getStatus()).isEqualTo(200);
+    assertThat(chainCalled).isFalse();
+    assertThat(response.getStatus()).isEqualTo(403);
+    assertThat(response.getContentAsString()).contains("PASSWORD_CHANGE_REQUIRED");
   }
 
   @Test

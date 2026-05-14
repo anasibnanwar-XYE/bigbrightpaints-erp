@@ -2197,9 +2197,9 @@ public class SuperAdminTenantControlPlaneService {
     return normalized;
   }
 
-  private String normalizeOptionalReason(String value, String fallback) {
+  private String normalizeOptionalReason(String value, String defaultValue) {
     if (!StringUtils.hasText(value)) {
-      return fallback;
+      return defaultValue;
     }
     return value.trim();
   }

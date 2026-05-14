@@ -96,11 +96,9 @@ public class SalesFulfillmentService {
     FulfillmentResult.Builder result =
         FulfillmentResult.builder().orderId(orderId).orderNumber(orderNumber);
 
-    // Check if order is already shipped/fulfilled to prevent double posting
+    // Check if order is already dispatched/settled to prevent double posting
     String orderStatus = order.getStatus();
-    if ("SHIPPED".equalsIgnoreCase(orderStatus)
-        || "FULFILLED".equalsIgnoreCase(orderStatus)
-        || "COMPLETED".equalsIgnoreCase(orderStatus)) {
+    if ("DISPATCHED".equalsIgnoreCase(orderStatus) || "SETTLED".equalsIgnoreCase(orderStatus)) {
       log.info("Order {} already has status {}, skipping fulfillment", orderNumber, orderStatus);
       result.status(FulfillmentStatus.COMPLETED);
       // Return existing markers if available
@@ -224,7 +222,18 @@ public class SalesFulfillmentService {
     Long packingSlipId = slip != null ? slip.getId() : requestedSlipId;
     Long orderId = slip != null || requestedSlipId != null ? null : order.getId();
     return new DispatchConfirmRequest(
-        packingSlipId, orderId, lines, null, null, Boolean.FALSE, null, null);
+        packingSlipId,
+        orderId,
+        lines,
+        null,
+        null,
+        Boolean.FALSE,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
   private PackagingSlip resolveDispatchSlip(SalesOrder order, Long requestedSlipId) {

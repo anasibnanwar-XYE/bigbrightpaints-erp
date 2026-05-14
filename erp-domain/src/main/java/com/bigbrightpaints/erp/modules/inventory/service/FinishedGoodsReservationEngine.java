@@ -318,18 +318,6 @@ public class FinishedGoodsReservationEngine {
             .findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
                 slip.getCompany(), slip.getId(), "DISPATCH");
 
-    if (dispatchMovements.isEmpty()
-        && slip.getSalesOrder() != null
-        && slip.getSalesOrder().getId() != null) {
-      dispatchMovements =
-          inventoryMovementRepository
-              .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdAndPackingSlipIdIsNullAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
-                  slip.getCompany(),
-                  InventoryReference.SALES_ORDER,
-                  slip.getSalesOrder().getId().toString(),
-                  "DISPATCH");
-    }
-
     for (InventoryMovement movement : dispatchMovements) {
       if (movement == null
           || movement.getFinishedGoodBatch() == null

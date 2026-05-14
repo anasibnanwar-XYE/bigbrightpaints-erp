@@ -20,7 +20,6 @@ import com.bigbrightpaints.erp.core.web.RequestTraceContext;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
-import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,15 +29,15 @@ import jakarta.servlet.http.HttpServletResponse;
 public class TenantRuntimeEnforcementInterceptor implements HandlerInterceptor {
 
   private final CompanyContextService companyContextService;
-  private final TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
+  private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
   private final ObjectMapper objectMapper;
 
   public TenantRuntimeEnforcementInterceptor(
       CompanyContextService companyContextService,
-      TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService,
+      TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
       ObjectMapper objectMapper) {
     this.companyContextService = companyContextService;
-    this.tenantRuntimeRequestAdmissionService = tenantRuntimeRequestAdmissionService;
+    this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
     this.objectMapper = objectMapper;
   }
 
@@ -56,7 +55,7 @@ public class TenantRuntimeEnforcementInterceptor implements HandlerInterceptor {
 
     Company company = companyContextService.requireCurrentCompany();
     TenantRuntimeEnforcementService.TenantRequestAdmission admission =
-        tenantRuntimeRequestAdmissionService.beginRequest(
+        tenantRuntimeEnforcementService.admitRequest(
             company.getCode(), path, request.getMethod(), resolveCurrentActor(), false);
     if (admission == null || !admission.isAdmitted()) {
       if (isQuotaRejection(admission)) {
@@ -65,18 +64,18 @@ public class TenantRuntimeEnforcementInterceptor implements HandlerInterceptor {
       }
       throw admissionException(company.getCode(), path, admission);
     }
-    request.setAttribute(TenantRuntimeRequestAttributes.INTERCEPTOR_FALLBACK_ADMISSION, admission);
+    request.setAttribute(TenantRuntimeRequestAttributes.INTERCEPTOR_ADMISSION, admission);
     return true;
   }
 
   @Override
   public void afterCompletion(
       HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-    Object admission =
-        request.getAttribute(TenantRuntimeRequestAttributes.INTERCEPTOR_FALLBACK_ADMISSION);
+    Object admission = request.getAttribute(TenantRuntimeRequestAttributes.INTERCEPTOR_ADMISSION);
     if (admission
         instanceof TenantRuntimeEnforcementService.TenantRequestAdmission trackedAdmission) {
-      tenantRuntimeRequestAdmissionService.completeRequest(trackedAdmission, response.getStatus());
+      tenantRuntimeEnforcementService.completeRequestAdmission(
+          trackedAdmission, response.getStatus());
     }
   }
 
@@ -84,9 +83,7 @@ public class TenantRuntimeEnforcementInterceptor implements HandlerInterceptor {
     if (!StringUtils.hasText(path)) {
       return false;
     }
-    return path.startsWith("/api/v1/reports/")
-        || path.startsWith("/api/v1/portal/")
-        || path.startsWith("/api/v1/demo/");
+    return path.startsWith("/api/v1/reports/") || path.startsWith("/api/v1/portal/");
   }
 
   private RuntimeException admissionException(
@@ -150,7 +147,7 @@ public class TenantRuntimeEnforcementInterceptor implements HandlerInterceptor {
       return null;
     }
     try {
-      return tenantRuntimeRequestAdmissionService.snapshot(companyCode);
+      return tenantRuntimeEnforcementService.snapshot(companyCode);
     } catch (RuntimeException ex) {
       return null;
     }

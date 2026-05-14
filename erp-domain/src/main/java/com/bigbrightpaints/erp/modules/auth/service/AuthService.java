@@ -31,7 +31,7 @@ import com.bigbrightpaints.erp.modules.auth.web.LoginRequest;
 import com.bigbrightpaints.erp.modules.auth.web.RefreshTokenRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
-import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 
 import io.jsonwebtoken.Claims;
 
@@ -49,7 +49,7 @@ public class AuthService {
   private final MfaService mfaService;
   private final TokenBlacklistService tokenBlacklistService;
   private final AuditService auditService;
-  private final TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
+  private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
   private final PasswordEncoder passwordEncoder;
   private final AuthScopeService authScopeService;
   private final IamCanonicalStorageService iamCanonicalStorageService;
@@ -66,7 +66,7 @@ public class AuthService {
       MfaService mfaService,
       TokenBlacklistService tokenBlacklistService,
       AuditService auditService,
-      TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService,
+      TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
       PasswordEncoder passwordEncoder,
       AuthScopeService authScopeService,
       IamCanonicalStorageService iamCanonicalStorageService,
@@ -81,7 +81,7 @@ public class AuthService {
     this.mfaService = mfaService;
     this.tokenBlacklistService = tokenBlacklistService;
     this.auditService = auditService;
-    this.tenantRuntimeRequestAdmissionService = tenantRuntimeRequestAdmissionService;
+    this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
     this.passwordEncoder = passwordEncoder;
     this.authScopeService = authScopeService;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
@@ -111,7 +111,7 @@ public class AuthService {
       }
       Company company = resolveCompanyForScope(user, scopeCode);
       if (company != null) {
-        tenantRuntimeRequestAdmissionService.enforceAuthOperationAllowed(
+        tenantRuntimeEnforcementService.enforceAuthOperation(
             company.getCode(), user.getEmail(), "LOGIN");
       }
       boolean mfaChallengeActive = user.isMfaEnabled();
@@ -227,7 +227,7 @@ public class AuthService {
     }
     Company company = resolveCompanyForScope(user, requestedScopeCode);
     if (company != null) {
-      tenantRuntimeRequestAdmissionService.enforceAuthOperationAllowed(
+      tenantRuntimeEnforcementService.enforceAuthOperation(
           company.getCode(), user.getEmail(), "REFRESH_TOKEN");
     }
     RefreshTokenService.TokenRecord record =
@@ -474,7 +474,7 @@ public class AuthService {
       tokenBlacklistService.blacklistToken(
           tokenId, expiration, userPublicId != null ? userPublicId.toString() : null, "logout");
     } catch (Exception ex) {
-      String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+      String actor = SecurityActorResolver.resolveAuditActor();
       log.warn(
           "Failed to blacklist access token during logout (actor={}, tokenHash={}, expiresAt={})",
           actor,

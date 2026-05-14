@@ -41,7 +41,7 @@ public class ChangelogService {
   public ChangelogEntryResponse create(ChangelogEntryRequest request) {
     ChangelogEntry entry = new ChangelogEntry();
     applyRequest(entry, request);
-    entry.setCreatedBy(SecurityActorResolver.resolveActorWithSystemProcessFallback());
+    entry.setCreatedBy(SecurityActorResolver.resolveAuditActor());
     if (entry.getPublishedAt() == null) {
       entry.setPublishedAt(CompanyTime.now());
     }
@@ -49,7 +49,7 @@ public class ChangelogService {
 
     auditService.logAuthSuccess(
         AuditEvent.DATA_CREATE,
-        SecurityActorResolver.resolveActorWithSystemProcessFallback(),
+        SecurityActorResolver.resolveAuditActor(),
         null,
         Map.of(
             "action", "changelog_create",
@@ -66,7 +66,7 @@ public class ChangelogService {
 
     auditService.logAuthSuccess(
         AuditEvent.DATA_UPDATE,
-        SecurityActorResolver.resolveActorWithSystemProcessFallback(),
+        SecurityActorResolver.resolveAuditActor(),
         null,
         Map.of(
             "action", "changelog_update",
@@ -85,7 +85,7 @@ public class ChangelogService {
 
     auditService.logAuthSuccess(
         AuditEvent.DATA_DELETE,
-        SecurityActorResolver.resolveActorWithSystemProcessFallback(),
+        SecurityActorResolver.resolveAuditActor(),
         null,
         Map.of(
             "action", "changelog_soft_delete",

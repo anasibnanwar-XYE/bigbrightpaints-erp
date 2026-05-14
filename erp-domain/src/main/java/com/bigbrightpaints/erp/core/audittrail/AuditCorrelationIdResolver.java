@@ -22,7 +22,7 @@ public final class AuditCorrelationIdResolver {
 
   private AuditCorrelationIdResolver() {}
 
-  public static UUID resolveCorrelationId(HttpServletRequest request, String... fallbackKeys) {
+  public static UUID resolveCorrelationId(HttpServletRequest request, String... candidateKeys) {
     UUID explicit = parseUuidOrNull(header(request, HEADER_CORRELATION_ID));
     if (explicit != null) {
       return explicit;
@@ -33,9 +33,9 @@ public final class AuditCorrelationIdResolver {
     appendIfPresent(candidates, header(request, HEADER_REQUEST_ID));
     appendIfPresent(candidates, requestAttribute(request, ATTR_TRACE_ID));
     appendIfPresent(candidates, requestAttribute(request, ATTR_REQUEST_ID));
-    if (fallbackKeys != null) {
-      for (String fallbackKey : fallbackKeys) {
-        appendIfPresent(candidates, fallbackKey);
+    if (candidateKeys != null) {
+      for (String candidateKey : candidateKeys) {
+        appendIfPresent(candidates, candidateKey);
       }
     }
 

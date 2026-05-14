@@ -226,20 +226,20 @@ class SalesReturnJournalFacadeOperations {
   }
 
   private void ensureSalesReturnReferenceMapping(
-      Company company, String legacyReference, String canonicalReference, Long entryId) {
+      Company company, String referenceKey, String canonicalReference, Long entryId) {
     if (company == null
-        || !StringUtils.hasText(legacyReference)
+        || !StringUtils.hasText(referenceKey)
         || !StringUtils.hasText(canonicalReference)) {
       return;
     }
     if (journalReferenceMappingRepository
-        .findByCompanyAndReferenceKeyIgnoreCase(company, legacyReference.trim())
+        .findByCompanyAndReferenceKeyIgnoreCase(company, referenceKey.trim())
         .isPresent()) {
       return;
     }
     JournalReferenceMapping mapping = new JournalReferenceMapping();
     mapping.setCompany(company);
-    mapping.setLegacyReference(legacyReference.trim());
+    mapping.setReferenceKey(referenceKey.trim());
     mapping.setCanonicalReference(canonicalReference.trim());
     mapping.setEntityType("JOURNAL_ENTRY");
     mapping.setEntityId(entryId);

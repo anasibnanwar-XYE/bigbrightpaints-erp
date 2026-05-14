@@ -168,7 +168,7 @@ public class ControlPlaneRateLimitFilter extends OncePerRequestFilter {
       metadata.put("limit", Integer.toString(target.limit()));
       auditService.logSecurityAlert(
           "CONTROL_PLANE_RATE_LIMIT", "Control-plane rate limit exceeded", metadata);
-    } catch (RuntimeException ignored) {
+    } catch (RuntimeException ex) {
       // Rate limiting must fail closed for the request but never expose audit persistence details.
     }
   }

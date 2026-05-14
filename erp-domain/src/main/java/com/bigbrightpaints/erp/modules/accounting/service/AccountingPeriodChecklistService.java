@@ -377,7 +377,6 @@ final class AccountingPeriodChecklistService {
   }
 
   private String resolveCurrentUsername() {
-    return com.bigbrightpaints.erp.core.security.SecurityActorResolver
-        .resolveActorWithSystemProcessFallback();
+    return com.bigbrightpaints.erp.core.security.SecurityActorResolver.resolveAuditActor();
   }
 }

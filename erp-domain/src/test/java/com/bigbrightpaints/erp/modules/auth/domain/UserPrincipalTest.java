@@ -26,7 +26,7 @@ class UserPrincipalTest {
     role.getPermissions().add(dispatchConfirm);
     role.getPermissions().add(portalFactory);
 
-    UserAccount user = new UserAccount("worker@bbp.test", "hash", "Worker");
+    UserAccount user = new UserAccount("worker@bbp.test", "TEST", "hash", "Worker");
     user.getRoles().add(role);
 
     UserPrincipal principal = new UserPrincipal(user);

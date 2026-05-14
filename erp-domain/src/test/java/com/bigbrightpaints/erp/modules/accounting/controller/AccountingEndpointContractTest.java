@@ -505,7 +505,8 @@ class AccountingEndpointContractTest {
     AccountingService accountingService = mock(AccountingService.class);
     StatementReportController controller =
         newStatementController(accountingService, mock(SalesReturnService.class));
-    JournalEntryDto legacySalesReturn = journalEntry(301L, "CRN-100", 11L, null, "Sales return");
+    JournalEntryDto directlyLinkedSalesReturn =
+        journalEntry(301L, "CRN-100", 11L, null, "Sales return");
     JournalEntryDto correctionLinkedSalesReturn =
         journalEntry(302L, "CRN-101", null, "SALES_RETURN", "Correction-linked sales return");
     JournalEntryDto cogsEntry = journalEntry(303L, "CRN-100-COGS-0", null, null, "COGS reversal");
@@ -513,12 +514,16 @@ class AccountingEndpointContractTest {
         journalEntry(304L, "CRN-ORPHAN-1", null, null, "Orphaned credit note");
     when(accountingService.listJournalEntriesByReferencePrefix("CRN-"))
         .thenReturn(
-            List.of(legacySalesReturn, correctionLinkedSalesReturn, cogsEntry, orphanedCreditNote));
+            List.of(
+                directlyLinkedSalesReturn,
+                correctionLinkedSalesReturn,
+                cogsEntry,
+                orphanedCreditNote));
 
     ApiResponse<List<JournalEntryDto>> body = controller.listSalesReturns().getBody();
 
     assertThat(body).isNotNull();
-    assertThat(body.data()).containsExactly(legacySalesReturn, correctionLinkedSalesReturn);
+    assertThat(body.data()).containsExactly(directlyLinkedSalesReturn, correctionLinkedSalesReturn);
   }
 
   @Test

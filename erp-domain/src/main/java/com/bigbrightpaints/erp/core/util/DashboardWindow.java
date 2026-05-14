@@ -23,8 +23,8 @@ public record DashboardWindow(
   private static final Pattern DAY_WINDOW_PATTERN = Pattern.compile("^\\d+d$");
 
   public static DashboardWindow resolve(
-      String window, String compare, String timezone, String fallbackTimezone) {
-    ZoneId zone = parseZone(timezone, fallbackTimezone);
+      String window, String compare, String timezone, String defaultTimezone) {
+    ZoneId zone = parseZone(timezone, defaultTimezone);
     LocalDate today = LocalDate.ofInstant(CompanyTime.now(), zone);
     WindowRange range = resolveRange(window, today);
     long days = ChronoUnit.DAYS.between(range.start(), range.end()) + 1;
@@ -59,13 +59,13 @@ public record DashboardWindow(
     return buckets;
   }
 
-  private static ZoneId parseZone(String timezone, String fallbackTimezone) {
+  private static ZoneId parseZone(String timezone, String defaultTimezone) {
     ZoneId requestedZone = resolveZoneId(timezone);
     if (requestedZone != null) {
       return requestedZone;
     }
-    ZoneId fallbackZone = resolveZoneId(fallbackTimezone);
-    return fallbackZone != null ? fallbackZone : ZoneId.of("UTC");
+    ZoneId defaultZone = resolveZoneId(defaultTimezone);
+    return defaultZone != null ? defaultZone : ZoneId.of("UTC");
   }
 
   private static WindowRange resolveRange(String window, LocalDate today) {

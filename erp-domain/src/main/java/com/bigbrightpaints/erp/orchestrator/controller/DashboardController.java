@@ -10,34 +10,34 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
-import com.bigbrightpaints.erp.orchestrator.service.DashboardAggregationService;
+import com.bigbrightpaints.erp.orchestrator.service.IntegrationCoordinator;
 
 @RestController
 @RequestMapping("/api/v1/orchestrator/dashboard")
 public class DashboardController {
 
-  private final DashboardAggregationService dashboardAggregationService;
+  private final IntegrationCoordinator integrationCoordinator;
 
-  public DashboardController(DashboardAggregationService dashboardAggregationService) {
-    this.dashboardAggregationService = dashboardAggregationService;
+  public DashboardController(IntegrationCoordinator integrationCoordinator) {
+    this.integrationCoordinator = integrationCoordinator;
   }
 
   @GetMapping("/admin")
   @PreAuthorize("hasAuthority('ROLE_ADMIN')")
   public ResponseEntity<Map<String, Object>> adminDashboard() {
-    return ResponseEntity.ok(dashboardAggregationService.adminDashboard(requireCompanyCode()));
+    return ResponseEntity.ok(integrationCoordinator.fetchAdminDashboard(requireCompanyCode()));
   }
 
   @GetMapping("/factory")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')")
   public ResponseEntity<Map<String, Object>> factoryDashboard() {
-    return ResponseEntity.ok(dashboardAggregationService.factoryDashboard(requireCompanyCode()));
+    return ResponseEntity.ok(integrationCoordinator.fetchFactoryDashboard(requireCompanyCode()));
   }
 
   @GetMapping("/finance")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
   public ResponseEntity<Map<String, Object>> financeDashboard() {
-    return ResponseEntity.ok(dashboardAggregationService.financeDashboard(requireCompanyCode()));
+    return ResponseEntity.ok(integrationCoordinator.fetchFinanceDashboard(requireCompanyCode()));
   }
 
   private String requireCompanyCode() {

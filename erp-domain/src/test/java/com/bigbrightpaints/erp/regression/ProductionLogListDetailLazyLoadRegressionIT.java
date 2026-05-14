@@ -14,7 +14,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.context.TestPropertySource;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -36,7 +35,6 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProductReposi
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 @DisplayName("Regression: Production log list/detail load lazy fields safely")
-@TestPropertySource(properties = "erp.raw-material.intake.enabled=true")
 class ProductionLogListDetailLazyLoadRegressionIT extends AbstractIntegrationTest {
 
   private static final String COMPANY_CODE = "LF-015";

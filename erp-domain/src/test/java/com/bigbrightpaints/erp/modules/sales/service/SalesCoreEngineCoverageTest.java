@@ -457,42 +457,11 @@ class SalesCoreEngineCoverageTest {
   }
 
   @Test
-  void resolveExistingOrder_backfillsMissingPaymentModeWhenSignatureMatches() throws Exception {
-    Method method =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "resolveExistingOrder",
-            SalesOrder.class,
-            String.class,
-            String.class,
-            String.class,
-            String.class);
-    method.setAccessible(true);
-
-    SalesOrder order = new SalesOrder();
-    ReflectionTestUtils.setField(order, "id", 55L);
-    order.setStatus("DRAFT");
-    order.setOrderNumber("SO-55");
-    order.setIdempotencyHash("sig-55");
-    ReflectionTestUtils.setField(order, "paymentMode", null);
-    order.setCurrency("INR");
-    order.setGstTreatment("NONE");
-    order.setGstInclusive(false);
-    order.setNotes("notes");
-    order.setTotalAmount(new BigDecimal("10.00"));
-
-    Object dto = method.invoke(engine, order, "idem-55", "sig-55", "legacy-55", " cash ");
-
-    assertThat(order.getPaymentMode()).isEqualTo("CASH");
-    assertThat(dto).isNotNull();
-    verify(salesOrderRepository).save(order);
-  }
-
-  @Test
   void buildSalesOrderSignature_usesOrderPaymentModeWhenRequestPaymentModeIsMissing()
       throws Exception {
     Method method =
         SalesCoreEngine.class.getDeclaredMethod(
-            "buildSalesOrderSignature", SalesOrder.class, String.class, boolean.class);
+            "buildSalesOrderSignature", SalesOrder.class, String.class);
     method.setAccessible(true);
 
     SalesOrder order = new SalesOrder();
@@ -503,96 +472,29 @@ class SalesCoreEngineCoverageTest {
     order.setNotes("notes");
     order.setTotalAmount(new BigDecimal("12.00"));
 
-    String fromOrderPaymentMode = (String) method.invoke(engine, order, null, false);
-    String explicitHybrid = (String) method.invoke(engine, order, "HYBRID", false);
+    String fromOrderPaymentMode = (String) method.invoke(engine, order, null);
+    String explicitHybrid = (String) method.invoke(engine, order, "HYBRID");
 
     assertThat(fromOrderPaymentMode).isEqualTo(explicitHybrid);
   }
 
   @Test
-  void resolveLegacySplitReplayRequestSignature_returnsNullWhenCanonicalAlreadyUsesLegacyShape()
-      throws Exception {
-    Method legacySignatureMethod =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "resolveLegacySplitReplayRequestSignature",
-            com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest.class,
-            String.class);
-    legacySignatureMethod.setAccessible(true);
-    Method buildSignatureMethod =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "buildSalesOrderSignature",
-            com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest.class,
-            boolean.class,
-            boolean.class);
-    buildSignatureMethod.setAccessible(true);
-
-    com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest request =
-        new com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest(
-            101L,
-            new BigDecimal("100.00"),
-            "INR",
-            "notes",
-            List.of(
-                new com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest(
-                    "SKU-1", "Primer", BigDecimal.ONE, new BigDecimal("100.00"), BigDecimal.ZERO)),
-            "NONE",
-            BigDecimal.ZERO,
-            Boolean.FALSE,
-            null,
-            "SPLIT");
-
-    String canonicalLegacyShape =
-        (String) buildSignatureMethod.invoke(engine, request, false, true);
-
-    assertThat(legacySignatureMethod.invoke(engine, request, canonicalLegacyShape)).isNull();
-  }
-
-  @Test
-  void acceptedRequestSignatures_ignoresBlankEntries_and_deduplicates() throws Exception {
+  void signaturePaymentModeToken_defaultsBlank_andRejectsSplitPaymentMode() throws Exception {
     Method method =
-        SalesCoreEngine.class.getDeclaredMethod("acceptedRequestSignatures", String[].class);
+        SalesCoreEngine.class.getDeclaredMethod("signaturePaymentModeToken", String.class);
     method.setAccessible(true);
 
-    @SuppressWarnings("unchecked")
-    List<String> accepted =
-        (List<String>)
-            method.invoke(engine, (Object) new String[] {"sig-1", " ", "sig-1", null, "sig-2"});
-
-    assertThat(accepted).containsExactly("sig-1", "sig-2");
+    assertThat(method.invoke(engine, "   ")).isEqualTo("CREDIT");
+    assertThatThrownBy(() -> method.invoke(engine, "split"))
+        .hasRootCauseInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+        .hasRootCauseMessage("Unsupported sales order payment mode: SPLIT");
   }
 
   @Test
-  void signaturePaymentModeToken_defaultsBlank_and_preservesLegacySplitAlias() throws Exception {
-    Method method =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "signaturePaymentModeToken", String.class, boolean.class);
-    method.setAccessible(true);
-
-    assertThat(method.invoke(engine, "   ", false)).isEqualTo("CREDIT");
-    assertThat(method.invoke(engine, "split", true)).isEqualTo("SPLIT");
-  }
-
-  @Test
-  void resolveLegacySplitReplayIdempotencyKey_returnsDistinctReplayKeyOnly() throws Exception {
-    Method method =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "resolveLegacySplitReplayIdempotencyKey", SalesOrderRequest.class, String.class);
-    method.setAccessible(true);
-
-    SalesOrderRequest request = salesOrderRequest("SPLIT", null);
-    String canonicalKey = request.resolveIdempotencyKey();
-
-    assertThat(method.invoke(engine, request, canonicalKey))
-        .isEqualTo(request.resolveLegacySplitReplayIdempotencyKey());
-    assertThat(method.invoke(engine, request, request.resolveLegacySplitReplayIdempotencyKey()))
-        .isNull();
-  }
-
-  @Test
-  void createOrder_rejectsRetiredLegacyHeaderAtExecutionPath() {
+  void createOrder_rejectsRetiredHeaderAtExecutionPath() {
     MockHttpServletRequest servletRequest =
         new MockHttpServletRequest("POST", "/api/v1/sales/orders");
-    servletRequest.addHeader("X-Idempotency-Key", "legacy-order-key");
+    servletRequest.addHeader("X-Idempotency-Key", "retired-order-key");
     RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(servletRequest));
 
     try {
@@ -605,31 +507,6 @@ class SalesCoreEngineCoverageTest {
     } finally {
       RequestContextHolder.resetRequestAttributes();
     }
-  }
-
-  @Test
-  void
-      resolveLegacySplitReplayRequestSignature_returnsDistinctReplaySignature_forLegacySplitRequest()
-          throws Exception {
-    Method replaySignatureMethod =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "resolveLegacySplitReplayRequestSignature", SalesOrderRequest.class, String.class);
-    replaySignatureMethod.setAccessible(true);
-    Method buildSignatureMethod =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "buildSalesOrderSignature", SalesOrderRequest.class, boolean.class, boolean.class);
-    buildSignatureMethod.setAccessible(true);
-
-    SalesOrderRequest request = salesOrderRequest("SPLIT", null);
-    String canonicalSignature = (String) buildSignatureMethod.invoke(engine, request, false, false);
-    String replaySignature =
-        (String) replaySignatureMethod.invoke(engine, request, canonicalSignature);
-
-    assertThat(replaySignature).isNotNull().isNotEqualTo(canonicalSignature);
-    assertThat(
-            replaySignatureMethod.invoke(
-                engine, salesOrderRequest("CREDIT", null), canonicalSignature))
-        .isNull();
   }
 
   @Test
@@ -878,12 +755,12 @@ class SalesCoreEngineCoverageTest {
   }
 
   @Test
-  void resolveGstTreatment_acceptsLegacyAliasesAndRejectsUnknownValue() throws Exception {
+  void resolveGstTreatment_acceptsCanonicalValuesAndRejectsUnknownValue() throws Exception {
     Method method = SalesCoreEngine.class.getDeclaredMethod("resolveGstTreatment", String.class);
     method.setAccessible(true);
 
-    assertThat(method.invoke(engine, "EXCLUSIVE").toString()).isEqualTo("NONE");
-    assertThat(method.invoke(engine, "inclusive").toString()).isEqualTo("ORDER_TOTAL");
+    assertThat(method.invoke(engine, "NONE").toString()).isEqualTo("NONE");
+    assertThat(method.invoke(engine, "order_total").toString()).isEqualTo("ORDER_TOTAL");
     assertThatThrownBy(() -> method.invoke(engine, "mystery"))
         .hasRootCauseInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
         .hasRootCauseMessage("Unknown GST treatment mystery");
