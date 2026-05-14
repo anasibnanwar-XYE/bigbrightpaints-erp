@@ -30,13 +30,13 @@ public interface JournalReferenceMappingRepository
           """
           INSERT INTO journal_reference_mappings (
               company_id,
-              legacy_reference,
+              reference_key,
               canonical_reference,
               entity_type,
               created_at
           )
           VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, :createdAt)
-          ON CONFLICT (company_id, legacy_reference) DO NOTHING
+          ON CONFLICT (company_id, reference_key) DO NOTHING
           """,
       nativeQuery = true)
   int reserveManualReference(
@@ -52,13 +52,13 @@ public interface JournalReferenceMappingRepository
           """
           INSERT INTO journal_reference_mappings (
               company_id,
-              legacy_reference,
+              reference_key,
               canonical_reference,
               entity_type,
               created_at
           )
           VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, :createdAt)
-          ON CONFLICT (company_id, legacy_reference) DO NOTHING
+          ON CONFLICT (company_id, reference_key) DO NOTHING
           """,
       nativeQuery = true)
   int reserveReferenceMapping(

@@ -20,7 +20,7 @@ import jakarta.persistence.UniqueConstraint;
 @Entity
 @Table(
     name = "journal_reference_mappings",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"company_id", "legacy_reference"}))
+    uniqueConstraints = @UniqueConstraint(columnNames = {"company_id", "reference_key"}))
 public class JournalReferenceMapping {
 
   @Id
@@ -31,7 +31,7 @@ public class JournalReferenceMapping {
   @JoinColumn(name = "company_id")
   private Company company;
 
-  @Column(name = "legacy_reference", nullable = false)
+  @Column(name = "reference_key", nullable = false)
   private String legacyReference;
 
   @Column(name = "canonical_reference", nullable = false)
